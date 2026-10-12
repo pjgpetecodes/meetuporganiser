@@ -3,7 +3,7 @@
 @using MeetupOrganiser.Core.Entities
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
-@inject AppDbContext DbContext
+@inject IDbContextFactory<AppDbContext> DbContextFactory
 @inject NavigationManager NavManager
 @inject ILogger<Events> Logger
 
@@ -19,6 +19,11 @@
             <i class="bi bi-plus-circle me-1"></i> New Event
         </a>
     </div>
+
+    @if (statusMessage != null)
+    {
+        <div class="alert @(isError ? "alert-danger" : "alert-success")" role="alert">@statusMessage</div>
+    }
 
     <!-- Filter & Search Controls -->
     <div class="card border-0 shadow-sm p-3 mb-4">
@@ -55,9 +60,16 @@
 
     @if (filteredEvents == null)
     {
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status"></div>
-        </div>
+        @if (statusMessage == null)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning">The event list could not be loaded.</div>
+        }
     }
     else if (!filteredEvents.Any())
     {
@@ -159,6 +171,8 @@
     private string searchQuery = string.Empty;
     private string selectedGroupId = string.Empty;
     private string selectedStatus = string.Empty;
+    private string? statusMessage;
+    private bool isError;
 
     private IEnumerable<MeetupEvent>? filteredEvents => allEvents?
         .Where(e => (string.IsNullOrWhiteSpace(searchQuery) ||
@@ -169,13 +183,24 @@
 
     protected override async Task OnInitializedAsync()
     {
-        groups = await DbContext.MeetupGroups.OrderBy(g => g.Name).ToListAsync();
-        await LoadEventsAsync();
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            groups = await dbContext.MeetupGroups.OrderBy(g => g.Name).ToListAsync();
+            await LoadEventsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load the event list.");
+            statusMessage = "Unable to load events. The error has been logged.";
+            isError = true;
+        }
     }
 
     private async Task LoadEventsAsync()
     {
-        allEvents = await DbContext.MeetupEvents
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        allEvents = await dbContext.MeetupEvents
             .Include(e => e.MeetupGroup)
             .Include(e => e.Sessions)
                 .ThenInclude(s => s.Speaker)
@@ -214,21 +239,47 @@
                 });
             }
 
-            await DbContext.MeetupEvents.AddAsync(cloned);
-            await DbContext.SaveChangesAsync();
+            await using (var dbContext = await DbContextFactory.CreateDbContextAsync())
+            {
+                await dbContext.MeetupEvents.AddAsync(cloned);
+                await dbContext.SaveChangesAsync();
+            }
+
             await LoadEventsAsync();
+            statusMessage = "Event cloned.";
+            isError = false;
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to clone event.");
+            statusMessage = "Unable to clone this event. The error has been logged.";
+            isError = true;
         }
     }
 
     private async Task DeleteEventAsync(MeetupEvent evt)
     {
-        DbContext.MeetupEvents.Remove(evt);
-        await DbContext.SaveChangesAsync();
-        await LoadEventsAsync();
+        try
+        {
+            await using (var dbContext = await DbContextFactory.CreateDbContextAsync())
+            {
+                var eventToDelete = await dbContext.MeetupEvents.FindAsync(evt.Id);
+                if (eventToDelete == null) return;
+
+                dbContext.MeetupEvents.Remove(eventToDelete);
+                await dbContext.SaveChangesAsync();
+            }
+
+            await LoadEventsAsync();
+            statusMessage = "Event deleted.";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete event {EventId}.", evt.Id);
+            statusMessage = "Unable to delete this event. The error has been logged.";
+            isError = true;
+        }
     }
 
     private static string GetStatusBadge(EventStatus status) => status switch

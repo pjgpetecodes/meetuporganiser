@@ -1,12 +1,13 @@
 @page "/events/new"
 @page "/events/edit/{Id:guid}"
 @attribute [Authorize]
+@implements IAsyncDisposable
 @using MeetupOrganiser.Core.Entities
 @using MeetupOrganiser.Core.Interfaces
 @using MeetupOrganiser.Core.DTOs
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
-@inject AppDbContext DbContext
+@inject IDbContextFactory<AppDbContext> DbContextFactory
 @inject IMagicLinkService MagicLinkService
 @inject IZoomService ZoomService
 @inject ISessionizeService SessionizeService
@@ -43,9 +44,16 @@
 
     @if (evt == null)
     {
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status"></div>
-        </div>
+        @if (statusMessage == null)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning">The event editor could not be loaded. Use <a href="/events">Back to Events</a> to return to the event list.</div>
+        }
     }
     else
     {
@@ -305,6 +313,7 @@
     private bool IsNew => !Id.HasValue;
 
     private MeetupEvent? evt;
+    private AppDbContext? dbContext;
     private List<MeetupGroup>? groups;
     private List<Speaker>? speakers;
 
@@ -329,33 +338,42 @@
 
     protected override async Task OnInitializedAsync()
     {
-        groups = await DbContext.MeetupGroups.OrderBy(g => g.Name).ToListAsync();
-        speakers = await DbContext.Speakers.OrderBy(s => s.Name).ToListAsync();
-
-        if (IsNew)
+        try
         {
-            evt = new MeetupEvent
-            {
-                Id = Guid.NewGuid(),
-                MeetupGroupId = groups.FirstOrDefault()?.Id ?? Guid.Empty,
-                Title = string.Empty,
-                Description = string.Empty,
-                DurationMinutes = 90,
-                LocationOrPlatform = "Zoom / Online",
-                Status = EventStatus.Draft,
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow
-            };
-        }
-        else
-        {
-            evt = await DbContext.MeetupEvents
-                .Include(e => e.Sessions)
-                    .ThenInclude(s => s.Speaker)
-                .FirstOrDefaultAsync(e => e.Id == Id.Value);
+            dbContext = await DbContextFactory.CreateDbContextAsync();
+            groups = await dbContext.MeetupGroups.OrderBy(g => g.Name).ToListAsync();
+            speakers = await dbContext.Speakers.OrderBy(s => s.Name).ToListAsync();
 
-            if (evt != null)
+            if (IsNew)
             {
+                evt = new MeetupEvent
+                {
+                    Id = Guid.NewGuid(),
+                    MeetupGroupId = groups.FirstOrDefault()?.Id ?? Guid.Empty,
+                    Title = string.Empty,
+                    Description = string.Empty,
+                    DurationMinutes = 90,
+                    LocationOrPlatform = "Zoom / Online",
+                    Status = EventStatus.Draft,
+                    CreatedAtUtc = DateTime.UtcNow,
+                    UpdatedAtUtc = DateTime.UtcNow
+                };
+            }
+            else
+            {
+                var eventId = Id ?? throw new InvalidOperationException("An event ID is required when editing an event.");
+                evt = await dbContext.MeetupEvents
+                    .Include(e => e.Sessions)
+                        .ThenInclude(s => s.Speaker)
+                    .FirstOrDefaultAsync(e => e.Id == eventId);
+
+                if (evt == null)
+                {
+                    statusMessage = "The requested event could not be found.";
+                    isError = true;
+                    return;
+                }
+
                 localEventDateTime = evt.EventDateTimeUtc.ToLocalTime();
                 var orderedSessions = evt.Sessions.OrderBy(s => s.OrderIndex).ToList();
                 if (orderedSessions.Count > 0)
@@ -370,6 +388,12 @@
                     speakerCount = 2;
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load event {EventId} for editing.", Id);
+            statusMessage = "Unable to load this event. Please reload and try again. The error has been logged.";
+            isError = true;
         }
     }
 
@@ -593,5 +617,15 @@
     private void CopyToClipboard(string text)
     {
         // Could invoke JS clipboard API if desired, but providing the copyable input provides immediate functionality
+    }
+
+    private AppDbContext DbContext => dbContext ?? throw new InvalidOperationException("The event database context is not available.");
+
+    public async ValueTask DisposeAsync()
+    {
+        if (dbContext != null)
+        {
+            await dbContext.DisposeAsync();
+        }
     }
 }

@@ -4,7 +4,7 @@
 @using MeetupOrganiser.Core.Interfaces
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
-@inject AppDbContext DbContext
+@inject IDbContextFactory<AppDbContext> DbContextFactory
 @inject IBlobStorageService BlobStorageService
 @inject ILogger<Speakers> Logger
 
@@ -21,6 +21,11 @@
         </button>
     </div>
 
+    @if (statusMessage != null)
+    {
+        <div class="alert @(isError ? "alert-danger" : "alert-success")" role="alert">@statusMessage</div>
+    }
+
     <!-- Search & Filter Bar -->
     <div class="card border-0 shadow-sm p-3 mb-4">
         <div class="row g-2">
@@ -35,9 +40,16 @@
 
     @if (filteredSpeakers == null)
     {
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status"></div>
-        </div>
+        @if (statusMessage == null)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning">The speaker directory could not be loaded.</div>
+        }
     }
     else if (!filteredSpeakers.Any())
     {
@@ -190,6 +202,8 @@
     private string searchQuery = string.Empty;
     private bool showModal = false;
     private Speaker editingSpeaker = new();
+    private string? statusMessage;
+    private bool isError;
 
     private IEnumerable<Speaker>? filteredSpeakers => string.IsNullOrWhiteSpace(searchQuery)
         ? allSpeakers
@@ -199,12 +213,22 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadSpeakersAsync();
+        try
+        {
+            await LoadSpeakersAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load the speaker directory.");
+            statusMessage = "Unable to load the speaker directory. The error has been logged.";
+            isError = true;
+        }
     }
 
     private async Task LoadSpeakersAsync()
     {
-        allSpeakers = await DbContext.Speakers
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        allSpeakers = await dbContext.Speakers
             .Include(s => s.Sessions)
             .OrderBy(s => s.Name)
             .ToListAsync();
@@ -260,47 +284,99 @@
     {
         if (string.IsNullOrWhiteSpace(editingSpeaker.Name)) return;
 
-        if (editingSpeaker.Id == Guid.Empty)
+        var isNewSpeaker = editingSpeaker.Id == Guid.Empty;
+        try
         {
-            editingSpeaker.Id = Guid.NewGuid();
-            editingSpeaker.CreatedAtUtc = DateTime.UtcNow;
-            editingSpeaker.UpdatedAtUtc = DateTime.UtcNow;
-            await DbContext.Speakers.AddAsync(editingSpeaker);
-        }
-        else
-        {
-            var existing = await DbContext.Speakers.FindAsync(editingSpeaker.Id);
-            if (existing != null)
+            await using (var dbContext = await DbContextFactory.CreateDbContextAsync())
             {
-                existing.Name = editingSpeaker.Name;
-                existing.Email = editingSpeaker.Email;
-                existing.Bio = editingSpeaker.Bio;
-                existing.PhotoBlobUrl = editingSpeaker.PhotoBlobUrl;
-                existing.LinkedInUrl = editingSpeaker.LinkedInUrl;
-                existing.TwitterHandle = editingSpeaker.TwitterHandle;
-                existing.BlueSkyHandle = editingSpeaker.BlueSkyHandle;
-                existing.GitHubHandle = editingSpeaker.GitHubHandle;
-                existing.WebsiteUrl = editingSpeaker.WebsiteUrl;
-                existing.UpdatedAtUtc = DateTime.UtcNow;
+                if (isNewSpeaker)
+                {
+                    editingSpeaker.Id = Guid.NewGuid();
+                    editingSpeaker.CreatedAtUtc = DateTime.UtcNow;
+                    editingSpeaker.UpdatedAtUtc = DateTime.UtcNow;
+                    await dbContext.Speakers.AddAsync(editingSpeaker);
+                }
+                else
+                {
+                    var existing = await dbContext.Speakers.FindAsync(editingSpeaker.Id);
+                    if (existing == null)
+                    {
+                        statusMessage = "This speaker no longer exists.";
+                        isError = true;
+                        return;
+                    }
+
+                    existing.Name = editingSpeaker.Name;
+                    existing.Email = editingSpeaker.Email;
+                    existing.Bio = editingSpeaker.Bio;
+                    existing.PhotoBlobUrl = editingSpeaker.PhotoBlobUrl;
+                    existing.LinkedInUrl = editingSpeaker.LinkedInUrl;
+                    existing.TwitterHandle = editingSpeaker.TwitterHandle;
+                    existing.BlueSkyHandle = editingSpeaker.BlueSkyHandle;
+                    existing.GitHubHandle = editingSpeaker.GitHubHandle;
+                    existing.WebsiteUrl = editingSpeaker.WebsiteUrl;
+                    existing.UpdatedAtUtc = DateTime.UtcNow;
+                }
+
+                await dbContext.SaveChangesAsync();
             }
+
+            showModal = false;
+            statusMessage = "Speaker saved.";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            var speakerId = editingSpeaker.Id;
+            Logger.LogError(ex, "Failed to save speaker {SpeakerId}.", speakerId);
+            if (isNewSpeaker) editingSpeaker.Id = Guid.Empty;
+            statusMessage = "Unable to save the speaker. The error has been logged.";
+            isError = true;
+            return;
         }
 
-        await DbContext.SaveChangesAsync();
-        showModal = false;
-        await LoadSpeakersAsync();
+        try
+        {
+            await LoadSpeakersAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Speaker {SpeakerId} was saved but the directory could not be refreshed.", editingSpeaker.Id);
+            statusMessage = "Speaker saved, but the directory could not be refreshed. Reload the page to see the update.";
+            isError = true;
+        }
     }
 
     private async Task DeleteSpeakerAsync(Speaker speaker)
     {
-        var hasSessions = await DbContext.EventSpeakerSessions.AnyAsync(s => s.SpeakerId == speaker.Id);
-        if (hasSessions)
+        try
         {
-            // Do not delete speaker if they are linked to sessions
-            return;
-        }
+            await using (var dbContext = await DbContextFactory.CreateDbContextAsync())
+            {
+                var hasSessions = await dbContext.EventSpeakerSessions.AnyAsync(s => s.SpeakerId == speaker.Id);
+                if (hasSessions)
+                {
+                    statusMessage = "This speaker is linked to an event session and cannot be deleted.";
+                    isError = true;
+                    return;
+                }
 
-        DbContext.Speakers.Remove(speaker);
-        await DbContext.SaveChangesAsync();
-        await LoadSpeakersAsync();
+                var speakerToDelete = await dbContext.Speakers.FindAsync(speaker.Id);
+                if (speakerToDelete == null) return;
+
+                dbContext.Speakers.Remove(speakerToDelete);
+                await dbContext.SaveChangesAsync();
+            }
+
+            statusMessage = "Speaker deleted.";
+            isError = false;
+            await LoadSpeakersAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete speaker {SpeakerId}.", speaker.Id);
+            statusMessage = "Unable to delete the speaker. The error has been logged.";
+            isError = true;
+        }
     }
 }

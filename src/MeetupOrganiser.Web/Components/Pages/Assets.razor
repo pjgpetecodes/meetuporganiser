@@ -5,7 +5,7 @@
 @using MeetupOrganiser.Core.DTOs
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
-@inject AppDbContext DbContext
+@inject IDbContextFactory<AppDbContext> DbContextFactory
 @inject IPptxGeneratorService PptxService
 @inject ISocialImageGeneratorService SocialImageService
 @inject ISocialMediaService SocialMediaService
@@ -65,10 +65,17 @@
 
     @if (selectedEvent == null)
     {
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status"></div>
-            <p class="mt-2 text-secondary">Loading event assets...</p>
-        </div>
+        @if (statusMessage == null)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2 text-secondary">Loading event assets...</p>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning">Event assets could not be loaded. Use <a href="/events">All Events</a> to return to the event list.</div>
+        }
     }
     else
     {
@@ -253,24 +260,34 @@
 
     protected override async Task OnInitializedAsync()
     {
-        events = await DbContext.MeetupEvents
-            .Include(e => e.MeetupGroup)
-            .Include(e => e.Sessions).ThenInclude(s => s.Speaker)
-            .OrderByDescending(e => e.EventDateTimeUtc)
-            .ToListAsync();
-
-        if (events.Any())
+        try
         {
-            if (EventId.HasValue && events.Any(e => e.Id == EventId.Value))
-            {
-                selectedEventId = EventId.Value;
-            }
-            else
-            {
-                selectedEventId = events.First().Id;
-            }
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            events = await dbContext.MeetupEvents
+                .Include(e => e.MeetupGroup)
+                .Include(e => e.Sessions).ThenInclude(s => s.Speaker)
+                .OrderByDescending(e => e.EventDateTimeUtc)
+                .ToListAsync();
 
-            await LoadEventDataAsync(selectedEventId);
+            if (events.Any())
+            {
+                if (EventId.HasValue && events.Any(e => e.Id == EventId.Value))
+                {
+                    selectedEventId = EventId.Value;
+                }
+                else
+                {
+                    selectedEventId = events.First().Id;
+                }
+
+                await LoadEventDataAsync(selectedEventId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load Social & Slides.");
+            statusMessage = "Unable to load event assets. Please reload and try again. The error has been logged.";
+            isError = true;
         }
     }
 
@@ -285,20 +302,26 @@
 
     private async Task LoadEventDataAsync(Guid eventId)
     {
-        selectedEvent = events?.FirstOrDefault(e => e.Id == eventId);
-        if (selectedEvent == null) return;
+        try
+        {
+            selectedEvent = events?.FirstOrDefault(e => e.Id == eventId);
+            if (selectedEvent == null) return;
 
-        // Build pre-formatted copy templates using domain services
-        meetupMarkdownDescription = MeetupService.GenerateMeetupDescription(selectedEvent);
-        linkedInText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "LinkedIn");
-        twitterText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "Twitter");
-        blueSkyText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "BlueSky");
+            meetupMarkdownDescription = MeetupService.GenerateMeetupDescription(selectedEvent);
+            linkedInText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "LinkedIn");
+            twitterText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "Twitter");
+            blueSkyText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "BlueSky");
+            twitterIntentUrl = SocialMediaService.GetPlatformWebIntentUrl(selectedEvent, "Twitter");
+            linkedInIntentUrl = SocialMediaService.GetPlatformWebIntentUrl(selectedEvent, "LinkedIn");
 
-        // Web intent URLs
-        twitterIntentUrl = SocialMediaService.GetPlatformWebIntentUrl(selectedEvent, "Twitter");
-        linkedInIntentUrl = SocialMediaService.GetPlatformWebIntentUrl(selectedEvent, "LinkedIn");
-
-        await GenerateImagePreviewAsync();
+            await GenerateImagePreviewAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to prepare assets for event {EventId}.", eventId);
+            statusMessage = "Unable to prepare this event's assets. The error has been logged.";
+            isError = true;
+        }
     }
 
     private async Task GenerateImagePreviewAsync()
