@@ -4,6 +4,7 @@ using MeetupOrganiser.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace MeetupOrganiser.Infrastructure;
 
@@ -27,9 +28,24 @@ public static class DependencyInjection
         });
 
         services.AddHttpClient<ISessionizeService, SessionizeService>();
-        services.AddHttpClient<IZoomService, ZoomService>();
-        services.AddHttpClient<IMeetupService, MeetupService>();
-        services.AddHttpClient<ISocialMediaService, SocialMediaService>();
+        services.AddHttpClient("ZoomService");
+        services.AddScoped<IZoomService>(serviceProvider => new ZoomService(
+            serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("ZoomService"),
+            serviceProvider.GetRequiredService<ISettingsService>(),
+            configuration,
+            serviceProvider.GetRequiredService<ILogger<ZoomService>>()));
+        services.AddHttpClient("MeetupService");
+        services.AddScoped<IMeetupService>(serviceProvider => new MeetupService(
+            serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("MeetupService"),
+            serviceProvider.GetRequiredService<ISettingsService>(),
+            configuration,
+            serviceProvider.GetRequiredService<ILogger<MeetupService>>()));
+        services.AddHttpClient("SocialMediaService");
+        services.AddScoped<ISocialMediaService>(serviceProvider => new SocialMediaService(
+            serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("SocialMediaService"),
+            serviceProvider.GetRequiredService<ISettingsService>(),
+            configuration,
+            serviceProvider.GetRequiredService<ILogger<SocialMediaService>>()));
 
         services.AddScoped<IBlobStorageService, BlobStorageService>();
         services.AddScoped<ISettingsService, SettingsService>();
