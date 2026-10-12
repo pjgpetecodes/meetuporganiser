@@ -58,15 +58,34 @@ public class PptxGeneratorService : IPptxGeneratorService
                 var speaker2 = sessions.Skip(1).FirstOrDefault()?.Speaker;
                 var session2 = sessions.Skip(1).FirstOrDefault();
 
+                var dateFormatted = meetupEvent.EventDateTimeUtc.ToString("dddd d'th' MMMM yyyy");
+                var dayFormatted = meetupEvent.EventDateTimeUtc.ToString("dddd");
+                var monthYearFormatted = meetupEvent.EventDateTimeUtc.ToString("MMMM yyyy");
+                var shortUrl = meetupEvent.ShortBitlyUrl ?? meetupEvent.MeetupEventUrl ?? "https://meetup.com";
+                var shortUrlNoScheme = shortUrl.Replace("https://", "").Replace("http://", "");
+
                 var replacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
+                    // Placeholder tokens
+                    { "{{SpeakerName}}", speaker1?.Name ?? "Speaker Name" },
+                    { "{{Speaker1Name}}", speaker1?.Name ?? "Speaker 1" },
+                    { "{{Speaker2Name}}", speaker2?.Name ?? "Speaker 2" },
+                    { "{{TalkTitle}}", session1?.TalkTitle ?? meetupEvent.Title },
+                    { "{{Talk1Title}}", session1?.TalkTitle ?? meetupEvent.Title },
+                    { "{{Talk2Title}}", session2?.TalkTitle ?? "Talk 2" },
+                    { "{{ShortUrl}}", shortUrl },
+                    { "{{EventDate}}", dateFormatted },
+                    { "{{EventTime}}", meetupEvent.EventDateTimeUtc.ToString("HH:mm") + " UTC" },
+                    { "{{Venue}}", meetupEvent.LocationOrPlatform ?? "Online" },
+
+                    // Sample template literal replacements
                     { "Luce Carter", speaker1?.Name ?? "Speaker Name" },
                     { "SQL to MongoDB API with C#", session1?.TalkTitle ?? meetupEvent.Title },
-                    { "https://bit.ly/dotnetnottsapril2026", meetupEvent.ShortBitlyUrl ?? meetupEvent.MeetupEventUrl ?? "https://meetup.com" },
-                    { "bit.ly/dotnetnottsapril2026", (meetupEvent.ShortBitlyUrl ?? meetupEvent.MeetupEventUrl ?? "meetup.com").Replace("https://", "").Replace("http://", "") },
-                    { "Monday 27th April 2026", meetupEvent.EventDateTimeUtc.ToString("dddd d'th' MMMM yyyy") },
-                    { "Monday", meetupEvent.EventDateTimeUtc.ToString("dddd") },
-                    { "April 2026", meetupEvent.EventDateTimeUtc.ToString("MMMM yyyy") }
+                    { "https://bit.ly/dotnetnottsapril2026", shortUrl },
+                    { "bit.ly/dotnetnottsapril2026", shortUrlNoScheme },
+                    { "Monday 27th April 2026", dateFormatted },
+                    { "Monday", dayFormatted },
+                    { "April 2026", monthYearFormatted }
                 };
 
                 if (speaker2 != null && session2 != null)
@@ -74,6 +93,7 @@ public class PptxGeneratorService : IPptxGeneratorService
                     replacements["Pete Gallagher"] = speaker2.Name;
                     replacements["Detecting Pollinating Insects with a Raspberry Pi and the Hailo AI Kit"] = session2.TalkTitle;
                     replacements["Christophe Crémon"] = speaker1?.Name ?? "Speaker 1";
+                    replacements["Christophe Cr\u00e9mon"] = speaker1?.Name ?? "Speaker 1";
                     replacements["Agents of Change: How Agentic AI is Revolutionizing Every Industry"] = session1?.TalkTitle ?? "Talk 1";
                 }
 
@@ -102,11 +122,115 @@ public class PptxGeneratorService : IPptxGeneratorService
                     slidePart.Slide.Save();
                 }
 
+                // Replace speaker photo in image parts if available
+                TryReplaceSpeakerPhotos(presentationPart, speaker1, speaker2);
+
                 presentationPart.Presentation.Save();
             }
         }
 
         return memoryStream.ToArray();
+    }
+
+    private void TryReplaceSpeakerPhotos(PresentationPart presentationPart, Speaker? speaker1, Speaker? speaker2)
+    {
+        try
+        {
+            byte[]? photo1Bytes = LoadSpeakerBytes(speaker1?.PhotoBlobUrl);
+            byte[]? photo2Bytes = LoadSpeakerBytes(speaker2?.PhotoBlobUrl);
+
+            foreach (var slidePart in presentationPart.SlideParts)
+            {
+                var uri = slidePart.Uri.ToString();
+
+                // Slide 7 and Slide 9 contain speaker 1 photo (image32.png via rId3)
+                if (photo1Bytes != null && (uri.EndsWith("slide7.xml") || uri.EndsWith("slide9.xml")))
+                {
+                    ReplaceImagePart(slidePart, "rId3", photo1Bytes);
+                }
+
+                // Slide 10 contains speaker 1 (rId3 -> image35.png) and speaker 2 (rId2 -> image34.png)
+                if (uri.EndsWith("slide10.xml"))
+                {
+                    if (photo1Bytes != null)
+                    {
+                        ReplaceImagePart(slidePart, "rId3", photo1Bytes);
+                    }
+                    if (photo2Bytes != null)
+                    {
+                        ReplaceImagePart(slidePart, "rId2", photo2Bytes);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to swap speaker headshot images in presentation deck.");
+        }
+    }
+
+    private static void ReplaceImagePart(SlidePart slidePart, string relId, byte[] newImageBytes)
+    {
+        try
+        {
+            if (slidePart.TryGetPartById(relId, out var part) && part is ImagePart imagePart)
+            {
+                using var stream = imagePart.GetStream(FileMode.Create, FileAccess.Write);
+                stream.Write(newImageBytes, 0, newImageBytes.Length);
+            }
+        }
+        catch
+        {
+            // Ignore if relationship is not found or cannot be overwritten
+        }
+    }
+
+    private static byte[]? LoadSpeakerBytes(string? photoUrl)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(photoUrl))
+            {
+                var defaultPath = Path.Combine(Directory.GetCurrentDirectory(), "images", "speakers", "Luce Carter.jpg");
+                if (File.Exists(defaultPath))
+                {
+                    return File.ReadAllBytes(defaultPath);
+                }
+                var altDefault = Path.Combine(Directory.GetCurrentDirectory(), "src", "MeetupOrganiser.Web", "wwwroot", "images", "speakers", "Luce Carter.jpg");
+                if (File.Exists(altDefault))
+                {
+                    return File.ReadAllBytes(altDefault);
+                }
+                return null;
+            }
+
+            if (File.Exists(photoUrl))
+            {
+                return File.ReadAllBytes(photoUrl);
+            }
+
+            var rel = photoUrl.TrimStart('/', '\\');
+            var localCandidates = new[]
+            {
+                Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", rel),
+                Path.Combine(Directory.GetCurrentDirectory(), "src", "MeetupOrganiser.Web", "wwwroot", rel),
+                Path.Combine(AppContext.BaseDirectory, "wwwroot", rel)
+            };
+
+            foreach (var candidate in localCandidates)
+            {
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllBytes(candidate);
+                }
+            }
+        }
+        catch
+        {
+            // Fallback gracefully
+        }
+
+        return null;
     }
 
     private static byte[] CreateEmptyDeck(MeetupEvent evt)
