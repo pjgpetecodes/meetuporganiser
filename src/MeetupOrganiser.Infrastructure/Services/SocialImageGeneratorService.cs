@@ -22,318 +22,241 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         using var bitmap = new SKBitmap(width, height);
         using var canvas = new SKCanvas(bitmap);
 
-        // 1. Background colors
-        var group = meetupEvent.MeetupGroup;
-        var primaryHex = group?.PrimaryColorHex ?? "#512BD4";
-        var secondaryHex = group?.SecondaryColorHex ?? "#0078D4";
+        var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
+        var isTwoSpeakers = sessions.Count > 1;
 
-        if (!SKColor.TryParse(primaryHex, out var primaryColor))
-            primaryColor = new SKColor(81, 43, 212);
+        // 1. Draw Teal Radial Background Gradient matching .NET Notts slide format
+        // Teal gradient: center at top-right (1010, 90), color #1ABC9C radiating to #11816B at corners
+        var center = new SKPoint(1010, 90);
+        var colors = new[] { new SKColor(26, 188, 156), new SKColor(17, 129, 107) };
+        var colorPos = new[] { 0f, 1f };
 
-        if (!SKColor.TryParse(secondaryHex, out var secondaryColor))
-            secondaryColor = new SKColor(0, 120, 212);
-
-        // Dark gradient background
-        var darkBg = new SKColor(18, 18, 24);
-        using (var bgPaint = new SKPaint
-        {
-            Shader = SKShader.CreateLinearGradient(
-                new SKPoint(0, 0),
-                new SKPoint(width, height),
-                [new SKColor(24, 26, 36), darkBg],
-                [0f, 1f],
-                SKShaderTileMode.Clamp)
-        })
+        using (var bgShader = SKShader.CreateRadialGradient(center, 1200, colors, colorPos, SKShaderTileMode.Clamp))
+        using (var bgPaint = new SKPaint { Shader = bgShader, IsAntialias = true })
         {
             canvas.DrawRect(0, 0, width, height, bgPaint);
         }
 
-        // Top decorative accent bar
-        using (var accentPaint = new SKPaint
-        {
-            Shader = SKShader.CreateLinearGradient(
-                new SKPoint(0, 0),
-                new SKPoint(width, 0),
-                [primaryColor, secondaryColor],
-                [0f, 1f],
-                SKShaderTileMode.Clamp)
-        })
-        {
-            canvas.DrawRect(0, 0, width, 12, accentPaint);
-        }
+        // 2. Draw Top-Right Sponsor Banner
+        DrawSponsorsBanner(canvas, isTwoSpeakers);
 
-        // Decorative background geometric curves/circles
-        using (var decPaint = new SKPaint
+        // 3. Render either 1 Speaker or 2 Speakers Layout
+        if (!isTwoSpeakers)
         {
-            Color = primaryColor.WithAlpha(30),
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 3
-        })
-        {
-            canvas.DrawCircle(1150, 150, 220, decPaint);
-            canvas.DrawCircle(1200, 100, 160, decPaint);
-            canvas.DrawCircle(100, 650, 180, decPaint);
-        }
-
-        // 2. Header: Group Name & Tagline
-        var groupName = group?.Name ?? ".NET Notts";
-        using (var fontGroup = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 42))
-        using (var groupPaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
-        {
-            canvas.DrawText(groupName, 60, 80, SKTextAlign.Left, fontGroup, groupPaint);
-        }
-
-        var tagline = group?.Description?.Split('\n').FirstOrDefault() ?? "Talks from the world of Microsoft and beyond";
-        if (tagline.Length > 60) tagline = tagline[..57] + "...";
-        using (var fontTag = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 22))
-        using (var tagPaint = new SKPaint { Color = new SKColor(180, 185, 200), IsAntialias = true })
-        {
-            canvas.DrawText(tagline, 60, 115, SKTextAlign.Left, fontTag, tagPaint);
-        }
-
-        // 3. Event Date / Time / Platform pill
-        var eventDateText = $"{meetupEvent.EventDateTimeUtc:dddd, MMMM d, yyyy} | {meetupEvent.EventDateTimeUtc:HH:mm} UTC";
-        if (!string.IsNullOrWhiteSpace(meetupEvent.LocationOrPlatform))
-        {
-            eventDateText += $" | {meetupEvent.LocationOrPlatform}";
-        }
-
-        var pillRect = new SKRoundRect(new SKRect(60, 140, 60 + Math.Min(950, eventDateText.Length * 14 + 40), 185), 10, 10);
-        using (var pillBgPaint = new SKPaint { Color = primaryColor.WithAlpha(50), IsAntialias = true })
-        {
-            canvas.DrawRoundRect(pillRect, pillBgPaint);
-        }
-        using (var pillBorderPaint = new SKPaint { Color = primaryColor.WithAlpha(180), Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true })
-        {
-            canvas.DrawRoundRect(pillRect, pillBorderPaint);
-        }
-        using (var fontPill = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 20))
-        using (var pillTextPaint = new SKPaint { Color = new SKColor(230, 235, 255), IsAntialias = true })
-        {
-            canvas.DrawText(eventDateText, 80, 172, SKTextAlign.Left, fontPill, pillTextPaint);
-        }
-
-        // 4. Speakers Section
-        var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
-        if (sessions.Count <= 1)
-        {
-            // Single Speaker Layout
-            DrawSingleSpeaker(canvas, sessions.FirstOrDefault(), 60, 220, width - 120, 380, primaryColor);
+            RenderSingleSpeakerLayout(canvas, meetupEvent, sessions.FirstOrDefault());
         }
         else
         {
-            // Two Speakers Layout (side-by-side)
-            var colWidth = (width - 150) / 2;
-            DrawSpeakerCard(canvas, sessions[0], 60, 220, colWidth, 380, primaryColor, 1);
-            DrawSpeakerCard(canvas, sessions[1], 80 + colWidth, 220, colWidth, 380, secondaryColor, 2);
+            RenderTwoSpeakersLayout(canvas, meetupEvent, sessions[0], sessions[1]);
         }
 
-        // 5. Footer: RSVP Link & Hashtags
-        var rsvpText = !string.IsNullOrWhiteSpace(meetupEvent.ShortBitlyUrl)
-            ? $"RSVP: {meetupEvent.ShortBitlyUrl}"
-            : (!string.IsNullOrWhiteSpace(meetupEvent.MeetupEventUrl) ? $"RSVP: {meetupEvent.MeetupEventUrl}" : "RSVP on Meetup");
-
-        using (var footerBg = new SKPaint { Color = new SKColor(28, 30, 44), IsAntialias = true })
+        // 4. Bottom Short Link (e.g. https://bit.ly/dotnetnottsapril2026)
+        var shortUrl = meetupEvent.ShortBitlyUrl ?? meetupEvent.MeetupEventUrl ?? "https://meetup.com/dotnetnotts";
+        using (var fontUrl = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 26))
+        using (var urlPaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
         {
-            canvas.DrawRect(0, height - 70, width, 70, footerBg);
+            var textWidth = fontUrl.MeasureText(shortUrl, urlPaint);
+            canvas.DrawText(shortUrl, (width - textWidth) / 2f, 690, SKTextAlign.Left, fontUrl, urlPaint);
         }
 
-        using (var fontRsvp = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 24))
-        using (var rsvpPaint = new SKPaint { Color = new SKColor(96, 165, 250), IsAntialias = true })
-        {
-            canvas.DrawText(rsvpText, 60, height - 28, SKTextAlign.Left, fontRsvp, rsvpPaint);
-        }
-
-        var hashtags = group?.DefaultHashtags ?? "#dotnet #dotnetnotts #azure";
-        using (var fontHash = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 20))
-        using (var hashPaint = new SKPaint { Color = new SKColor(156, 163, 175), IsAntialias = true })
-        {
-            var hashWidth = fontHash.MeasureText(hashtags, hashPaint);
-            canvas.DrawText(hashtags, width - hashWidth - 60, height - 28, SKTextAlign.Left, fontHash, hashPaint);
-        }
-
-        // Encode to PNG bytes
         using var image = SKImage.FromBitmap(bitmap);
         using var data = image.Encode(SKEncodedImageFormat.Png, 95);
         return Task.FromResult(data.ToArray());
     }
 
-    private static void DrawSingleSpeaker(SKCanvas canvas, EventSpeakerSession? session, float x, float y, float w, float h, SKColor accentColor)
+    private static void RenderSingleSpeakerLayout(SKCanvas canvas, MeetupEvent meetupEvent, EventSpeakerSession? session)
     {
         var speaker = session?.Speaker;
-        var speakerName = speaker?.Name ?? "Guest Speaker";
-        var talkTitle = session?.TalkTitle ?? "Exciting Technical Session";
-        var talkDesc = session?.TalkDescription ?? speaker?.Bio ?? string.Empty;
+        var speakerName = speaker?.Name ?? "Luce Carter";
+        var talkTitle = session?.TalkTitle ?? "SQL to MongoDB API with C#";
 
-        // Card Container
-        var cardRect = new SKRoundRect(new SKRect(x, y, x + w, y + h), 16, 16);
-        using (var cardPaint = new SKPaint { Color = new SKColor(32, 35, 50, 220), IsAntialias = true })
-        {
-            canvas.DrawRoundRect(cardRect, cardPaint);
-        }
-        using (var cardBorder = new SKPaint { Color = accentColor.WithAlpha(80), Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true })
-        {
-            canvas.DrawRoundRect(cardRect, cardBorder);
-        }
+        // Date and Location Header:
+        // Line 1: MONDAY 27TH APRIL 2026
+        // Line 2: AT CGI ONLY FROM 18:30GMT!
+        // Line 3: Special Workshop Edition!
+        var dateFormatted = meetupEvent.EventDateTimeUtc.ToString("dddd d'TH' MMMM yyyy").ToUpperInvariant();
+        var venue = (meetupEvent.LocationOrPlatform ?? "AT CGI ONLY").ToUpperInvariant();
+        var timeFormatted = $"FROM {meetupEvent.EventDateTimeUtc:HH:mm}GMT!";
+        var line2 = $"{venue} {timeFormatted}";
 
-        // Avatar circle
-        const float avatarRadius = 90;
-        var avatarCenterX = x + 130;
-        var avatarCenterY = y + h / 2 - 20;
-
-        using (var avatarBg = new SKPaint { Color = accentColor, IsAntialias = true })
+        using (var fontHeaderBold = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 44))
+        using (var textPaintWhite = new SKPaint { Color = SKColors.White, IsAntialias = true })
         {
-            canvas.DrawCircle(avatarCenterX, avatarCenterY, avatarRadius + 4, avatarBg);
+            canvas.DrawText(dateFormatted, 60, 65, SKTextAlign.Left, fontHeaderBold, textPaintWhite);
+            canvas.DrawText(line2, 60, 125, SKTextAlign.Left, fontHeaderBold, textPaintWhite);
         }
 
-        SKBitmap? photoBitmap = LoadSpeakerBitmap(speaker?.PhotoBlobUrl);
-        if (photoBitmap != null)
+        // Subtitle or Edition line
+        var subtitle = "Special Workshop Edition!";
+        using (var fontSubtitle = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 44))
+        using (var textPaintWhite = new SKPaint { Color = SKColors.White, IsAntialias = true })
         {
-            using (photoBitmap)
-            using (var circlePath = new SKPath())
-            {
-                circlePath.AddCircle(avatarCenterX, avatarCenterY, avatarRadius);
-                canvas.Save();
-                canvas.ClipPath(circlePath, antialias: true);
-                var destRect = new SKRect(avatarCenterX - avatarRadius, avatarCenterY - avatarRadius, avatarCenterX + avatarRadius, avatarCenterY + avatarRadius);
-                canvas.DrawBitmap(photoBitmap, destRect);
-                canvas.Restore();
-            }
-        }
-        else
-        {
-            using (var placeholderPaint = new SKPaint { Color = new SKColor(45, 55, 72), IsAntialias = true })
-            {
-                canvas.DrawCircle(avatarCenterX, avatarCenterY, avatarRadius, placeholderPaint);
-            }
-            var initials = string.Concat(speakerName.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(s => s[0]));
-            if (string.IsNullOrEmpty(initials)) initials = "SP";
-            using (var fontInit = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 50))
-            using (var initPaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
-            {
-                var iw = fontInit.MeasureText(initials, initPaint);
-                canvas.DrawText(initials, avatarCenterX - iw / 2, avatarCenterY + 18, SKTextAlign.Left, fontInit, initPaint);
-            }
+            canvas.DrawText(subtitle, 60, 185, SKTextAlign.Left, fontSubtitle, textPaintWhite);
         }
 
-        // Speaker Name & Session details
-        var contentX = x + 260;
-        using (var fontName = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 36))
+        // Speaker Avatar Circle with Drop Shadow
+        // Center: (274, 399), Radius: 180
+        const float avatarCenterX = 274f;
+        const float avatarCenterY = 399f;
+        const float avatarRadius = 180f;
+
+        // Draw soft ellipse shadow beneath the circle
+        using (var shadowPaint = new SKPaint
+        {
+            Color = new SKColor(0, 50, 40, 140),
+            IsAntialias = true,
+            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 22f)
+        })
+        {
+            canvas.DrawOval(avatarCenterX, avatarCenterY + avatarRadius + 32, avatarRadius * 0.95f, 24f, shadowPaint);
+        }
+
+        // Avatar photo or placeholder
+        DrawCircularAvatar(canvas, speaker?.PhotoBlobUrl, speakerName, avatarCenterX, avatarCenterY, avatarRadius);
+
+        // Speaker Name and Talk Title on Right
+        // Name: Luce Carter (font size ~68pt)
+        // Talk: SQL to MongoDB API with C# (font size ~38pt)
+        using (var fontSpeaker = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 68))
         using (var namePaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
         {
-            canvas.DrawText(speakerName, contentX, y + 65, SKTextAlign.Left, fontName, namePaint);
+            canvas.DrawText(speakerName, 520, 395, SKTextAlign.Left, fontSpeaker, namePaint);
         }
 
-        if (!string.IsNullOrWhiteSpace(speaker?.TwitterHandle) || !string.IsNullOrWhiteSpace(speaker?.BlueSkyHandle))
+        using (var fontTalk = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 38))
+        using (var talkPaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
         {
-            var handleText = speaker.BlueSkyHandle ?? speaker.TwitterHandle ?? string.Empty;
-            using var fontHandle = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 20);
-            using var handlePaint = new SKPaint { Color = new SKColor(147, 197, 253), IsAntialias = true };
-            canvas.DrawText(handleText, contentX, y + 100, SKTextAlign.Left, fontHandle, handlePaint);
-        }
-
-        // Talk Title
-        using (var fontTitle = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 30))
-        using (var titlePaint = new SKPaint { Color = new SKColor(253, 224, 71), IsAntialias = true })
-        {
-            var truncatedTitle = talkTitle.Length > 55 ? talkTitle[..52] + "..." : talkTitle;
-            canvas.DrawText(truncatedTitle, contentX, y + 155, SKTextAlign.Left, fontTitle, titlePaint);
-        }
-
-        // Description
-        if (!string.IsNullOrWhiteSpace(talkDesc))
-        {
-            var desc = talkDesc.Length > 160 ? talkDesc[..157] + "..." : talkDesc;
-            using var fontDesc = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 20);
-            using var descPaint = new SKPaint { Color = new SKColor(209, 213, 219), IsAntialias = true };
-            canvas.DrawText(desc, contentX, y + 205, SKTextAlign.Left, fontDesc, descPaint);
+            canvas.DrawText(talkTitle, 520, 465, SKTextAlign.Left, fontTalk, talkPaint);
         }
     }
 
-    private static void DrawSpeakerCard(SKCanvas canvas, EventSpeakerSession session, float x, float y, float w, float h, SKColor accentColor, int index)
+    private static void RenderTwoSpeakersLayout(SKCanvas canvas, MeetupEvent meetupEvent, EventSpeakerSession session1, EventSpeakerSession session2)
     {
-        var speaker = session.Speaker;
-        var speakerName = speaker?.Name ?? $"Speaker {index}";
-        var talkTitle = session.TalkTitle;
-
-        var cardRect = new SKRoundRect(new SKRect(x, y, x + w, y + h), 16, 16);
-        using (var cardPaint = new SKPaint { Color = new SKColor(32, 35, 50, 220), IsAntialias = true })
+        // Top-left header: "TONIGHT!" (font size ~68pt, Bold)
+        using (var fontTonight = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 72))
+        using (var textPaintWhite = new SKPaint { Color = SKColors.White, IsAntialias = true })
         {
-            canvas.DrawRoundRect(cardRect, cardPaint);
-        }
-        using (var cardBorder = new SKPaint { Color = accentColor.WithAlpha(80), Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true })
-        {
-            canvas.DrawRoundRect(cardRect, cardBorder);
+            canvas.DrawText("TONIGHT!", 60, 95, SKTextAlign.Left, fontTonight, textPaintWhite);
         }
 
-        const float avatarRadius = 65;
-        var avatarCenterX = x + 90;
-        var avatarCenterY = y + 90;
+        // Speaker 1 (Left circle, centered details)
+        // Center: (195, 435), Radius: 120
+        var sp1 = session1.Speaker;
+        var name1 = sp1?.Name ?? "Speaker 1";
+        var talk1 = session1.TalkTitle;
 
-        using (var avatarBg = new SKPaint { Color = accentColor, IsAntialias = true })
+        // Shadow 1
+        using (var shadowPaint = new SKPaint
         {
-            canvas.DrawCircle(avatarCenterX, avatarCenterY, avatarRadius + 3, avatarBg);
+            Color = new SKColor(0, 50, 40, 140),
+            IsAntialias = true,
+            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 18f)
+        })
+        {
+            canvas.DrawOval(195f, 435f + 120f + 25f, 105f, 18f, shadowPaint);
+        }
+        DrawCircularAvatar(canvas, sp1?.PhotoBlobUrl, name1, 195f, 435f, 120f);
+
+        // Details 1
+        using (var fontName1 = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 48))
+        using (var fontTalk1 = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 30))
+        using (var textPaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
+        {
+            canvas.DrawText(name1, 350, 395, SKTextAlign.Left, fontName1, textPaint);
+            canvas.DrawText(talk1, 350, 450, SKTextAlign.Left, fontTalk1, textPaint);
         }
 
-        SKBitmap? photoBitmap = LoadSpeakerBitmap(speaker?.PhotoBlobUrl);
+        // Speaker 2 (Right circle, details on left of avatar or center)
+        // Center: (1085, 595), Radius: 120
+        var sp2 = session2.Speaker;
+        var name2 = sp2?.Name ?? "Speaker 2";
+        var talk2 = session2.TalkTitle;
+
+        // Details 2
+        using (var fontName2 = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 48))
+        using (var fontTalk2 = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 30))
+        using (var textPaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
+        {
+            canvas.DrawText(name2, 530, 550, SKTextAlign.Left, fontName2, textPaint);
+            canvas.DrawText(talk2, 450, 605, SKTextAlign.Left, fontTalk2, textPaint);
+        }
+
+        DrawCircularAvatar(canvas, sp2?.PhotoBlobUrl, name2, 1085f, 595f, 120f);
+    }
+
+    private static void DrawCircularAvatar(SKCanvas canvas, string? photoUrl, string speakerName, float cx, float cy, float radius)
+    {
+        // Pure white border ring
+        using (var borderPaint = new SKPaint
+        {
+            Color = SKColors.White,
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 4f
+        })
+        {
+            canvas.DrawCircle(cx, cy, radius + 2f, borderPaint);
+        }
+
+        var photoBitmap = LoadSpeakerBitmap(photoUrl);
         if (photoBitmap != null)
         {
             using (photoBitmap)
             using (var circlePath = new SKPath())
             {
-                circlePath.AddCircle(avatarCenterX, avatarCenterY, avatarRadius);
+                circlePath.AddCircle(cx, cy, radius);
                 canvas.Save();
                 canvas.ClipPath(circlePath, antialias: true);
-                var destRect = new SKRect(avatarCenterX - avatarRadius, avatarCenterY - avatarRadius, avatarCenterX + avatarRadius, avatarCenterY + avatarRadius);
+                var destRect = new SKRect(cx - radius, cy - radius, cx + radius, cy + radius);
                 canvas.DrawBitmap(photoBitmap, destRect);
                 canvas.Restore();
             }
         }
         else
         {
-            using var phPaint = new SKPaint { Color = new SKColor(45, 55, 72), IsAntialias = true };
-            canvas.DrawCircle(avatarCenterX, avatarCenterY, avatarRadius, phPaint);
+            using var placeholderPaint = new SKPaint { Color = new SKColor(45, 55, 72), IsAntialias = true };
+            canvas.DrawCircle(cx, cy, radius, placeholderPaint);
+
             var initials = string.Concat(speakerName.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(s => s[0]));
-            if (string.IsNullOrEmpty(initials)) initials = $"S{index}";
-            using var fontInit = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 36);
+            if (string.IsNullOrEmpty(initials)) initials = "SP";
+
+            using var fontInit = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), radius * 0.55f);
             using var initPaint = new SKPaint { Color = SKColors.White, IsAntialias = true };
             var iw = fontInit.MeasureText(initials, initPaint);
-            canvas.DrawText(initials, avatarCenterX - iw / 2, avatarCenterY + 12, SKTextAlign.Left, fontInit, initPaint);
+            canvas.DrawText(initials, cx - iw / 2, cy + radius * 0.2f, SKTextAlign.Left, fontInit, initPaint);
         }
+    }
 
-        // Speaker Name
-        var textLeft = x + 180;
-        using (var fontName = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 28))
-        using (var namePaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
+    private static void DrawSponsorsBanner(SKCanvas canvas, bool isTwoSpeakers)
+    {
+        try
         {
-            canvas.DrawText(speakerName, textLeft, y + 80, SKTextAlign.Left, fontName, namePaint);
+            var fileName = isTwoSpeakers ? "sponsors-banner-2speakers.png" : "sponsors-banner.png";
+            var bannerPaths = new[]
+            {
+                Path.Combine(Directory.GetCurrentDirectory(), "src", "MeetupOrganiser.Infrastructure", "Resources", fileName),
+                Path.Combine(Directory.GetCurrentDirectory(), "src", "MeetupOrganiser.Web", "wwwroot", "images", "social", fileName),
+                Path.Combine(AppContext.BaseDirectory, "Resources", fileName),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "MeetupOrganiser.Infrastructure", "Resources", fileName),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "MeetupOrganiser.Web", "wwwroot", "images", "social", fileName)
+            };
+
+            var validPath = bannerPaths.Select(Path.GetFullPath).FirstOrDefault(File.Exists);
+            if (validPath != null)
+            {
+                using var bannerBitmap = SKBitmap.Decode(validPath);
+                if (bannerBitmap != null)
+                {
+                    // Position at top right
+                    // Dimensions: ~340x160 at X: 920, Y: 15
+                    var destRect = new SKRect(1280 - bannerBitmap.Width - 15, 12, 1280 - 15, 12 + bannerBitmap.Height);
+                    canvas.DrawBitmap(bannerBitmap, destRect);
+                }
+            }
         }
-
-        // Social / Title
-        var handle = speaker?.BlueSkyHandle ?? speaker?.TwitterHandle ?? string.Empty;
-        if (!string.IsNullOrEmpty(handle))
+        catch
         {
-            using var fontH = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 18);
-            using var hPaint = new SKPaint { Color = new SKColor(147, 197, 253), IsAntialias = true };
-            canvas.DrawText(handle, textLeft, y + 110, SKTextAlign.Left, fontH, hPaint);
-        }
-
-        // Talk Title
-        using (var fontTitle = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 24))
-        using (var titlePaint = new SKPaint { Color = new SKColor(253, 224, 71), IsAntialias = true })
-        {
-            var truncated = talkTitle.Length > 40 ? talkTitle[..37] + "..." : talkTitle;
-            canvas.DrawText(truncated, x + 30, y + 210, SKTextAlign.Left, fontTitle, titlePaint);
-        }
-
-        // Talk Description
-        if (!string.IsNullOrWhiteSpace(session.TalkDescription))
-        {
-            var desc = session.TalkDescription.Length > 90 ? session.TalkDescription[..87] + "..." : session.TalkDescription;
-            using var fontDesc = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 18);
-            using var descPaint = new SKPaint { Color = new SKColor(209, 213, 219), IsAntialias = true };
-            canvas.DrawText(desc, x + 30, y + 250, SKTextAlign.Left, fontDesc, descPaint);
+            // Banner drawing is optional - don't fail rendering if not present
         }
     }
 
@@ -343,10 +266,16 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         {
             if (string.IsNullOrWhiteSpace(photoUrl))
             {
-                var samplePath = Path.Combine(Directory.GetCurrentDirectory(), "images", "speakers", "Luce Carter.jpg");
-                if (File.Exists(samplePath))
+                var candidates = new[]
                 {
-                    return SKBitmap.Decode(samplePath);
+                    Path.Combine(Directory.GetCurrentDirectory(), "images", "speakers", "Luce Carter.jpg"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "src", "MeetupOrganiser.Web", "wwwroot", "images", "speakers", "Luce Carter.jpg"),
+                    Path.Combine(AppContext.BaseDirectory, "wwwroot", "images", "speakers", "Luce Carter.jpg")
+                };
+                var found = candidates.FirstOrDefault(File.Exists);
+                if (found != null)
+                {
+                    return SKBitmap.Decode(found);
                 }
                 return null;
             }
@@ -357,15 +286,24 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
             }
 
             var localRel = photoUrl.TrimStart('/', '\\');
-            var localPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", localRel);
-            if (File.Exists(localPath))
+            var localCandidates = new[]
             {
-                return SKBitmap.Decode(localPath);
+                Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", localRel),
+                Path.Combine(Directory.GetCurrentDirectory(), "src", "MeetupOrganiser.Web", "wwwroot", localRel),
+                Path.Combine(AppContext.BaseDirectory, "wwwroot", localRel),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "MeetupOrganiser.Web", "wwwroot", localRel),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "images", "speakers", Path.GetFileName(photoUrl))
+            };
+
+            var valid = localCandidates.FirstOrDefault(File.Exists);
+            if (valid != null)
+            {
+                return SKBitmap.Decode(valid);
             }
         }
         catch
         {
-            // Fallback to initials placeholder on decode error
+            // Fallback gracefully
         }
 
         return null;

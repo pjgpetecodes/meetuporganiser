@@ -34,8 +34,9 @@ public class SocialImageGeneratorServiceTests
             var speaker = new Speaker
             {
                 Id = Guid.NewGuid(),
-                Name = $"Speaker {i + 1}",
-                TwitterHandle = $"speaker{i + 1}"
+                Name = (i == 0) ? "Luce Carter" : $"Speaker {i + 1}",
+                TwitterHandle = $"speaker{i + 1}",
+                PhotoBlobUrl = (i == 0) ? "/images/speakers/Luce Carter.jpg" : null
             };
 
             evt.Sessions.Add(new EventSpeakerSession
