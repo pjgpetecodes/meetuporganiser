@@ -30,6 +30,7 @@ public static class DbInitializer
                 SecondaryColorHex = "#0078D4",
                 DefaultHashtags = "#dotnet #dotnetnotts #csharp #azure #developer",
                 DefaultLocation = "CGI, Nottingham & Online On Zoom",
+                MeetupUrlName = "dotnetnotts",
                 CreatedAtUtc = DateTime.UtcNow,
                 UpdatedAtUtc = DateTime.UtcNow
             };
