@@ -13,20 +13,29 @@ namespace MeetupOrganiser.Infrastructure.Services;
 public class SocialMediaService : ISocialMediaService
 {
     private readonly HttpClient _httpClient;
+    private readonly ISettingsService? _settingsService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<SocialMediaService> _logger;
 
     public SocialMediaService(HttpClient httpClient, IConfiguration configuration, ILogger<SocialMediaService> logger)
+        : this(httpClient, null, configuration, logger)
+    {
+    }
+
+    public SocialMediaService(HttpClient httpClient, ISettingsService? settingsService, IConfiguration configuration, ILogger<SocialMediaService> logger)
     {
         _httpClient = httpClient;
+        _settingsService = settingsService;
         _configuration = configuration;
         _logger = logger;
     }
 
     public async Task<SocialPostResult> PostToBlueSkyAsync(string text, byte[]? imageBytes, string? imageMimeType, CancellationToken cancellationToken = default)
     {
-        var handle = _configuration["Integrations:BlueSky:Handle"];
-        var appPassword = _configuration["Integrations:BlueSky:AppPassword"];
+        var handle = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:BlueSky:Handle", cancellationToken) : null)
+            ?? _configuration["Integrations:BlueSky:Handle"];
+        var appPassword = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:BlueSky:AppPassword", cancellationToken) : null)
+            ?? _configuration["Integrations:BlueSky:AppPassword"];
         var intentUrl = $"https://bsky.app/intent/compose?text={Uri.EscapeDataString(text)}";
 
         if (string.IsNullOrWhiteSpace(handle) || string.IsNullOrWhiteSpace(appPassword))

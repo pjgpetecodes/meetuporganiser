@@ -16,6 +16,7 @@ public class AppDbContext : DbContext
     public DbSet<MagicLinkToken> MagicLinkTokens => Set<MagicLinkToken>();
     public DbSet<SocialPostTemplate> SocialPostTemplates => Set<SocialPostTemplate>();
     public DbSet<GeneratedAsset> GeneratedAssets => Set<GeneratedAsset>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -96,6 +97,15 @@ public class AppDbContext : DbContext
         {
             entity.HasKey(a => a.Id);
             entity.Property(a => a.AssetType).IsRequired().HasMaxLength(50);
+        });
+
+        // AppSetting
+        modelBuilder.Entity<AppSetting>(entity =>
+        {
+            entity.HasKey(s => s.Key);
+            entity.Property(s => s.Key).HasMaxLength(150);
+            entity.Property(s => s.Category).HasMaxLength(50);
+            entity.Property(s => s.Description).HasMaxLength(300);
         });
     }
 }

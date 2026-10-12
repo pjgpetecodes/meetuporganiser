@@ -10,41 +10,50 @@ namespace MeetupOrganiser.Infrastructure.Services;
 public class MeetupService : IMeetupService
 {
     private readonly HttpClient _httpClient;
+    private readonly ISettingsService? _settingsService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<MeetupService> _logger;
 
     public MeetupService(HttpClient httpClient, IConfiguration configuration, ILogger<MeetupService> logger)
+        : this(httpClient, null, configuration, logger)
+    {
+    }
+
+    public MeetupService(HttpClient httpClient, ISettingsService? settingsService, IConfiguration configuration, ILogger<MeetupService> logger)
     {
         _httpClient = httpClient;
+        _settingsService = settingsService;
         _configuration = configuration;
         _logger = logger;
     }
 
-    public Task<MeetupCreationResult> CreateEventAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default)
+    public async Task<MeetupCreationResult> CreateEventAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default)
     {
-        var apiKey = _configuration["Integrations:Meetup:ApiKey"];
-        var urlname = _configuration["Integrations:Meetup:Urlname"] ?? "dotnetnotts";
+        var apiKey = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Meetup:ApiKey", cancellationToken) : null)
+            ?? _configuration["Integrations:Meetup:ApiKey"];
+        var urlname = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Meetup:Urlname", cancellationToken) : null)
+            ?? _configuration["Integrations:Meetup:Urlname"] ?? "dotnetnotts";
 
         var description = GenerateMeetupDescription(meetupEvent);
 
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             _logger.LogInformation("Meetup API Key not configured. Returning preview with formatted copyable payload.");
-            return Task.FromResult(new MeetupCreationResult(
+            return new MeetupCreationResult(
                 Success: true,
                 EventId: null,
                 EventUrl: $"https://www.meetup.com/{urlname}/events/create",
                 ErrorMessage: null
-            ));
+            );
         }
 
         // When API key is available, call Meetup GraphQL API / REST endpoint
-        return Task.FromResult(new MeetupCreationResult(
+        return new MeetupCreationResult(
             Success: true,
             EventId: Guid.NewGuid().ToString("N")[..8],
             EventUrl: $"https://www.meetup.com/{urlname}/events/",
             ErrorMessage: null
-        ));
+        );
     }
 
     public string GenerateMeetupDescription(MeetupEvent meetupEvent)
