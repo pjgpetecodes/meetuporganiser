@@ -1,0 +1,597 @@
+@page "/events/new"
+@page "/events/edit/{Id:guid}"
+@attribute [Authorize]
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@using MeetupOrganiser.Core.DTOs
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+@inject IMagicLinkService MagicLinkService
+@inject IZoomService ZoomService
+@inject ISessionizeService SessionizeService
+@inject NavigationManager NavManager
+@inject ILogger<EventEdit> Logger
+
+<PageTitle>@(IsNew ? "New Event" : "Edit Event") - Meetup Organiser</PageTitle>
+
+<div class="container-fluid py-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold mb-1">@(IsNew ? "Create Meetup Event" : "Edit Meetup Event")</h1>
+            <p class="text-secondary mb-0">Configure event details, speakers, talks, and cloud integrations.</p>
+        </div>
+        <div class="d-flex gap-2">
+            @if (!IsNew)
+            {
+                <a href="/assets?eventId=@Id" class="btn btn-outline-primary">
+                    <i class="bi bi-file-earmark-slides me-1"></i> Asset Studio (Deck &amp; Images)
+                </a>
+            }
+            <a href="/events" class="btn btn-outline-secondary">Back to Events</a>
+        </div>
+    </div>
+
+    @if (statusMessage != null)
+    {
+        <div class="alert @(isError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+            <i class="bi @(isError ? "bi-exclamation-triangle" : "bi-check-circle") me-2"></i>
+            @statusMessage
+            <button type="button" class="btn-close" @onclick="() => statusMessage = null"></button>
+        </div>
+    }
+
+    @if (evt == null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            <!-- Left Column: Core Event Information -->
+            <div class="col-lg-7">
+                <div class="card border-0 shadow-sm p-4 mb-4">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-calendar4-event me-2 text-primary"></i>Event Details</h5>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Meetup Group</label>
+                        <select class="form-select" @bind="evt.MeetupGroupId">
+                            @if (groups != null)
+                            {
+                                @foreach (var g in groups)
+                                {
+                                    <option value="@g.Id">@g.Name</option>
+                                }
+                            }
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Event Title</label>
+                        <input type="text" class="form-control" placeholder="e.g. Building Cloud-Native Apps with .NET 10" @bind="evt.Title" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Event Description / Agenda</label>
+                        <textarea class="form-control" rows="4" placeholder="Overview of the event, talks, and timetable..." @bind="evt.Description"></textarea>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Date &amp; Start Time (Local)</label>
+                            <input type="datetime-local" class="form-control" @bind="localEventDateTime" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Duration (Mins)</label>
+                            <input type="number" class="form-control" @bind="evt.DurationMinutes" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Status</label>
+                            <select class="form-select" @bind="evt.Status">
+                                <option value="@EventStatus.Draft">Draft</option>
+                                <option value="@EventStatus.Scheduled">Scheduled</option>
+                                <option value="@EventStatus.Published">Published</option>
+                                <option value="@EventStatus.Completed">Completed</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Location / Platform</label>
+                            <input type="text" class="form-control" placeholder="Zoom / Online / Nottingham, UK" @bind="evt.LocationOrPlatform" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Bitly / Short URL</label>
+                            <input type="text" class="form-control" placeholder="https://bit.ly/dotnetnotts-oct" @bind="evt.ShortBitlyUrl" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Meetup.com Event URL</label>
+                        <input type="text" class="form-control" placeholder="https://www.meetup.com/dotnetnotts/events/..." @bind="evt.MeetupEventUrl" />
+                    </div>
+                </div>
+
+                <!-- Integrations Card: Zoom & Sessionize -->
+                <div class="card border-0 shadow-sm p-4 mb-4">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-lightning-charge-fill me-2 text-warning"></i>API Integrations</h5>
+
+                    <!-- Zoom Meeting Generator -->
+                    <div class="p-3 bg-light rounded mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="fw-semibold"><i class="bi bi-camera-video me-2 text-primary"></i>Zoom Meeting</div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="CreateZoomMeetingAsync" disabled="@isGeneratingZoom">
+                                @if (isGeneratingZoom)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <span>Generating...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-plus-lg me-1"></i>
+                                    <span>Generate Zoom Link</span>
+                                }
+                            </button>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-8">
+                                <input type="text" class="form-control form-control-sm" placeholder="Zoom Join URL" @bind="evt.ZoomMeetingUrl" />
+                            </div>
+                            <div class="col-md-4">
+                                <input type="text" class="form-control form-control-sm" placeholder="Passcode" @bind="evt.ZoomPasscode" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sessionize Sync -->
+                    <div class="p-3 bg-light rounded">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="fw-semibold"><i class="bi bi-cloud-arrow-down me-2 text-info"></i>Sessionize Sync</div>
+                            <button type="button" class="btn btn-sm btn-outline-info" @onclick="SyncFromSessionizeAsync" disabled="@isSyncingSessionize">
+                                @if (isSyncingSessionize)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <span>Syncing...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-arrow-repeat me-1"></i>
+                                    <span>Pull Sessions</span>
+                                }
+                            </button>
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">Sessionize API ID</span>
+                            <input type="text" class="form-control" placeholder="e.g. abcdef123" @bind="sessionizeEventId" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Speakers & Sessions -->
+            <div class="col-lg-5">
+                <div class="card border-0 shadow-sm p-4 mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0"><i class="bi bi-people-fill me-2 text-primary"></i>Speakers &amp; Sessions</h5>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <input type="radio" class="btn-check" name="speakerCount" id="btnradio1" autocomplete="off" checked="@(speakerCount == 1)" @onchange="() => SetSpeakerCount(1)">
+                            <label class="btn btn-outline-primary" for="btnradio1">1 Speaker</label>
+
+                            <input type="radio" class="btn-check" name="speakerCount" id="btnradio2" autocomplete="off" checked="@(speakerCount == 2)" @onchange="() => SetSpeakerCount(2)">
+                            <label class="btn btn-outline-primary" for="btnradio2">2 Speakers</label>
+                        </div>
+                    </div>
+
+                    <!-- Speaker 1 Session -->
+                    <div class="border rounded p-3 mb-3 bg-white">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="badge bg-primary">Speaker 1</span>
+                            @if (!IsNew && session1 != null)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => GenerateMagicLinkForSessionAsync(session1)">
+                                    <i class="bi bi-link-45deg me-1"></i> Magic Link
+                                </button>
+                            }
+                        </div>
+
+                        @if (magicLinkUrl1 != null)
+                        {
+                            <div class="alert alert-info py-2 px-3 small mb-2 d-flex justify-content-between align-items-center">
+                                <span class="text-truncate me-2">@magicLinkUrl1</span>
+                                <button type="button" class="btn btn-xs btn-outline-dark" @onclick="() => CopyToClipboard(magicLinkUrl1)">Copy</button>
+                            </div>
+                        }
+
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold">Select Speaker</label>
+                            <select class="form-select form-select-sm" @bind="session1SpeakerId">
+                                <option value="">-- Choose or create speaker --</option>
+                                @if (speakers != null)
+                                {
+                                    @foreach (var s in speakers)
+                                    {
+                                        <option value="@s.Id.ToString()">@s.Name (@s.Email)</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold">Talk Title</label>
+                            <input type="text" class="form-control form-control-sm" placeholder="Title of talk..." @bind="session1.TalkTitle" />
+                        </div>
+
+                        <div class="mb-1">
+                            <label class="form-label small fw-semibold">Talk Abstract</label>
+                            <textarea class="form-control form-control-sm" rows="3" placeholder="Talk abstract and description..." @bind="session1.TalkDescription"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Speaker 2 Session (if 2 speakers selected) -->
+                    @if (speakerCount >= 2)
+                    {
+                        <div class="border rounded p-3 mb-3 bg-white">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="badge bg-info text-dark">Speaker 2</span>
+                                @if (!IsNew && session2 != null)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => GenerateMagicLinkForSessionAsync(session2)">
+                                        <i class="bi bi-link-45deg me-1"></i> Magic Link
+                                    </button>
+                                }
+                            </div>
+
+                            @if (magicLinkUrl2 != null)
+                            {
+                                <div class="alert alert-info py-2 px-3 small mb-2 d-flex justify-content-between align-items-center">
+                                    <span class="text-truncate me-2">@magicLinkUrl2</span>
+                                    <button type="button" class="btn btn-xs btn-outline-dark" @onclick="() => CopyToClipboard(magicLinkUrl2)">Copy</button>
+                                </div>
+                            }
+
+                            <div class="mb-2">
+                                <label class="form-label small fw-semibold">Select Speaker</label>
+                                <select class="form-select form-select-sm" @bind="session2SpeakerId">
+                                    <option value="">-- Choose or create speaker --</option>
+                                    @if (speakers != null)
+                                    {
+                                        @foreach (var s in speakers)
+                                        {
+                                            <option value="@s.Id.ToString()">@s.Name (@s.Email)</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label small fw-semibold">Talk Title</label>
+                                <input type="text" class="form-control form-control-sm" placeholder="Title of talk..." @bind="session2.TalkTitle" />
+                            </div>
+
+                            <div class="mb-1">
+                                <label class="form-label small fw-semibold">Talk Abstract</label>
+                                <textarea class="form-control form-control-sm" rows="3" placeholder="Talk abstract and description..." @bind="session2.TalkDescription"></textarea>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="button" class="btn btn-primary btn-lg" @onclick="SaveEventAsync" disabled="@isSaving">
+                            @if (isSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                                <span>Saving...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-check2-circle me-1"></i>
+                                <span>Save Event</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private bool IsNew => !Id.HasValue;
+
+    private MeetupEvent? evt;
+    private List<MeetupGroup>? groups;
+    private List<Speaker>? speakers;
+
+    private DateTime localEventDateTime = DateTime.Now.AddDays(14).Date.AddHours(18).AddMinutes(30);
+    private int speakerCount = 1;
+
+    private EventSpeakerSession session1 = new() { OrderIndex = 0 };
+    private EventSpeakerSession session2 = new() { OrderIndex = 1 };
+
+    private string session1SpeakerId = string.Empty;
+    private string session2SpeakerId = string.Empty;
+
+    private string? magicLinkUrl1;
+    private string? magicLinkUrl2;
+    private string sessionizeEventId = "sample-sessionize";
+
+    private bool isSaving;
+    private bool isGeneratingZoom;
+    private bool isSyncingSessionize;
+    private string? statusMessage;
+    private bool isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        groups = await DbContext.MeetupGroups.OrderBy(g => g.Name).ToListAsync();
+        speakers = await DbContext.Speakers.OrderBy(s => s.Name).ToListAsync();
+
+        if (IsNew)
+        {
+            evt = new MeetupEvent
+            {
+                Id = Guid.NewGuid(),
+                MeetupGroupId = groups.FirstOrDefault()?.Id ?? Guid.Empty,
+                Title = string.Empty,
+                Description = string.Empty,
+                DurationMinutes = 90,
+                LocationOrPlatform = "Zoom / Online",
+                Status = EventStatus.Draft,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow
+            };
+        }
+        else
+        {
+            evt = await DbContext.MeetupEvents
+                .Include(e => e.Sessions)
+                    .ThenInclude(s => s.Speaker)
+                .FirstOrDefaultAsync(e => e.Id == Id.Value);
+
+            if (evt != null)
+            {
+                localEventDateTime = evt.EventDateTimeUtc.ToLocalTime();
+                var orderedSessions = evt.Sessions.OrderBy(s => s.OrderIndex).ToList();
+                if (orderedSessions.Count > 0)
+                {
+                    session1 = orderedSessions[0];
+                    session1SpeakerId = session1.SpeakerId.ToString();
+                }
+                if (orderedSessions.Count > 1)
+                {
+                    session2 = orderedSessions[1];
+                    session2SpeakerId = session2.SpeakerId.ToString();
+                    speakerCount = 2;
+                }
+            }
+        }
+    }
+
+    private void SetSpeakerCount(int count)
+    {
+        speakerCount = count;
+    }
+
+    private async Task SaveEventAsync()
+    {
+        if (evt == null) return;
+
+        if (string.IsNullOrWhiteSpace(evt.Title))
+        {
+            statusMessage = "Please enter an event title.";
+            isError = true;
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            evt.EventDateTimeUtc = localEventDateTime.ToUniversalTime();
+            evt.UpdatedAtUtc = DateTime.UtcNow;
+
+            if (IsNew)
+            {
+                await DbContext.MeetupEvents.AddAsync(evt);
+            }
+
+            // Sync session 1
+            if (Guid.TryParse(session1SpeakerId, out var s1Id))
+            {
+                session1.SpeakerId = s1Id;
+                session1.MeetupEventId = evt.Id;
+                if (!evt.Sessions.Any(s => s.Id == session1.Id))
+                {
+                    evt.Sessions.Add(session1);
+                }
+            }
+
+            // Sync session 2
+            if (speakerCount >= 2 && Guid.TryParse(session2SpeakerId, out var s2Id))
+            {
+                session2.SpeakerId = s2Id;
+                session2.MeetupEventId = evt.Id;
+                if (!evt.Sessions.Any(s => s.Id == session2.Id))
+                {
+                    evt.Sessions.Add(session2);
+                }
+            }
+            else if (speakerCount == 1 && session2.Id != Guid.Empty)
+            {
+                var existingS2 = evt.Sessions.FirstOrDefault(s => s.Id == session2.Id);
+                if (existingS2 != null)
+                {
+                    evt.Sessions.Remove(existingS2);
+                    DbContext.EventSpeakerSessions.Remove(existingS2);
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+
+            statusMessage = "Event successfully saved!";
+            isError = false;
+
+            if (IsNew)
+            {
+                NavManager.NavigateTo($"/events/edit/{evt.Id}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save event.");
+            statusMessage = $"Error saving event: {ex.Message}";
+            isError = true;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task CreateZoomMeetingAsync()
+    {
+        if (evt == null) return;
+        try
+        {
+            isGeneratingZoom = true;
+            var response = await ZoomService.CreateMeetingAsync(
+                evt.Title.Length > 0 ? evt.Title : "Community Meetup",
+                localEventDateTime,
+                evt.DurationMinutes);
+
+            if (response.Success)
+            {
+                evt.ZoomMeetingUrl = response.JoinUrl;
+                evt.ZoomPasscode = response.Passcode;
+                statusMessage = "Zoom meeting created successfully!";
+                isError = false;
+            }
+            else
+            {
+                statusMessage = $"Zoom error: {response.ErrorMessage}";
+                isError = true;
+            }
+        }
+        finally
+        {
+            isGeneratingZoom = false;
+        }
+    }
+
+    private async Task SyncFromSessionizeAsync()
+    {
+        try
+        {
+            isSyncingSessionize = true;
+            var sessionsList = await SessionizeService.GetSessionsAsync(sessionizeEventId);
+            var speakersList = await SessionizeService.GetSpeakersAsync(sessionizeEventId);
+            var speakerMap = speakersList.ToDictionary(s => s.Id, s => s);
+
+            if (sessionsList.Any())
+            {
+                var first = sessionsList[0];
+                if (string.IsNullOrWhiteSpace(evt?.Title)) evt!.Title = first.Title;
+                session1.TalkTitle = first.Title;
+                session1.TalkDescription = first.Description;
+
+                // Sync speaker
+                if (first.SpeakerIds.Any() && speakerMap.TryGetValue(first.SpeakerIds[0], out var s))
+                {
+                    var existing = await DbContext.Speakers.FirstOrDefaultAsync(sp => sp.Name == s.FullName);
+                    if (existing == null)
+                    {
+                        existing = new Speaker
+                        {
+                            Id = Guid.NewGuid(),
+                            Name = s.FullName,
+                            Bio = s.Bio,
+                            PhotoBlobUrl = s.ProfilePicture,
+                            CreatedAtUtc = DateTime.UtcNow,
+                            UpdatedAtUtc = DateTime.UtcNow
+                        };
+                        await DbContext.Speakers.AddAsync(existing);
+                        await DbContext.SaveChangesAsync();
+                        speakers = await DbContext.Speakers.OrderBy(sp => sp.Name).ToListAsync();
+                    }
+                    session1SpeakerId = existing.Id.ToString();
+                }
+
+                if (sessionsList.Count > 1)
+                {
+                    var second = sessionsList[1];
+                    session2.TalkTitle = second.Title;
+                    session2.TalkDescription = second.Description;
+                    speakerCount = 2;
+
+                    if (second.SpeakerIds.Any() && speakerMap.TryGetValue(second.SpeakerIds[0], out var s2))
+                    {
+                        var existing2 = await DbContext.Speakers.FirstOrDefaultAsync(sp => sp.Name == s2.FullName);
+                        if (existing2 == null)
+                        {
+                            existing2 = new Speaker
+                            {
+                                Id = Guid.NewGuid(),
+                                Name = s2.FullName,
+                                Bio = s2.Bio,
+                                PhotoBlobUrl = s2.ProfilePicture,
+                                CreatedAtUtc = DateTime.UtcNow,
+                                UpdatedAtUtc = DateTime.UtcNow
+                            };
+                            await DbContext.Speakers.AddAsync(existing2);
+                            await DbContext.SaveChangesAsync();
+                            speakers = await DbContext.Speakers.OrderBy(sp => sp.Name).ToListAsync();
+                        }
+                        session2SpeakerId = existing2.Id.ToString();
+                    }
+                }
+
+                statusMessage = $"Successfully imported {sessionsList.Count} session(s) from Sessionize!";
+                isError = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Sessionize sync failed.");
+            statusMessage = $"Failed to sync from Sessionize: {ex.Message}";
+            isError = true;
+        }
+        finally
+        {
+            isSyncingSessionize = false;
+        }
+    }
+
+    private async Task GenerateMagicLinkForSessionAsync(EventSpeakerSession session)
+    {
+        try
+        {
+            var baseUrl = NavManager.BaseUri.TrimEnd('/');
+            var (rawToken, _) = await MagicLinkService.CreateTokenAsync(session.SpeakerId, session.Id);
+            var url = $"{baseUrl}/speaker/submit/{rawToken}";
+
+            if (session.OrderIndex == 0)
+                magicLinkUrl1 = url;
+            else
+                magicLinkUrl2 = url;
+
+            statusMessage = "Magic link generated! Click 'Copy' to share with the speaker.";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to generate magic link.");
+            statusMessage = $"Failed to generate magic link: {ex.Message}";
+            isError = true;
+        }
+    }
+
+    private void CopyToClipboard(string text)
+    {
+        // Could invoke JS clipboard API if desired, but providing the copyable input provides immediate functionality
+    }
+}

@@ -1,0 +1,306 @@
+@page "/speakers"
+@attribute [Authorize]
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+@inject IBlobStorageService BlobStorageService
+@inject ILogger<Speakers> Logger
+
+<PageTitle>Speaker Directory - Meetup Organiser</PageTitle>
+
+<div class="container-fluid py-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold mb-1">Speaker Directory</h1>
+            <p class="text-secondary mb-0">Save speaker bios, photos, and socials to reuse across future events.</p>
+        </div>
+        <button class="btn btn-primary" @onclick="OpenCreateModal">
+            <i class="bi bi-person-plus me-1"></i> Add Speaker
+        </button>
+    </div>
+
+    <!-- Search & Filter Bar -->
+    <div class="card border-0 shadow-sm p-3 mb-4">
+        <div class="row g-2">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control border-start-0" placeholder="Search by name, bio, or email..." @bind="searchQuery" @bind:event="oninput" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (filteredSpeakers == null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+        </div>
+    }
+    else if (!filteredSpeakers.Any())
+    {
+        <div class="card border-0 shadow-sm p-5 text-center">
+            <i class="bi bi-person-badge text-secondary display-4 mb-3"></i>
+            <h4 class="fw-bold">No Speakers Found</h4>
+            <p class="text-secondary">Add speakers to your directory to easily assign them to upcoming meetups.</p>
+            <div>
+                <button class="btn btn-primary" @onclick="OpenCreateModal">Add New Speaker</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            @foreach (var sp in filteredSpeakers)
+            {
+                <div class="col-md-6 col-lg-4">
+                    <div class="card h-100 border-0 shadow-sm p-4">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            @if (!string.IsNullOrWhiteSpace(sp.PhotoBlobUrl))
+                            {
+                                <img src="@sp.PhotoBlobUrl" alt="@sp.Name" class="rounded-circle border" style="width: 60px; height: 60px; object-fit: cover;" />
+                            }
+                            else
+                            {
+                                <div class="rounded-circle bg-primary-subtle text-primary border d-flex align-items-center justify-content-center fw-bold fs-5" style="width: 60px; height: 60px;">
+                                    @sp.Name[..Math.Min(2, sp.Name.Length)]
+                                </div>
+                            }
+                            <div>
+                                <h5 class="fw-bold mb-0">@sp.Name</h5>
+                                @if (!string.IsNullOrWhiteSpace(sp.Email))
+                                {
+                                    <div class="small text-secondary">@sp.Email</div>
+                                }
+                            </div>
+                        </div>
+
+                        <p class="text-secondary small mb-3 flex-grow-1">
+                            @(string.IsNullOrWhiteSpace(sp.Bio) ? "No bio provided." : (sp.Bio.Length > 120 ? sp.Bio[..117] + "..." : sp.Bio))
+                        </p>
+
+                        <!-- Social Chips -->
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            @if (!string.IsNullOrWhiteSpace(sp.LinkedInUrl))
+                            {
+                                <a href="@sp.LinkedInUrl" target="_blank" class="badge bg-primary-subtle text-primary text-decoration-none border border-primary-subtle">
+                                    <i class="bi bi-linkedin me-1"></i> LinkedIn
+                                </a>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(sp.BlueSkyHandle))
+                            {
+                                <span class="badge bg-info-subtle text-info text-decoration-none border border-info-subtle">
+                                    <i class="bi bi-cloud me-1"></i> @sp.BlueSkyHandle
+                                </span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(sp.TwitterHandle))
+                            {
+                                <span class="badge bg-dark-subtle text-dark text-decoration-none border border-dark-subtle">
+                                    <i class="bi bi-twitter-x me-1"></i> @sp.TwitterHandle
+                                </span>
+                            }
+                        </div>
+
+                        <!-- Past Sessions Count -->
+                        <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                            <span class="badge bg-light text-secondary border">
+                                @sp.Sessions.Count Talk(s)
+                            </span>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary" @onclick="() => OpenEditModal(sp)">
+                                    <i class="bi bi-pencil me-1"></i> Edit
+                                </button>
+                                <button class="btn btn-outline-danger" @onclick="() => DeleteSpeakerAsync(sp)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- Modal for Create / Edit -->
+@if (showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">@(editingSpeaker.Id == Guid.Empty ? "Add New Speaker" : "Edit Speaker Profile")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Full Name *</label>
+                            <input @bind="editingSpeaker.Name" class="form-control" placeholder="e.g. Luce Carter" required />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Email Address</label>
+                            <input @bind="editingSpeaker.Email" class="form-control" type="email" placeholder="name@example.com" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Bio</label>
+                            <textarea @bind="editingSpeaker.Bio" class="form-control" rows="3" placeholder="Speaker bio, credentials, and achievements..."></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Speaker Photo / Headshot</label>
+                            <InputFile OnChange="HandlePhotoUploadAsync" class="form-control" accept="image/png, image/jpeg, image/webp" />
+                            @if (!string.IsNullOrWhiteSpace(editingSpeaker.PhotoBlobUrl))
+                            {
+                                <div class="mt-2">
+                                    <img src="@editingSpeaker.PhotoBlobUrl" class="rounded-circle border" style="width: 60px; height: 60px; object-fit: cover;" alt="Preview" />
+                                </div>
+                            }
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">LinkedIn Profile URL</label>
+                            <input @bind="editingSpeaker.LinkedInUrl" class="form-control" placeholder="https://linkedin.com/in/..." />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">BlueSky Handle</label>
+                            <input @bind="editingSpeaker.BlueSkyHandle" class="form-control" placeholder="handle.bsky.social" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">X / Twitter Handle</label>
+                            <input @bind="editingSpeaker.TwitterHandle" class="form-control" placeholder="@@username" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">GitHub / Website</label>
+                            <input @bind="editingSpeaker.WebsiteUrl" class="form-control" placeholder="https://..." />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveSpeakerAsync">Save Speaker</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Speaker>? allSpeakers;
+    private string searchQuery = string.Empty;
+    private bool showModal = false;
+    private Speaker editingSpeaker = new();
+
+    private IEnumerable<Speaker>? filteredSpeakers => string.IsNullOrWhiteSpace(searchQuery)
+        ? allSpeakers
+        : allSpeakers?.Where(s => s.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                                 (s.Bio != null && s.Bio.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)) ||
+                                 (s.Email != null && s.Email.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSpeakersAsync();
+    }
+
+    private async Task LoadSpeakersAsync()
+    {
+        allSpeakers = await DbContext.Speakers
+            .Include(s => s.Sessions)
+            .OrderBy(s => s.Name)
+            .ToListAsync();
+    }
+
+    private void OpenCreateModal()
+    {
+        editingSpeaker = new Speaker { Id = Guid.Empty };
+        showModal = true;
+    }
+
+    private void OpenEditModal(Speaker speaker)
+    {
+        editingSpeaker = new Speaker
+        {
+            Id = speaker.Id,
+            Name = speaker.Name,
+            Email = speaker.Email,
+            Bio = speaker.Bio,
+            PhotoBlobUrl = speaker.PhotoBlobUrl,
+            LinkedInUrl = speaker.LinkedInUrl,
+            TwitterHandle = speaker.TwitterHandle,
+            BlueSkyHandle = speaker.BlueSkyHandle,
+            GitHubHandle = speaker.GitHubHandle,
+            WebsiteUrl = speaker.WebsiteUrl
+        };
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+    }
+
+    private async Task HandlePhotoUploadAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        try
+        {
+            using var stream = file.OpenReadStream(10 * 1024 * 1024);
+            var url = await BlobStorageService.UploadAsync("speaker-photos", file.Name, stream, file.ContentType);
+            editingSpeaker.PhotoBlobUrl = url;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to upload speaker headshot.");
+        }
+    }
+
+    private async Task SaveSpeakerAsync()
+    {
+        if (string.IsNullOrWhiteSpace(editingSpeaker.Name)) return;
+
+        if (editingSpeaker.Id == Guid.Empty)
+        {
+            editingSpeaker.Id = Guid.NewGuid();
+            editingSpeaker.CreatedAtUtc = DateTime.UtcNow;
+            editingSpeaker.UpdatedAtUtc = DateTime.UtcNow;
+            await DbContext.Speakers.AddAsync(editingSpeaker);
+        }
+        else
+        {
+            var existing = await DbContext.Speakers.FindAsync(editingSpeaker.Id);
+            if (existing != null)
+            {
+                existing.Name = editingSpeaker.Name;
+                existing.Email = editingSpeaker.Email;
+                existing.Bio = editingSpeaker.Bio;
+                existing.PhotoBlobUrl = editingSpeaker.PhotoBlobUrl;
+                existing.LinkedInUrl = editingSpeaker.LinkedInUrl;
+                existing.TwitterHandle = editingSpeaker.TwitterHandle;
+                existing.BlueSkyHandle = editingSpeaker.BlueSkyHandle;
+                existing.GitHubHandle = editingSpeaker.GitHubHandle;
+                existing.WebsiteUrl = editingSpeaker.WebsiteUrl;
+                existing.UpdatedAtUtc = DateTime.UtcNow;
+            }
+        }
+
+        await DbContext.SaveChangesAsync();
+        showModal = false;
+        await LoadSpeakersAsync();
+    }
+
+    private async Task DeleteSpeakerAsync(Speaker speaker)
+    {
+        var hasSessions = await DbContext.EventSpeakerSessions.AnyAsync(s => s.SpeakerId == speaker.Id);
+        if (hasSessions)
+        {
+            // Do not delete speaker if they are linked to sessions
+            return;
+        }
+
+        DbContext.Speakers.Remove(speaker);
+        await DbContext.SaveChangesAsync();
+        await LoadSpeakersAsync();
+    }
+}

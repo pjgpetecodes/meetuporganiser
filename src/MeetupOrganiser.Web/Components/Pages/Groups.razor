@@ -1,0 +1,273 @@
+@page "/groups"
+@attribute [Authorize]
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+@inject IBlobStorageService BlobStorageService
+@inject ILogger<Groups> Logger
+
+<PageTitle>Meetup Groups - Meetup Organiser</PageTitle>
+
+<div class="container-fluid py-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold mb-1">Meetup Groups</h1>
+            <p class="text-secondary mb-0">Manage community groups, branding colors, logos, and presentation templates.</p>
+        </div>
+        <button class="btn btn-primary" @onclick="OpenCreateModal">
+            <i class="bi bi-plus-circle me-1"></i> New Group
+        </button>
+    </div>
+
+    @if (groups == null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+        </div>
+    }
+    else if (!groups.Any())
+    {
+        <div class="card border-0 shadow-sm p-5 text-center">
+            <i class="bi bi-collection text-secondary display-4 mb-3"></i>
+            <h4 class="fw-bold">No Meetup Groups Yet</h4>
+            <p class="text-secondary">Create your first meetup group to organize events and decks.</p>
+            <div>
+                <button class="btn btn-primary" @onclick="OpenCreateModal">Create Meetup Group</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            @foreach (var g in groups)
+            {
+                <div class="col-md-6 col-lg-4">
+                    <div class="card h-100 border-0 shadow-sm p-4">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold shadow-sm"
+                                     style="width: 50px; height: 50px; background-color: @g.PrimaryColorHex;">
+                                    @g.Name[..Math.Min(2, g.Name.Length)]
+                                </div>
+                                <div>
+                                    <h5 class="fw-bold mb-0">@g.Name</h5>
+                                    @if (!string.IsNullOrWhiteSpace(g.WebsiteUrl))
+                                    {
+                                        <a href="@g.WebsiteUrl" target="_blank" class="small text-decoration-none">
+                                            @g.WebsiteUrl <i class="bi bi-box-arrow-up-right"></i>
+                                        </a>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="text-secondary small mb-3 flex-grow-1">
+                            @(string.IsNullOrWhiteSpace(g.Description) ? "No description provided." : g.Description)
+                        </p>
+
+                        <div class="bg-body-tertiary p-2 rounded small mb-3">
+                            <div><i class="bi bi-geo-alt me-1 text-secondary"></i> @(g.DefaultLocation ?? "Online on Zoom")</div>
+                            <div><i class="bi bi-hash me-1 text-secondary"></i> @(g.DefaultHashtags ?? "#meetup")</div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                            <span class="badge bg-light text-dark border">
+                                @g.Events.Count Event(s)
+                            </span>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary" @onclick="() => OpenEditModal(g)">
+                                    <i class="bi bi-pencil me-1"></i> Edit
+                                </button>
+                                <button class="btn btn-outline-danger" @onclick="() => DeleteGroupAsync(g)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- Modal for Create / Edit -->
+@if (showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">@(editingGroup.Id == Guid.Empty ? "Create Meetup Group" : "Edit Meetup Group")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Group Name *</label>
+                            <input @bind="editingGroup.Name" class="form-control" placeholder="e.g. .NET Notts" required />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Website URL</label>
+                            <input @bind="editingGroup.WebsiteUrl" class="form-control" placeholder="https://..." />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Description / Tagline</label>
+                            <textarea @bind="editingGroup.Description" class="form-control" rows="2" placeholder="Talks from the world of Microsoft and beyond"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Primary Brand Color (Hex)</label>
+                            <div class="input-group">
+                                <input type="color" @bind="editingGroup.PrimaryColorHex" class="form-control form-control-color" style="max-width: 60px;" />
+                                <input type="text" @bind="editingGroup.PrimaryColorHex" class="form-control" />
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Secondary Brand Color (Hex)</label>
+                            <div class="input-group">
+                                <input type="color" @bind="editingGroup.SecondaryColorHex" class="form-control form-control-color" style="max-width: 60px;" />
+                                <input type="text" @bind="editingGroup.SecondaryColorHex" class="form-control" />
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Default Location</label>
+                            <input @bind="editingGroup.DefaultLocation" class="form-control" placeholder="e.g. CGI, Nottingham & Online On Zoom" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Default Hashtags</label>
+                            <input @bind="editingGroup.DefaultHashtags" class="form-control" placeholder="#dotnet #dotnetnotts #azure" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Custom PPTX Template (Optional)</label>
+                            <InputFile OnChange="HandleTemplateUploadAsync" class="form-control" accept=".pptx" />
+                            <small class="text-secondary">Defaults to built-in 1 Speaker / 2 Speakers template if not specified.</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveGroupAsync">Save Group</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MeetupGroup>? groups;
+    private bool showModal = false;
+    private MeetupGroup editingGroup = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGroupsAsync();
+    }
+
+    private async Task LoadGroupsAsync()
+    {
+        groups = await DbContext.MeetupGroups
+            .Include(g => g.Events)
+            .OrderBy(g => g.Name)
+            .ToListAsync();
+    }
+
+    private void OpenCreateModal()
+    {
+        editingGroup = new MeetupGroup
+        {
+            Id = Guid.Empty,
+            PrimaryColorHex = "#512BD4",
+            SecondaryColorHex = "#0078D4",
+            DefaultLocation = "Online on Zoom",
+            DefaultHashtags = "#dotnet #meetup"
+        };
+        showModal = true;
+    }
+
+    private void OpenEditModal(MeetupGroup group)
+    {
+        editingGroup = new MeetupGroup
+        {
+            Id = group.Id,
+            Name = group.Name,
+            Description = group.Description,
+            WebsiteUrl = group.WebsiteUrl,
+            PrimaryColorHex = group.PrimaryColorHex,
+            SecondaryColorHex = group.SecondaryColorHex,
+            DefaultLocation = group.DefaultLocation,
+            DefaultHashtags = group.DefaultHashtags,
+            PptxTemplateBlobUrl = group.PptxTemplateBlobUrl,
+            LogoBlobUrl = group.LogoBlobUrl
+        };
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+    }
+
+    private async Task HandleTemplateUploadAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        try
+        {
+            using var stream = file.OpenReadStream(20 * 1024 * 1024);
+            var url = await BlobStorageService.UploadAsync("templates", file.Name, stream, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+            editingGroup.PptxTemplateBlobUrl = url;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to upload PPTX template.");
+        }
+    }
+
+    private async Task SaveGroupAsync()
+    {
+        if (string.IsNullOrWhiteSpace(editingGroup.Name)) return;
+
+        if (editingGroup.Id == Guid.Empty)
+        {
+            editingGroup.Id = Guid.NewGuid();
+            editingGroup.CreatedAtUtc = DateTime.UtcNow;
+            editingGroup.UpdatedAtUtc = DateTime.UtcNow;
+            await DbContext.MeetupGroups.AddAsync(editingGroup);
+        }
+        else
+        {
+            var existing = await DbContext.MeetupGroups.FindAsync(editingGroup.Id);
+            if (existing != null)
+            {
+                existing.Name = editingGroup.Name;
+                existing.Description = editingGroup.Description;
+                existing.WebsiteUrl = editingGroup.WebsiteUrl;
+                existing.PrimaryColorHex = editingGroup.PrimaryColorHex;
+                existing.SecondaryColorHex = editingGroup.SecondaryColorHex;
+                existing.DefaultLocation = editingGroup.DefaultLocation;
+                existing.DefaultHashtags = editingGroup.DefaultHashtags;
+                existing.PptxTemplateBlobUrl = editingGroup.PptxTemplateBlobUrl;
+                existing.UpdatedAtUtc = DateTime.UtcNow;
+            }
+        }
+
+        await DbContext.SaveChangesAsync();
+        showModal = false;
+        await LoadGroupsAsync();
+    }
+
+    private async Task DeleteGroupAsync(MeetupGroup group)
+    {
+        if (group.Events.Any())
+        {
+            // Do not delete group with active events
+            return;
+        }
+
+        DbContext.MeetupGroups.Remove(group);
+        await DbContext.SaveChangesAsync();
+        await LoadGroupsAsync();
+    }
+}

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MeetupOrganiser.Core/MeetupOrganiser.Core.csproj" />
+    <Project Path="src/MeetupOrganiser.Infrastructure/MeetupOrganiser.Infrastructure.csproj" />
+    <Project Path="src/MeetupOrganiser.Web/MeetupOrganiser.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MeetupOrganiser.Tests/MeetupOrganiser.Tests.csproj" />
+  </Folder>
+</Solution>

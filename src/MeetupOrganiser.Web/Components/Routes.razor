@@ -1,0 +1,22 @@
+﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                <div class="container text-center py-5">
+                    <div class="card p-5 mx-auto border-0 shadow-sm" style="max-width: 500px;">
+                        <i class="bi bi-shield-lock text-warning display-3 mb-3"></i>
+                        <h3 class="fw-bold">Organizer Login Required</h3>
+                        <p class="text-muted">You must be signed in with Microsoft Entra ID to access this section.</p>
+                        <div class="d-flex justify-content-center gap-2 mt-3">
+                            <a href="/MicrosoftIdentity/Account/SignIn" class="btn btn-primary">
+                                <i class="bi bi-microsoft me-1"></i> Sign In with Entra
+                            </a>
+                            <a href="/" class="btn btn-outline-secondary">Return Home</a>
+                        </div>
+                    </div>
+                </div>
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>
