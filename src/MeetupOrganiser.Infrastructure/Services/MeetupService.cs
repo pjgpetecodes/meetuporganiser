@@ -29,16 +29,25 @@ public class MeetupService : IMeetupService
 
     public async Task<MeetupCreationResult> CreateEventAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default)
     {
-        var apiKey = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Meetup:ApiKey", cancellationToken) : null)
-            ?? _configuration["Integrations:Meetup:ApiKey"];
-        var urlname = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Meetup:Urlname", cancellationToken) : null)
-            ?? _configuration["Integrations:Meetup:Urlname"] ?? "dotnetnotts";
+        var group = meetupEvent.MeetupGroup;
+
+        // 1. Group-specific URL Slug takes precedence, falling back to global settings, then default
+        var urlname = !string.IsNullOrWhiteSpace(group?.MeetupUrlName)
+            ? group.MeetupUrlName
+            : (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Meetup:Urlname", cancellationToken) : null)
+              ?? _configuration["Integrations:Meetup:Urlname"] ?? "dotnetnotts";
+
+        // 2. Group-specific API Key override takes precedence, falling back to global settings / environment
+        var apiKey = !string.IsNullOrWhiteSpace(group?.MeetupApiKeyOverride)
+            ? group.MeetupApiKeyOverride
+            : (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Meetup:ApiKey", cancellationToken) : null)
+              ?? _configuration["Integrations:Meetup:ApiKey"];
 
         var description = GenerateMeetupDescription(meetupEvent);
 
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogInformation("Meetup API Key not configured. Returning preview with formatted copyable payload.");
+            _logger.LogInformation("Meetup API Key not configured for group {GroupName} ({UrlName}). Returning preview with formatted copyable payload.", group?.Name ?? "Default", urlname);
             return new MeetupCreationResult(
                 Success: true,
                 EventId: null,

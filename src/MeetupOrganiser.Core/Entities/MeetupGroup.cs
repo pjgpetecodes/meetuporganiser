@@ -34,6 +34,12 @@ public class MeetupGroup
     [MaxLength(200)]
     public string? DefaultLocation { get; set; } = "On Zoom";
 
+    [MaxLength(100)]
+    public string? MeetupUrlName { get; set; }
+
+    [MaxLength(500)]
+    public string? MeetupApiKeyOverride { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 

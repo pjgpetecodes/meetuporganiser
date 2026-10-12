@@ -188,15 +188,15 @@
                         }
                     </div>
                     <div class="card-body p-4">
-                        <p class="small text-muted mb-3">Coordinates Meetup events, pre-formats rich descriptions, and links to your group's event creator.</p>
+                        <p class="small text-muted mb-3">Coordinates Meetup events, pre-formats rich descriptions, and links to your group's event creator. Note: Each Meetup Group under <em>Meetup Groups</em> can also specify its own URL slug and optional API Key override.</p>
                         <div class="mb-3">
-                            <label class="form-label fw-semibold small">Group URL Name</label>
+                            <label class="form-label fw-semibold small">Default Group URL Name (Fallback)</label>
                             <input type="text" class="form-control" placeholder="e.g. dotnetnotts"
                                    @bind="model.MeetupUrlname" />
-                            <div class="form-text">The slug from your Meetup group URL (e.g. meetup.com/<strong>dotnetnotts</strong>).</div>
+                            <div class="form-text">Default slug used when a group doesn't have an explicit slug defined.</div>
                         </div>
                         <div class="mb-2">
-                            <label class="form-label fw-semibold small">API Key / OAuth Token (Optional)</label>
+                            <label class="form-label fw-semibold small">Global API Key / OAuth Token (Optional)</label>
                             <div class="input-group">
                                 <input type="@(showPasswords.Contains("Meetup") ? "text" : "password")"
                                        class="form-control" placeholder="Meetup OAuth Access Token"
@@ -205,7 +205,7 @@
                                     <i class="bi @(showPasswords.Contains("Meetup") ? "bi-eye-slash" : "bi-eye")"></i>
                                 </button>
                             </div>
-                            <div class="form-text">If unconfigured, event descriptions are formatted with a 1-click clipboard copy.</div>
+                            <div class="form-text">Acts as the global key across all groups unless overridden on a specific group.</div>
                         </div>
                     </div>
                 </div>

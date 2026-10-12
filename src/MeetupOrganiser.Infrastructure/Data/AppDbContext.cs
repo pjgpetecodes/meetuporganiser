@@ -27,6 +27,8 @@ public class AppDbContext : DbContext
         {
             entity.HasKey(g => g.Id);
             entity.Property(g => g.Name).IsRequired().HasMaxLength(200);
+            entity.Property(g => g.MeetupUrlName).HasMaxLength(100);
+            entity.Property(g => g.MeetupApiKeyOverride).HasMaxLength(500);
             entity.HasMany(g => g.Events)
                   .WithOne(e => e.MeetupGroup)
                   .HasForeignKey(e => e.MeetupGroupId)
