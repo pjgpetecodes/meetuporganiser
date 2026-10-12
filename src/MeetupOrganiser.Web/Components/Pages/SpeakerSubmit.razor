@@ -1,0 +1,273 @@
+@page "/speaker/submit/{Token}"
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject IMagicLinkService MagicLinkService
+@inject IBlobStorageService BlobStorageService
+@inject AppDbContext DbContext
+@inject ILogger<SpeakerSubmit> Logger
+
+<PageTitle>Speaker Session Portal - Meetup Organiser</PageTitle>
+
+<div class="container py-5" style="max-width: 860px;">
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-3 text-secondary">Validating your magic link...</p>
+        </div>
+    }
+    else if (tokenEntity == null || !tokenEntity.IsValid)
+    {
+        <div class="card border-0 shadow-sm p-5 text-center">
+            <i class="bi bi-exclamation-triangle-fill text-warning display-3 mb-3"></i>
+            <h3 class="fw-bold">Invalid or Expired Link</h3>
+            <p class="text-secondary mx-auto" style="max-width: 500px;">
+                This speaker submission link has either expired, already been used, or is invalid. 
+                Please reach out to the event organizer to request a new magic link.
+            </p>
+            <div class="mt-3">
+                <a href="/" class="btn btn-outline-primary">Return to Homepage</a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm p-4 p-md-5">
+            <div class="d-flex align-items-center justify-content-between border-bottom pb-3 mb-4">
+                <div>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle mb-2">
+                        Speaker Self-Service Portal
+                    </span>
+                    <h2 class="fw-bold mb-1">Welcome, @speaker.Name!</h2>
+                    <p class="text-secondary mb-0">
+                        Please confirm your talk details and speaker bio for 
+                        <strong>@(meetupEvent?.Title ?? "the upcoming meetup")</strong>.
+                    </p>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(speaker.PhotoBlobUrl))
+                {
+                    <img src="@speaker.PhotoBlobUrl" alt="@speaker.Name" class="rounded-circle border shadow-sm" style="width: 70px; height: 70px; object-fit: cover;" />
+                }
+            </div>
+
+            @if (showSuccess)
+            {
+                <div class="alert alert-success d-flex align-items-center mb-4" role="alert">
+                    <i class="bi bi-check-circle-fill fs-4 me-2"></i>
+                    <div>
+                        <strong>Details Saved Successfully!</strong> Your talk and speaker profile have been updated. The organizer will generate the event slide deck and social assets using your details.
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <div class="alert alert-danger mb-4" role="alert">
+                    <i class="bi bi-exclamation-circle-fill me-2"></i> @errorMessage
+                </div>
+            }
+
+            <!-- Event Context Card -->
+            @if (meetupEvent != null)
+            {
+                <div class="bg-body-tertiary p-3 rounded-3 mb-4 border">
+                    <div class="row g-2">
+                        <div class="col-sm-6">
+                            <span class="text-secondary small d-block">Organized by</span>
+                            <strong>@(meetupEvent.MeetupGroup?.Name ?? ".NET Notts")</strong>
+                        </div>
+                        <div class="col-sm-6">
+                            <span class="text-secondary small d-block">Event Date &amp; Time</span>
+                            <strong>@meetupEvent.EventDateTimeUtc.ToString("dddd, MMMM d, yyyy @ HH:mm UTC")</strong>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <EditForm Model="this" OnValidSubmit="HandleSaveAsync">
+                <h5 class="fw-bold mb-3"><i class="bi bi-mic me-2 text-primary"></i> Talk &amp; Session Info</h5>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Talk Title *</label>
+                    <InputText @bind-Value="talkTitle" class="form-control form-control-lg" placeholder="e.g. Modern Cloud Architectures with .NET" required />
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Talk Abstract / Description</label>
+                    <InputTextArea @bind-Value="talkDescription" class="form-control" rows="4" placeholder="Describe what attendees will learn in your session..." />
+                </div>
+
+                <hr class="my-4" />
+
+                <h5 class="fw-bold mb-3"><i class="bi bi-person-badge me-2 text-primary"></i> Speaker Profile</h5>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Your Full Name *</label>
+                        <InputText @bind-Value="speaker.Name" class="form-control" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Contact Email</label>
+                        <InputText @bind-Value="speaker.Email" class="form-control" type="email" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Bio</label>
+                    <InputTextArea @bind-Value="speaker.Bio" class="form-control" rows="3" placeholder="Tell the audience about yourself, your role, and achievements..." />
+                </div>
+
+                <!-- Photo Upload -->
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Speaker Photo / Headshot</label>
+                    <div class="d-flex align-items-center gap-3">
+                        @if (!string.IsNullOrWhiteSpace(previewPhotoUrl))
+                        {
+                            <img src="@previewPhotoUrl" class="rounded-circle border" style="width: 80px; height: 80px; object-fit: cover;" alt="Preview" />
+                        }
+                        <div class="flex-grow-1">
+                            <InputFile OnChange="HandlePhotoUploadAsync" class="form-control" accept="image/png, image/jpeg, image/webp" />
+                            <small class="text-secondary">Used directly on the PowerPoint slide deck and 1280x720 social card.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-4" />
+
+                <h5 class="fw-bold mb-3"><i class="bi bi-share me-2 text-primary"></i> Social Profiles</h5>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">LinkedIn Profile URL</label>
+                        <InputText @bind-Value="speaker.LinkedInUrl" class="form-control" placeholder="https://linkedin.com/in/..." />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">BlueSky Handle</label>
+                        <InputText @bind-Value="speaker.BlueSkyHandle" class="form-control" placeholder="handle.bsky.social" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">X / Twitter Handle</label>
+                        <InputText @bind-Value="speaker.TwitterHandle" class="form-control" placeholder="@@username" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">GitHub or Website</label>
+                        <InputText @bind-Value="speaker.WebsiteUrl" class="form-control" placeholder="https://..." />
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg px-4" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            <span>Saving...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-check2-circle me-1"></i>
+                            <span>Save My Details</span>
+                        }
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string Token { get; set; } = string.Empty;
+
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool showSuccess = false;
+    private string? errorMessage;
+
+    private MagicLinkToken? tokenEntity;
+    private Speaker speaker = new();
+    private EventSpeakerSession? session;
+    private MeetupEvent? meetupEvent;
+
+    private string talkTitle = string.Empty;
+    private string? talkDescription;
+    private string? previewPhotoUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+        try
+        {
+            tokenEntity = await MagicLinkService.ValidateTokenAsync(Token);
+            if (tokenEntity != null && tokenEntity.Speaker != null)
+            {
+                speaker = tokenEntity.Speaker;
+                previewPhotoUrl = speaker.PhotoBlobUrl;
+                session = tokenEntity.EventSpeakerSession;
+                if (session != null)
+                {
+                    talkTitle = session.TalkTitle;
+                    talkDescription = session.TalkDescription;
+                    meetupEvent = session.MeetupEvent;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error validating speaker magic link token: {Token}", Token);
+            errorMessage = "Failed to load link details. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandlePhotoUploadAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024); // 10MB
+            var url = await BlobStorageService.UploadAsync("speaker-photos", file.Name, stream, file.ContentType);
+            speaker.PhotoBlobUrl = url;
+            previewPhotoUrl = url;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error uploading speaker photo.");
+            errorMessage = "Failed to upload photo. Please verify image file and try again.";
+        }
+    }
+
+    private async Task HandleSaveAsync()
+    {
+        if (tokenEntity == null || session == null) return;
+
+        isSaving = true;
+        errorMessage = null;
+        showSuccess = false;
+
+        try
+        {
+            speaker.UpdatedAtUtc = DateTime.UtcNow;
+            session.TalkTitle = talkTitle;
+            session.TalkDescription = talkDescription;
+
+            await DbContext.SaveChangesAsync();
+            showSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving speaker session details via magic link.");
+            errorMessage = "An error occurred while saving. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+}

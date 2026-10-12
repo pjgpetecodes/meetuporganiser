@@ -1,0 +1,63 @@
+﻿@inherits LayoutComponentBase
+
+<div class="page">
+    <AuthorizeView>
+        <Authorized>
+            <div class="sidebar">
+                <NavMenu />
+            </div>
+
+            <main>
+                <div class="top-row px-4 d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">
+                            <i class="bi bi-person-check-fill me-1"></i> Organizer Mode
+                        </span>
+                    </div>
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="text-secondary small">
+                            <i class="bi bi-person-circle me-1"></i> @context.User.Identity?.Name
+                        </span>
+                        <a href="/logout" class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-box-arrow-right me-1"></i> Sign Out
+                        </a>
+                    </div>
+                </div>
+
+                <article class="content px-4 py-3">
+                    @Body
+                </article>
+            </main>
+        </Authorized>
+        <NotAuthorized>
+            <div class="w-100">
+                <nav class="navbar navbar-expand navbar-light bg-white border-bottom px-4">
+                    <div class="container-fluid">
+                        <a class="navbar-brand fw-bold text-primary" href="/">
+                            <i class="bi bi-calendar2-range me-2"></i> Meetup Organiser
+                        </a>
+                        <div class="d-flex gap-2">
+                            <a href="/MicrosoftIdentity/Account/SignIn" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-microsoft me-1"></i> Entra Sign In
+                            </a>
+                            <a href="/login" class="btn btn-primary btn-sm">
+                                <i class="bi bi-box-arrow-in-right me-1"></i> Demo Login
+                            </a>
+                        </div>
+                    </div>
+                </nav>
+
+                <main>
+                    @Body
+                </main>
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+

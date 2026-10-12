@@ -1,0 +1,242 @@
+@page "/events"
+@attribute [Authorize]
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+@inject NavigationManager NavManager
+@inject ILogger<Events> Logger
+
+<PageTitle>Meetup Events - Meetup Organiser</PageTitle>
+
+<div class="container-fluid py-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold mb-1">Meetup Events</h1>
+            <p class="text-secondary mb-0">Create, schedule, clone, and manage community meetup events.</p>
+        </div>
+        <a href="/events/new" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-1"></i> New Event
+        </a>
+    </div>
+
+    <!-- Filter & Search Controls -->
+    <div class="card border-0 shadow-sm p-3 mb-4">
+        <div class="row g-3">
+            <div class="col-md-5">
+                <div class="input-group">
+                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control border-start-0" placeholder="Search events by title or speaker..." @bind="searchQuery" @bind:event="oninput" />
+                </div>
+            </div>
+            <div class="col-md-4">
+                <select class="form-select" @bind="selectedGroupId">
+                    <option value="">All Groups</option>
+                    @if (groups != null)
+                    {
+                        @foreach (var g in groups)
+                        {
+                            <option value="@g.Id.ToString()">@g.Name</option>
+                        }
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="selectedStatus">
+                    <option value="">All Statuses</option>
+                    <option value="Draft">Draft</option>
+                    <option value="Scheduled">Scheduled</option>
+                    <option value="Published">Published</option>
+                    <option value="Completed">Completed</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    @if (filteredEvents == null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+        </div>
+    }
+    else if (!filteredEvents.Any())
+    {
+        <div class="card border-0 shadow-sm p-5 text-center">
+            <i class="bi bi-calendar-event text-secondary display-4 mb-3"></i>
+            <h4 class="fw-bold">No Events Found</h4>
+            <p class="text-secondary">Get started by creating your next meetup event.</p>
+            <div>
+                <a href="/events/new" class="btn btn-primary">Create Event</a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date &amp; Time</th>
+                            <th>Event Details</th>
+                            <th>Group</th>
+                            <th>Speaker(s)</th>
+                            <th>Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var evt in filteredEvents)
+                        {
+                            <tr>
+                                <td style="min-width: 140px;">
+                                    <div class="fw-bold">@evt.EventDateTimeUtc.ToString("MMM dd, yyyy")</div>
+                                    <div class="small text-secondary">@evt.EventDateTimeUtc.ToString("HH:mm UTC")</div>
+                                    <div class="badge bg-light text-secondary border mt-1">@evt.DurationMinutes min</div>
+                                </td>
+                                <td>
+                                    <div class="fw-bold fs-6">@evt.Title</div>
+                                    <div class="small text-secondary">
+                                        <i class="bi bi-geo-alt me-1"></i>@(evt.LocationOrPlatform ?? "Zoom")
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(evt.ShortBitlyUrl))
+                                    {
+                                        <div class="small text-primary font-monospace">@evt.ShortBitlyUrl</div>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary-subtle text-secondary border">
+                                        @(evt.MeetupGroup?.Name ?? ".NET Notts")
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (evt.Sessions.Any())
+                                    {
+                                        @foreach (var s in evt.Sessions)
+                                        {
+                                            <div class="d-flex align-items-center gap-2 mb-1">
+                                                <i class="bi bi-person-fill text-primary"></i>
+                                                <span><strong>@(s.Speaker?.Name ?? "Speaker")</strong>: @s.TalkTitle</span>
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">No speakers assigned</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge @GetStatusBadge(evt.Status)">@evt.Status</span>
+                                </td>
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="/assets?eventId=@evt.Id" class="btn btn-outline-primary" title="Slide Deck & Social Images">
+                                            <i class="bi bi-file-earmark-slides me-1"></i> Assets
+                                        </a>
+                                        <a href="/events/edit/@evt.Id" class="btn btn-outline-secondary" title="Edit Event">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <button class="btn btn-outline-info" title="Clone Event" @onclick="() => CloneEventAsync(evt)">
+                                            <i class="bi bi-copy"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" title="Delete" @onclick="() => DeleteEventAsync(evt)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<MeetupEvent>? allEvents;
+    private List<MeetupGroup>? groups;
+    private string searchQuery = string.Empty;
+    private string selectedGroupId = string.Empty;
+    private string selectedStatus = string.Empty;
+
+    private IEnumerable<MeetupEvent>? filteredEvents => allEvents?
+        .Where(e => (string.IsNullOrWhiteSpace(searchQuery) ||
+                     e.Title.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                     e.Sessions.Any(s => s.Speaker != null && s.Speaker.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))) &&
+                    (string.IsNullOrWhiteSpace(selectedGroupId) || e.MeetupGroupId.ToString() == selectedGroupId) &&
+                    (string.IsNullOrWhiteSpace(selectedStatus) || e.Status.ToString() == selectedStatus));
+
+    protected override async Task OnInitializedAsync()
+    {
+        groups = await DbContext.MeetupGroups.OrderBy(g => g.Name).ToListAsync();
+        await LoadEventsAsync();
+    }
+
+    private async Task LoadEventsAsync()
+    {
+        allEvents = await DbContext.MeetupEvents
+            .Include(e => e.MeetupGroup)
+            .Include(e => e.Sessions)
+                .ThenInclude(s => s.Speaker)
+            .OrderByDescending(e => e.EventDateTimeUtc)
+            .ToListAsync();
+    }
+
+    private async Task CloneEventAsync(MeetupEvent evt)
+    {
+        try
+        {
+            var cloned = new MeetupEvent
+            {
+                Id = Guid.NewGuid(),
+                MeetupGroupId = evt.MeetupGroupId,
+                Title = $"{evt.Title} (Copy)",
+                Description = evt.Description,
+                EventDateTimeUtc = evt.EventDateTimeUtc.AddMonths(1),
+                DurationMinutes = evt.DurationMinutes,
+                LocationOrPlatform = evt.LocationOrPlatform,
+                Status = EventStatus.Draft,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow
+            };
+
+            foreach (var s in evt.Sessions)
+            {
+                cloned.Sessions.Add(new EventSpeakerSession
+                {
+                    Id = Guid.NewGuid(),
+                    MeetupEventId = cloned.Id,
+                    SpeakerId = s.SpeakerId,
+                    TalkTitle = s.TalkTitle,
+                    TalkDescription = s.TalkDescription,
+                    OrderIndex = s.OrderIndex
+                });
+            }
+
+            await DbContext.MeetupEvents.AddAsync(cloned);
+            await DbContext.SaveChangesAsync();
+            await LoadEventsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to clone event.");
+        }
+    }
+
+    private async Task DeleteEventAsync(MeetupEvent evt)
+    {
+        DbContext.MeetupEvents.Remove(evt);
+        await DbContext.SaveChangesAsync();
+        await LoadEventsAsync();
+    }
+
+    private static string GetStatusBadge(EventStatus status) => status switch
+    {
+        EventStatus.Published => "bg-success text-white",
+        EventStatus.Scheduled => "bg-primary text-white",
+        EventStatus.Draft => "bg-warning text-dark",
+        EventStatus.Completed => "bg-secondary text-white",
+        _ => "bg-light text-dark"
+    };
+}

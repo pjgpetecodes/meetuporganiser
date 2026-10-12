@@ -1,0 +1,410 @@
+@page "/assets"
+@attribute [Authorize]
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@using MeetupOrganiser.Core.DTOs
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+@inject IPptxGeneratorService PptxService
+@inject ISocialImageGeneratorService SocialImageService
+@inject ISocialMediaService SocialMediaService
+@inject IMeetupService MeetupService
+@inject NavigationManager NavManager
+@inject ILogger<Assets> Logger
+
+<PageTitle>Asset Studio &amp; Social Activation - Meetup Organiser</PageTitle>
+
+<div class="container-fluid py-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold mb-1">Asset Studio &amp; Social Activation</h1>
+            <p class="text-secondary mb-0">Generate presentation decks (PPTX), 1280x720 social cards, and activate LinkedIn, X, BlueSky, and Meetup.</p>
+        </div>
+        <div class="d-flex gap-2">
+            @if (selectedEvent != null)
+            {
+                <a href="/events/edit/@selectedEvent.Id" class="btn btn-outline-secondary">
+                    <i class="bi bi-pencil me-1"></i> Edit Event
+                </a>
+            }
+            <a href="/events" class="btn btn-outline-secondary">All Events</a>
+        </div>
+    </div>
+
+    @if (statusMessage != null)
+    {
+        <div class="alert @(isError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+            <i class="bi @(isError ? "bi-exclamation-triangle" : "bi-check-circle") me-2"></i>
+            @statusMessage
+            <button type="button" class="btn-close" @onclick="() => statusMessage = null"></button>
+        </div>
+    }
+
+    <!-- Event Selector Header -->
+    <div class="card border-0 shadow-sm p-3 mb-4">
+        <div class="row align-items-center">
+            <div class="col-md-3">
+                <label class="form-label fw-bold mb-0">Select Event:</label>
+            </div>
+            <div class="col-md-9">
+                <select class="form-select" @onchange="OnEventSelected">
+                    @if (events != null)
+                    {
+                        @foreach (var evt in events)
+                        {
+                            <option value="@evt.Id" selected="@(evt.Id == selectedEventId)">
+                                @evt.Title (@evt.EventDateTimeUtc.ToString("MMM dd, yyyy")) - @(evt.MeetupGroup?.Name ?? "Community")
+                            </option>
+                        }
+                    }
+                </select>
+            </div>
+        </div>
+    </div>
+
+    @if (selectedEvent == null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-secondary">Loading event assets...</p>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            <!-- Left Column: Asset Previews and Downloads -->
+            <div class="col-lg-6">
+                <!-- Social Image Preview Card -->
+                <div class="card border-0 shadow-sm p-4 mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0">
+                            <i class="bi bi-image me-2 text-primary"></i>1280x720 Social Card Preview
+                        </h5>
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="GenerateImagePreviewAsync" disabled="@isGeneratingImage">
+                            @if (isGeneratingImage)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                <span>Rendering...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-arrow-clockwise me-1"></i>
+                                <span>Refresh</span>
+                            }
+                        </button>
+                    </div>
+
+                    <div class="ratio ratio-16x9 bg-dark rounded overflow-hidden shadow-sm mb-3 position-relative">
+                        @if (previewImageBase64 != null)
+                        {
+                            <img src="data:image/png;base64,@previewImageBase64" alt="Social card preview" class="img-fluid object-fit-contain" />
+                        }
+                        else
+                        {
+                            <div class="d-flex align-items-center justify-content-center text-white-50">
+                                <span class="spinner-border text-light me-2"></span> Generating 1280x720 PNG card...
+                            </div>
+                        }
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <a href="/api/events/@selectedEvent.Id/social-image" target="_blank" class="btn btn-primary flex-fill">
+                            <i class="bi bi-download me-1"></i> Download Social PNG
+                        </a>
+                        <a href="/api/events/@selectedEvent.Id/pptx" target="_blank" class="btn btn-outline-primary flex-fill">
+                            <i class="bi bi-file-earmark-slides me-1"></i> Download PPTX Deck
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Meetup.com Event Content Card -->
+                <div class="card border-0 shadow-sm p-4 mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0">
+                            <i class="bi bi-calendar-event me-2 text-danger"></i>Meetup.com Publication
+                        </h5>
+                        <button type="button" class="btn btn-sm btn-danger" @onclick="PublishToMeetupAsync" disabled="@isPublishingMeetup">
+                            @if (isPublishingMeetup)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                <span>Publishing...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-send-fill me-1"></i>
+                                <span>Publish to Meetup</span>
+                            }
+                        </button>
+                    </div>
+                    <p class="text-secondary small mb-2">
+                        Auto-publish to your Meetup group, or copy the pre-formatted markdown description below to paste directly into Meetup.com:
+                    </p>
+                    <textarea class="form-control font-monospace small mb-2" rows="6" @bind="meetupMarkdownDescription"></textarea>
+                    <div class="d-flex justify-content-end">
+                        <span class="badge bg-light text-secondary border">Markdown Formatted</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Multi-Channel Social Activation -->
+            <div class="col-lg-6">
+                <!-- LinkedIn Activation -->
+                <div class="card border-0 shadow-sm p-4 mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="fw-bold mb-0">
+                            <i class="bi bi-linkedin me-2 text-primary"></i>LinkedIn
+                        </h5>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-primary" @onclick="PublishToLinkedInAsync" disabled="@isPublishingLinkedIn">
+                                <i class="bi bi-send me-1"></i> Post via API
+                            </button>
+                            @if (!string.IsNullOrWhiteSpace(linkedInIntentUrl))
+                            {
+                                <a href="@linkedInIntentUrl" target="_blank" class="btn btn-outline-primary" title="Open LinkedIn Share Fallback">
+                                    <i class="bi bi-box-arrow-up-right me-1"></i> Web Share
+                                </a>
+                            }
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <textarea class="form-control small" rows="4" @bind="linkedInText"></textarea>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">Includes event title, speaker tags, and registration link.</small>
+                        <span class="badge bg-light text-secondary border">LinkedIn Share API v2</span>
+                    </div>
+                </div>
+
+                <!-- X / Twitter Activation -->
+                <div class="card border-0 shadow-sm p-4 mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="fw-bold mb-0">
+                            <i class="bi bi-twitter-x me-2 text-dark"></i>X (Twitter)
+                        </h5>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-dark" @onclick="PublishToTwitterAsync" disabled="@isPublishingTwitter">
+                                <i class="bi bi-send me-1"></i> Post via API
+                            </button>
+                            @if (!string.IsNullOrWhiteSpace(twitterIntentUrl))
+                            {
+                                <a href="@twitterIntentUrl" target="_blank" class="btn btn-outline-dark" title="Open pre-filled Tweet">
+                                    <i class="bi bi-box-arrow-up-right me-1"></i> Web Intent
+                                </a>
+                            }
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <textarea class="form-control small" rows="3" @bind="twitterText"></textarea>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">Character count: @(twitterText?.Length ?? 0) / 280</small>
+                        <span class="badge bg-light text-secondary border">Twitter API v2 + Intent</span>
+                    </div>
+                </div>
+
+                <!-- BlueSky Activation -->
+                <div class="card border-0 shadow-sm p-4 mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="fw-bold mb-0">
+                            <i class="bi bi-cloud me-2 text-info"></i>BlueSky (AT Protocol)
+                        </h5>
+                        <button type="button" class="btn btn-sm btn-info text-white" @onclick="PublishToBlueSkyAsync" disabled="@isPublishingBlueSky">
+                            <i class="bi bi-send me-1"></i> Post with Image
+                        </button>
+                    </div>
+                    <div class="mb-2">
+                        <textarea class="form-control small" rows="3" @bind="blueSkyText"></textarea>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">Posts directly to AT Protocol with social PNG card embedded.</small>
+                        <span class="badge bg-light text-secondary border">AT Protocol</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? EventId { get; set; }
+
+    private List<MeetupEvent>? events;
+    private MeetupEvent? selectedEvent;
+    private Guid selectedEventId;
+
+    private string? previewImageBase64;
+    private string? meetupMarkdownDescription;
+    private string? linkedInText;
+    private string? linkedInIntentUrl;
+    private string? twitterText;
+    private string? twitterIntentUrl;
+    private string? blueSkyText;
+
+    private bool isGeneratingImage;
+    private bool isPublishingMeetup;
+    private bool isPublishingLinkedIn;
+    private bool isPublishingTwitter;
+    private bool isPublishingBlueSky;
+
+    private string? statusMessage;
+    private bool isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        events = await DbContext.MeetupEvents
+            .Include(e => e.MeetupGroup)
+            .Include(e => e.Sessions).ThenInclude(s => s.Speaker)
+            .OrderByDescending(e => e.EventDateTimeUtc)
+            .ToListAsync();
+
+        if (events.Any())
+        {
+            if (EventId.HasValue && events.Any(e => e.Id == EventId.Value))
+            {
+                selectedEventId = EventId.Value;
+            }
+            else
+            {
+                selectedEventId = events.First().Id;
+            }
+
+            await LoadEventDataAsync(selectedEventId);
+        }
+    }
+
+    private async Task OnEventSelected(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var newId))
+        {
+            selectedEventId = newId;
+            await LoadEventDataAsync(newId);
+        }
+    }
+
+    private async Task LoadEventDataAsync(Guid eventId)
+    {
+        selectedEvent = events?.FirstOrDefault(e => e.Id == eventId);
+        if (selectedEvent == null) return;
+
+        // Build pre-formatted copy templates using domain services
+        meetupMarkdownDescription = MeetupService.GenerateMeetupDescription(selectedEvent);
+        linkedInText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "LinkedIn");
+        twitterText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "Twitter");
+        blueSkyText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "BlueSky");
+
+        // Web intent URLs
+        twitterIntentUrl = SocialMediaService.GetPlatformWebIntentUrl(selectedEvent, "Twitter");
+        linkedInIntentUrl = SocialMediaService.GetPlatformWebIntentUrl(selectedEvent, "LinkedIn");
+
+        await GenerateImagePreviewAsync();
+    }
+
+    private async Task GenerateImagePreviewAsync()
+    {
+        if (selectedEvent == null) return;
+
+        try
+        {
+            isGeneratingImage = true;
+            var imageBytes = await SocialImageService.GenerateSocialCardAsync(selectedEvent);
+            previewImageBase64 = Convert.ToBase64String(imageBytes);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to render social image card.");
+            statusMessage = $"Error rendering social card: {ex.Message}";
+            isError = true;
+        }
+        finally
+        {
+            isGeneratingImage = false;
+        }
+    }
+
+    private async Task PublishToMeetupAsync()
+    {
+        if (selectedEvent == null) return;
+        try
+        {
+            isPublishingMeetup = true;
+            var result = await MeetupService.CreateEventAsync(selectedEvent);
+            if (result.Success)
+            {
+                statusMessage = $"Published to Meetup! Event URL: {result.EventUrl}";
+                isError = false;
+            }
+            else
+            {
+                statusMessage = $"Meetup publication note: {result.ErrorMessage}";
+                isError = false; // Note: In sandbox / fallback mode this provides the link or feedback
+            }
+        }
+        finally
+        {
+            isPublishingMeetup = false;
+        }
+    }
+
+    private async Task PublishToLinkedInAsync()
+    {
+        if (selectedEvent == null) return;
+        try
+        {
+            isPublishingLinkedIn = true;
+            byte[]? imageBytes = previewImageBase64 != null ? Convert.FromBase64String(previewImageBase64) : null;
+            var result = await SocialMediaService.PostToLinkedInAsync(linkedInText ?? string.Empty, imageBytes);
+            statusMessage = result.Success
+                ? "Successfully published to LinkedIn!"
+                : $"LinkedIn note: {result.ErrorMessage}. You can use the 'Web Share' button.";
+            isError = !result.Success;
+        }
+        finally
+        {
+            isPublishingLinkedIn = false;
+        }
+    }
+
+    private async Task PublishToTwitterAsync()
+    {
+        if (selectedEvent == null) return;
+        try
+        {
+            isPublishingTwitter = true;
+            byte[]? imageBytes = previewImageBase64 != null ? Convert.FromBase64String(previewImageBase64) : null;
+            var result = await SocialMediaService.PostToTwitterAsync(twitterText ?? string.Empty, imageBytes);
+            statusMessage = result.Success
+                ? "Successfully published to X (Twitter)!"
+                : $"X note: {result.ErrorMessage}. You can use the 'Web Intent' button.";
+            isError = !result.Success;
+        }
+        finally
+        {
+            isPublishingTwitter = false;
+        }
+    }
+
+    private async Task PublishToBlueSkyAsync()
+    {
+        if (selectedEvent == null) return;
+        try
+        {
+            isPublishingBlueSky = true;
+            byte[]? imageBytes = null;
+            if (previewImageBase64 != null)
+            {
+                imageBytes = Convert.FromBase64String(previewImageBase64);
+            }
+            var result = await SocialMediaService.PostToBlueSkyAsync(blueSkyText ?? string.Empty, imageBytes, "social-card.png");
+            statusMessage = result.Success
+                ? "Successfully posted to BlueSky with attached social image!"
+                : $"BlueSky note: {result.ErrorMessage}";
+            isError = !result.Success;
+        }
+        finally
+        {
+            isPublishingBlueSky = false;
+        }
+    }
+}

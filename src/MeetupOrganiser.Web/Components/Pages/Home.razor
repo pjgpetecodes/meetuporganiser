@@ -1,0 +1,153 @@
+@page "/"
+@inject NavigationManager NavManager
+
+<PageTitle>Meetup Organiser - Event Coordination & Social Asset Studio</PageTitle>
+
+<div class="landing-container">
+    <!-- Hero Section -->
+    <header class="hero-section text-center py-5">
+        <div class="container">
+            <div class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill mb-3">
+                <i class="bi bi-stars me-1"></i> Developer Community Command Center
+            </div>
+            <h1 class="display-4 fw-bold text-gradient mb-3">
+                Coordinate Meetups, Slides &amp; Socials in Seconds
+            </h1>
+            <p class="lead text-secondary mx-auto mb-4" style="max-width: 780px;">
+                The single platform for user group leaders to orchestrate Meetup.com events, generate branded 
+                <strong>PowerPoint (.pptx)</strong> decks, render <strong>1280x720 social cards</strong>, and syndicate to 
+                <strong>LinkedIn</strong>, <strong>BlueSky</strong>, and <strong>X</strong>.
+            </p>
+
+            <AuthorizeView>
+                <Authorized>
+                    <div class="d-flex justify-content-center gap-3">
+                        <a href="/dashboard" class="btn btn-primary btn-lg px-4 shadow-sm">
+                            <i class="bi bi-speedometer2 me-2"></i> Open Organizer Dashboard
+                        </a>
+                        <a href="/events" class="btn btn-outline-secondary btn-lg px-4">
+                            <i class="bi bi-calendar-event me-2"></i> Manage Events
+                        </a>
+                    </div>
+                </Authorized>
+                <NotAuthorized>
+                    <div class="d-flex justify-content-center gap-3">
+                        <a href="/MicrosoftIdentity/Account/SignIn" class="btn btn-primary btn-lg px-4 shadow-sm">
+                            <i class="bi bi-microsoft me-2"></i> Sign In with Microsoft Entra
+                        </a>
+                        <a href="/login" class="btn btn-outline-primary btn-lg px-4">
+                            <i class="bi bi-person-check me-2"></i> Dev / Demo Login
+                        </a>
+                    </div>
+                    <div class="mt-3 text-muted small">
+                        <i class="bi bi-shield-lock me-1"></i> Organizers sign in securely via Entra ID. Speakers use tokenized Magic Links.
+                    </div>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </header>
+
+    <!-- Visual Feature Grid -->
+    <section class="features-section py-5 bg-body-tertiary">
+        <div class="container">
+            <div class="text-center mb-5">
+                <h2 class="fw-bold">Everything a Meetup Organizer Needs</h2>
+                <p class="text-secondary">Eliminate manual slide crafting, repeated copying, and multi-tab social posting.</p>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm p-4">
+                        <div class="feature-icon bg-primary text-white rounded-3 mb-3 d-inline-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="bi bi-file-earmark-slides fs-4"></i>
+                        </div>
+                        <h4 class="fw-bold">Dynamic PPTX Decks</h4>
+                        <p class="text-secondary">
+                            Automatically populates 1 or 2 speaker presentation decks from uploaded templates, inserting speaker names, photos, talk titles, and dates.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm p-4">
+                        <div class="feature-icon bg-success text-white rounded-3 mb-3 d-inline-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="bi bi-image fs-4"></i>
+                        </div>
+                        <h4 class="fw-bold">1280x720 Social Cards</h4>
+                        <p class="text-secondary">
+                            Instant headless PNG generation with live preview. Perfectly formatted for LinkedIn, BlueSky, and Twitter without launching graphics editors.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm p-4">
+                        <div class="feature-icon bg-info text-white rounded-3 mb-3 d-inline-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="bi bi-magic fs-4"></i>
+                        </div>
+                        <h4 class="fw-bold">Speaker Magic Links</h4>
+                        <p class="text-secondary">
+                            Send speakers a secure, expiring self-service link. They upload their own headshots, bios, and talk details without needing an account.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm p-4">
+                        <div class="feature-icon bg-warning text-dark rounded-3 mb-3 d-inline-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="bi bi-share fs-4"></i>
+                        </div>
+                        <h4 class="fw-bold">Multi-Social Syndication</h4>
+                        <p class="text-secondary">
+                            Automated API publishing to BlueSky, LinkedIn, and X, with robust pre-filled web intent fallbacks when API keys or quotas are limited.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm p-4">
+                        <div class="feature-icon bg-danger text-white rounded-3 mb-3 d-inline-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="bi bi-camera-video fs-4"></i>
+                        </div>
+                        <h4 class="fw-bold">Zoom &amp; Sessionize Sync</h4>
+                        <p class="text-secondary">
+                            Create Zoom conferences with passcodes automatically, and import talk submissions directly from Sessionize endpoints.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm p-4">
+                        <div class="feature-icon bg-secondary text-white rounded-3 mb-3 d-inline-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="bi bi-cloud-check fs-4"></i>
+                        </div>
+                        <h4 class="fw-bold">Azure Serverless Architecture</h4>
+                        <p class="text-secondary">
+                            Built with .NET 10, EF Core, Azure SQL Serverless, and Bicep infrastructure as code for cost-efficient, high-performance hosting.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-4 text-center text-secondary border-top">
+        <div class="container">
+            <p class="mb-1">&copy; @DateTime.UtcNow.Year Meetup Organiser. Designed for developer community leaders.</p>
+            <small class="text-muted">Built with ASP.NET Core Blazor &amp; Microsoft Azure.</small>
+        </div>
+    </footer>
+</div>
+
+<style>
+    .text-gradient {
+        background: linear-gradient(135deg, #1e3a8a 0%, #4338ca 50%, #6d28d9 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    .hero-section {
+        padding: 5rem 1rem;
+        background: radial-gradient(circle at 50% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+    }
+</style>

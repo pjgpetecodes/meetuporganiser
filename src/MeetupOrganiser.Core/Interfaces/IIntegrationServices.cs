@@ -1,0 +1,30 @@
+using MeetupOrganiser.Core.DTOs;
+using MeetupOrganiser.Core.Entities;
+
+namespace MeetupOrganiser.Core.Interfaces;
+
+public interface ISessionizeService
+{
+    Task<List<SessionizeSpeakerDto>> GetSpeakersAsync(string endpointOrEventId, CancellationToken cancellationToken = default);
+    Task<List<SessionizeSessionDto>> GetSessionsAsync(string endpointOrEventId, CancellationToken cancellationToken = default);
+}
+
+public interface IZoomService
+{
+    Task<ZoomMeetingResult> CreateMeetingAsync(string topic, DateTime startTimeUtc, int durationMinutes, string? agenda = null, CancellationToken cancellationToken = default);
+}
+
+public interface IMeetupService
+{
+    Task<MeetupCreationResult> CreateEventAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default);
+    string GenerateMeetupDescription(MeetupEvent meetupEvent);
+}
+
+public interface ISocialMediaService
+{
+    Task<SocialPostResult> PostToBlueSkyAsync(string text, byte[]? imageBytes, string? imageMimeType, CancellationToken cancellationToken = default);
+    Task<SocialPostResult> PostToTwitterAsync(string text, byte[]? imageBytes, CancellationToken cancellationToken = default);
+    Task<SocialPostResult> PostToLinkedInAsync(string text, byte[]? imageBytes, CancellationToken cancellationToken = default);
+    string GeneratePlatformPostText(MeetupEvent meetupEvent, string platform);
+    string GetPlatformWebIntentUrl(MeetupEvent meetupEvent, string platform);
+}

@@ -1,0 +1,202 @@
+@page "/dashboard"
+@attribute [Authorize]
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+@inject NavigationManager NavManager
+
+<PageTitle>Organizer Dashboard - Meetup Organiser</PageTitle>
+
+<div class="container-fluid py-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold mb-1">Organizer Command Center</h1>
+            <p class="text-secondary mb-0">Overview of upcoming meetups, slide decks, and speaker assets.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/events/new" class="btn btn-primary shadow-sm">
+                <i class="bi bi-plus-circle me-1"></i> New Event
+            </a>
+            <a href="/speakers" class="btn btn-outline-secondary">
+                <i class="bi bi-person-plus me-1"></i> Add Speaker
+            </a>
+        </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm p-3 border-start border-4 border-primary">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-secondary small text-uppercase fw-bold">Total Events</div>
+                        <h3 class="fw-bold mb-0">@totalEvents</h3>
+                    </div>
+                    <div class="fs-2 text-primary opacity-50"><i class="bi bi-calendar-event"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm p-3 border-start border-4 border-success">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-secondary small text-uppercase fw-bold">Upcoming Scheduled</div>
+                        <h3 class="fw-bold mb-0">@upcomingEventsCount</h3>
+                    </div>
+                    <div class="fs-2 text-success opacity-50"><i class="bi bi-clock-history"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm p-3 border-start border-4 border-info">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-secondary small text-uppercase fw-bold">Speakers in Directory</div>
+                        <h3 class="fw-bold mb-0">@totalSpeakers</h3>
+                    </div>
+                    <div class="fs-2 text-info opacity-50"><i class="bi bi-people"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm p-3 border-start border-4 border-warning">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-secondary small text-uppercase fw-bold">Meetup Groups</div>
+                        <h3 class="fw-bold mb-0">@totalGroups</h3>
+                    </div>
+                    <div class="fs-2 text-warning opacity-50"><i class="bi bi-collection"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upcoming Events List -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
+            <h5 class="fw-bold mb-0"><i class="bi bi-calendar-check me-2 text-primary"></i> Upcoming Meetups</h5>
+            <a href="/events" class="btn btn-sm btn-outline-primary">View All Events</a>
+        </div>
+        <div class="card-body p-0">
+            @if (upcomingEvents == null)
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            }
+            else if (!upcomingEvents.Any())
+            {
+                <div class="text-center py-5">
+                    <i class="bi bi-calendar-x text-secondary fs-1 mb-2"></i>
+                    <p class="text-secondary mb-3">No upcoming meetups scheduled.</p>
+                    <a href="/events/new" class="btn btn-primary">Create Your First Meetup</a>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Event Title</th>
+                                <th>Group</th>
+                                <th>Date &amp; Time</th>
+                                <th>Speaker(s)</th>
+                                <th>Status</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var evt in upcomingEvents)
+                            {
+                                <tr>
+                                    <td>
+                                        <strong>@evt.Title</strong>
+                                        @if (!string.IsNullOrWhiteSpace(evt.ShortBitlyUrl))
+                                        {
+                                            <div class="small text-muted">@evt.ShortBitlyUrl</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary-subtle text-secondary border">
+                                            @(evt.MeetupGroup?.Name ?? ".NET Notts")
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div>@evt.EventDateTimeUtc.ToString("MMM dd, yyyy")</div>
+                                        <div class="small text-secondary">@evt.EventDateTimeUtc.ToString("HH:mm UTC")</div>
+                                    </td>
+                                    <td>
+                                        @if (evt.Sessions.Any())
+                                        {
+                                            @foreach (var s in evt.Sessions)
+                                            {
+                                                <div class="small">
+                                                    <i class="bi bi-person me-1"></i><strong>@(s.Speaker?.Name ?? "Speaker")</strong>: @s.TalkTitle
+                                                </div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">No speakers assigned</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge @GetStatusBadgeClass(evt.Status)">@evt.Status</span>
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="/assets?eventId=@evt.Id" class="btn btn-outline-primary" title="Slide Deck & Social Cards">
+                                                <i class="bi bi-file-earmark-slides"></i> Slides &amp; Assets
+                                            </a>
+                                            <a href="/events/edit/@evt.Id" class="btn btn-outline-secondary" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private int totalEvents = 0;
+    private int upcomingEventsCount = 0;
+    private int totalSpeakers = 0;
+    private int totalGroups = 0;
+    private List<MeetupEvent>? upcomingEvents;
+
+    protected override async Task OnInitializedAsync()
+    {
+        totalEvents = await DbContext.MeetupEvents.CountAsync();
+        upcomingEventsCount = await DbContext.MeetupEvents.CountAsync(e => e.EventDateTimeUtc >= DateTime.UtcNow);
+        totalSpeakers = await DbContext.Speakers.CountAsync();
+        totalGroups = await DbContext.MeetupGroups.CountAsync();
+
+        upcomingEvents = await DbContext.MeetupEvents
+            .Include(e => e.MeetupGroup)
+            .Include(e => e.Sessions)
+                .ThenInclude(s => s.Speaker)
+            .OrderBy(e => e.EventDateTimeUtc)
+            .Take(5)
+            .ToListAsync();
+    }
+
+    private static string GetStatusBadgeClass(EventStatus status) => status switch
+    {
+        EventStatus.Published => "bg-success text-white",
+        EventStatus.Scheduled => "bg-primary text-white",
+        EventStatus.Draft => "bg-warning text-dark",
+        EventStatus.Completed => "bg-secondary text-white",
+        _ => "bg-light text-dark"
+    };
+}
