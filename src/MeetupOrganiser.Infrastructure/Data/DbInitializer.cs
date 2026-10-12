@@ -1,4 +1,5 @@
 using MeetupOrganiser.Core.Entities;
+using MeetupOrganiser.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -134,6 +135,12 @@ public static class DbInitializer
 
             sampleEvent.Sessions.Add(session1);
             await context.MeetupEvents.AddAsync(sampleEvent);
+
+            if (!await context.AppSettings.AnyAsync())
+            {
+                var defaultSettings = SettingsService.GetDefaultSettings();
+                await context.AppSettings.AddRangeAsync(defaultSettings);
+            }
 
             await context.SaveChangesAsync();
             logger.LogInformation("Database seeding completed successfully.");

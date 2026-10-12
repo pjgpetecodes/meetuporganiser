@@ -12,21 +12,31 @@ namespace MeetupOrganiser.Infrastructure.Services;
 public class ZoomService : IZoomService
 {
     private readonly HttpClient _httpClient;
+    private readonly ISettingsService? _settingsService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ZoomService> _logger;
 
     public ZoomService(HttpClient httpClient, IConfiguration configuration, ILogger<ZoomService> logger)
+        : this(httpClient, null, configuration, logger)
+    {
+    }
+
+    public ZoomService(HttpClient httpClient, ISettingsService? settingsService, IConfiguration configuration, ILogger<ZoomService> logger)
     {
         _httpClient = httpClient;
+        _settingsService = settingsService;
         _configuration = configuration;
         _logger = logger;
     }
 
     public async Task<ZoomMeetingResult> CreateMeetingAsync(string topic, DateTime startTimeUtc, int durationMinutes, string? agenda = null, CancellationToken cancellationToken = default)
     {
-        var accountId = _configuration["Integrations:Zoom:AccountId"];
-        var clientId = _configuration["Integrations:Zoom:ClientId"];
-        var clientSecret = _configuration["Integrations:Zoom:ClientSecret"];
+        var accountId = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Zoom:AccountId", cancellationToken) : null)
+            ?? _configuration["Integrations:Zoom:AccountId"];
+        var clientId = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Zoom:ClientId", cancellationToken) : null)
+            ?? _configuration["Integrations:Zoom:ClientId"];
+        var clientSecret = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Zoom:ClientSecret", cancellationToken) : null)
+            ?? _configuration["Integrations:Zoom:ClientSecret"];
 
         if (string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
         {
