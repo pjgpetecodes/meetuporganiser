@@ -20,6 +20,11 @@ public static class SessionizeSpeakerMapper
 
         foreach (var link in source.Links ?? [])
         {
+            if (string.Equals(link.LinkType, "Sessionize", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             if (!Uri.TryCreate(link.Url?.Trim(), UriKind.Absolute, out var uri)
                 || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             {

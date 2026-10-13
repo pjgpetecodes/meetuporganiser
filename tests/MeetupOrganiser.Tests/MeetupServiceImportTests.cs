@@ -140,6 +140,31 @@ public class MeetupServiceImportTests
         Assert.Equal("https://ada.example/", speaker.WebsiteUrl);
     }
 
+    [Fact]
+    public async Task SessionizeService_ParsesRealSpeakersPayload()
+    {
+        const string json = """
+            [{"id":"876c9c7a","firstName":"Clyde","lastName":"Davies","fullName":"Clyde Davies",
+              "bio":"Chemist","tagLine":"Leader","profilePicture":"https://cdn.sessionize.com/image/a.jpg",
+              "sessions":[{"id":326103,"name":"Chem4Word"}],"isTopSpeaker":false,
+              "links":[{"title":"LinkedIn","url":"https://www.linkedin.com/in/clyde/","linkType":"LinkedIn"},
+                       {"title":"Sessionize","url":"https://sessionize.com/clyde-davies","linkType":"Sessionize"}],
+              "questionAnswers":[],"categories":[]}]
+            """;
+        var service = new SessionizeService(
+            new HttpClient(new QueueHttpMessageHandler([json])),
+            NullLogger<SessionizeService>.Instance);
+
+        var speakers = await service.GetSpeakersAsync("7y8ylyvc");
+
+        var speaker = Assert.Single(speakers);
+        var entity = new MeetupOrganiser.Core.Entities.Speaker();
+        MeetupOrganiser.Core.DTOs.SessionizeSpeakerMapper.Apply(entity, speaker);
+        Assert.Equal("Clyde Davies", entity.Name);
+        Assert.Equal("https://www.linkedin.com/in/clyde/", entity.LinkedInUrl);
+        Assert.Null(entity.WebsiteUrl);
+    }
+
     private static MeetupService CreateService(HttpMessageHandler handler)
     {
         var configuration = new ConfigurationBuilder()
@@ -165,7 +190,7 @@ public class MeetupServiceImportTests
             CancellationToken cancellationToken)
         {
             Requests.Add(request);
-            RequestBodies.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
+            RequestBodies.Add(request.Content == null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken));
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(_responses.Dequeue(), Encoding.UTF8, "application/json")
