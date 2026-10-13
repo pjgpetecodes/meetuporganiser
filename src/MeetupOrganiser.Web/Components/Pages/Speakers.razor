@@ -5,7 +5,10 @@
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbContextFactory
+@using MeetupOrganiser.Core.DTOs
 @inject IBlobStorageService BlobStorageService
+@inject ISessionizeService SessionizeService
+@inject ISettingsService SettingsService
 @inject ILogger<Speakers> Logger
 
 <PageTitle>Speaker Directory - Meetup Organiser</PageTitle>
@@ -16,10 +19,33 @@
             <h1 class="h3 fw-bold mb-1">Speaker Directory</h1>
             <p class="text-secondary mb-0">Save speaker bios, photos, and socials to reuse across future events.</p>
         </div>
-        <button class="btn btn-primary" @onclick="OpenCreateModal">
-            <i class="bi bi-person-plus me-1"></i> Add Speaker
-        </button>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-info" @onclick="ToggleBulkImportAsync">
+                <i class="bi bi-cloud-arrow-down me-1"></i> Import from Sessionize
+            </button>
+            <button class="btn btn-primary" @onclick="OpenCreateModal">
+                <i class="bi bi-person-plus me-1"></i> Add Speaker
+            </button>
+        </div>
     </div>
+
+    @if (showBulkImport)
+    {
+        <div class="card border-0 shadow-sm p-3 mb-4">
+            <div class="fw-semibold mb-2"><i class="bi bi-cloud-arrow-down me-2 text-info"></i>Import all speakers from Sessionize</div>
+            <div class="input-group">
+                <input @bind="sessionizeEventId" class="form-control" placeholder="Sessionize API ID or Speakers endpoint URL" />
+                <button class="btn btn-info" @onclick="ImportAllFromSessionizeAsync" disabled="@isLoadingSessionize">
+                    @if (isLoadingSessionize)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Import All
+                </button>
+            </div>
+            <div class="form-text">New speakers are added. Existing speakers (matched by name) only have blank fields filled in.</div>
+        </div>
+    }
 
     @if (statusMessage != null)
     {
@@ -147,6 +173,36 @@
                     <button type="button" class="btn-close" @onclick="CloseModal"></button>
                 </div>
                 <div class="modal-body">
+                    @if (editingSpeaker.Id == Guid.Empty)
+                    {
+                        <div class="card bg-light border-0 p-3 mb-3">
+                            <div class="fw-semibold mb-2"><i class="bi bi-cloud-arrow-down me-2 text-info"></i>Import from Sessionize</div>
+                            <div class="input-group">
+                                <input @bind="sessionizeEventId" class="form-control" placeholder="Sessionize API ID or Speakers endpoint URL" />
+                                <button type="button" class="btn btn-outline-info" @onclick="LoadSessionizeSpeakersAsync" disabled="@isLoadingSessionize">
+                                    @if (isLoadingSessionize)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    Load Speakers
+                                </button>
+                            </div>
+                            @if (sessionizeMessage != null)
+                            {
+                                <div class="small text-secondary mt-2">@sessionizeMessage</div>
+                            }
+                            @if (sessionizeSpeakers.Count > 0)
+                            {
+                                <select class="form-select mt-2" @onchange="OnSessionizeSpeakerSelected">
+                                    <option value="">Select a speaker to fill the form...</option>
+                                    @foreach (var s in sessionizeSpeakers)
+                                    {
+                                        <option value="@s.Id">@s.FullName</option>
+                                    }
+                                </select>
+                            }
+                        </div>
+                    }
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Full Name *</label>
@@ -234,10 +290,169 @@
             .ToListAsync();
     }
 
-    private void OpenCreateModal()
+    private string sessionizeEventId = string.Empty;
+    private string? sessionizeMessage;
+    private bool isLoadingSessionize;
+    private List<SessionizeSpeakerDto> sessionizeSpeakers = [];
+
+    private async Task OpenCreateModal()
     {
         editingSpeaker = new Speaker { Id = Guid.Empty };
+        sessionizeSpeakers = [];
+        sessionizeMessage = null;
         showModal = true;
+
+        if (string.IsNullOrWhiteSpace(sessionizeEventId))
+        {
+            try
+            {
+                sessionizeEventId = await SettingsService.GetSettingAsync("Integrations:Sessionize:DefaultEventId") ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Could not read the default Sessionize event ID.");
+            }
+        }
+    }
+
+    private bool showBulkImport;
+
+    private async Task ToggleBulkImportAsync()
+    {
+        showBulkImport = !showBulkImport;
+        if (showBulkImport && string.IsNullOrWhiteSpace(sessionizeEventId))
+        {
+            try
+            {
+                sessionizeEventId = await SettingsService.GetSettingAsync("Integrations:Sessionize:DefaultEventId") ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Could not read the default Sessionize event ID.");
+            }
+        }
+    }
+
+    private async Task ImportAllFromSessionizeAsync()
+    {
+        if (string.IsNullOrWhiteSpace(sessionizeEventId))
+        {
+            statusMessage = "Enter a Sessionize API ID first.";
+            isError = true;
+            return;
+        }
+
+        isLoadingSessionize = true;
+        try
+        {
+            var imported = await SessionizeService.GetSpeakersAsync(sessionizeEventId.Trim());
+            if (imported.Count == 0)
+            {
+                statusMessage = "No speakers were returned. Check the API ID and that the Speakers endpoint is enabled.";
+                isError = true;
+                return;
+            }
+
+            var added = 0;
+            var updated = 0;
+            await using (var dbContext = await DbContextFactory.CreateDbContextAsync())
+            {
+                var known = await dbContext.Speakers.ToListAsync();
+                foreach (var source in imported)
+                {
+                    var candidate = new Speaker();
+                    SessionizeSpeakerMapper.Apply(candidate, source);
+                    if (string.IsNullOrWhiteSpace(candidate.Name)) continue;
+
+                    var existing = known.FirstOrDefault(s => string.Equals(s.Name, candidate.Name, StringComparison.OrdinalIgnoreCase));
+                    if (existing == null)
+                    {
+                        candidate.Id = Guid.NewGuid();
+                        candidate.CreatedAtUtc = DateTime.UtcNow;
+                        candidate.UpdatedAtUtc = DateTime.UtcNow;
+                        await dbContext.Speakers.AddAsync(candidate);
+                        known.Add(candidate);
+                        added++;
+                        continue;
+                    }
+
+                    var changed = false;
+                    changed |= FillIfBlank(existing.Bio, candidate.Bio, v => existing.Bio = v);
+                    changed |= FillIfBlank(existing.PhotoBlobUrl, candidate.PhotoBlobUrl, v => existing.PhotoBlobUrl = v);
+                    changed |= FillIfBlank(existing.LinkedInUrl, candidate.LinkedInUrl, v => existing.LinkedInUrl = v);
+                    changed |= FillIfBlank(existing.TwitterHandle, candidate.TwitterHandle, v => existing.TwitterHandle = v);
+                    changed |= FillIfBlank(existing.BlueSkyHandle, candidate.BlueSkyHandle, v => existing.BlueSkyHandle = v);
+                    changed |= FillIfBlank(existing.GitHubHandle, candidate.GitHubHandle, v => existing.GitHubHandle = v);
+                    changed |= FillIfBlank(existing.WebsiteUrl, candidate.WebsiteUrl, v => existing.WebsiteUrl = v);
+                    if (changed)
+                    {
+                        existing.UpdatedAtUtc = DateTime.UtcNow;
+                        updated++;
+                    }
+                }
+
+                await dbContext.SaveChangesAsync();
+            }
+
+            await LoadSpeakersAsync();
+            statusMessage = $"Sessionize import complete: {added} added, {updated} updated.";
+            isError = false;
+            showBulkImport = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Bulk Sessionize speaker import failed.");
+            statusMessage = "Unable to import speakers from Sessionize. The error has been logged.";
+            isError = true;
+        }
+        finally
+        {
+            isLoadingSessionize = false;
+        }
+    }
+
+    private static bool FillIfBlank(string? current, string? incoming, Action<string> assign)
+    {
+        if (!string.IsNullOrWhiteSpace(current) || string.IsNullOrWhiteSpace(incoming)) return false;
+        assign(incoming);
+        return true;
+    }
+
+    private async Task LoadSessionizeSpeakersAsync()
+    {
+        if (string.IsNullOrWhiteSpace(sessionizeEventId))
+        {
+            sessionizeMessage = "Enter a Sessionize API ID first.";
+            return;
+        }
+
+        isLoadingSessionize = true;
+        sessionizeMessage = null;
+        try
+        {
+            sessionizeSpeakers = (await SessionizeService.GetSpeakersAsync(sessionizeEventId.Trim()))
+                .OrderBy(s => s.FullName)
+                .ToList();
+            sessionizeMessage = sessionizeSpeakers.Count == 0
+                ? "No speakers were returned. Check the API ID and that the Speakers endpoint is enabled."
+                : $"{sessionizeSpeakers.Count} speaker(s) found.";
+        }
+        finally
+        {
+            isLoadingSessionize = false;
+        }
+    }
+
+    private void OnSessionizeSpeakerSelected(ChangeEventArgs e)
+    {
+        var selected = sessionizeSpeakers.FirstOrDefault(s => s.Id == e.Value?.ToString());
+        if (selected == null) return;
+
+        SessionizeSpeakerMapper.Apply(editingSpeaker, selected);
+        var existing = allSpeakers?.FirstOrDefault(s => string.Equals(s.Name, editingSpeaker.Name, StringComparison.OrdinalIgnoreCase));
+        sessionizeMessage = existing != null
+            ? $"Imported {editingSpeaker.Name}. Note: a speaker with this name already exists in your directory."
+            : $"Imported {editingSpeaker.Name}. Review the details and save.";
     }
 
     private void OpenEditModal(Speaker speaker)
