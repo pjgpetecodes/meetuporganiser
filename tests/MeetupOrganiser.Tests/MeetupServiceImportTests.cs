@@ -113,6 +113,33 @@ public class MeetupServiceImportTests
         Assert.Contains("Not authorized", result.ErrorMessage);
     }
 
+    [Fact]
+    public void SessionizeSpeakerMapper_MapsProfileAndLinks()
+    {
+        var source = new MeetupOrganiser.Core.DTOs.SessionizeSpeakerDto(
+            "1", "Ada", "Lovelace", "Ada Lovelace", "Bio text", "Tag",
+            "https://sessionize.com/image/ada.jpg", [],
+            [
+                new("LinkedIn", "https://www.linkedin.com/in/ada", "LinkedIn"),
+                new("Twitter", "https://twitter.com/ada", "Twitter"),
+                new("Other", "https://bsky.app/profile/ada.bsky.social", "Other"),
+                new("Other", "https://github.com/ada", "Other"),
+                new("Blog", "https://ada.example/", "Blog")
+            ]);
+        var speaker = new MeetupOrganiser.Core.Entities.Speaker();
+
+        MeetupOrganiser.Core.DTOs.SessionizeSpeakerMapper.Apply(speaker, source);
+
+        Assert.Equal("Ada Lovelace", speaker.Name);
+        Assert.Equal("Bio text", speaker.Bio);
+        Assert.Equal("https://sessionize.com/image/ada.jpg", speaker.PhotoBlobUrl);
+        Assert.Equal("https://www.linkedin.com/in/ada", speaker.LinkedInUrl);
+        Assert.Equal("@ada", speaker.TwitterHandle);
+        Assert.Equal("ada.bsky.social", speaker.BlueSkyHandle);
+        Assert.Equal("ada", speaker.GitHubHandle);
+        Assert.Equal("https://ada.example/", speaker.WebsiteUrl);
+    }
+
     private static MeetupService CreateService(HttpMessageHandler handler)
     {
         var configuration = new ConfigurationBuilder()

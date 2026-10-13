@@ -8,8 +8,11 @@ public record SessionizeSpeakerDto(
     string? Bio,
     string? TagLine,
     string? ProfilePicture,
-    List<SessionizeSessionDto> Sessions
+    List<SessionizeSessionDto> Sessions,
+    List<SessionizeLinkDto>? Links = null
 );
+
+public record SessionizeLinkDto(string? Title, string? Url, string? LinkType);
 
 public record SessionizeSessionDto(
     string Id,
