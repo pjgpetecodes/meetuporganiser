@@ -1,9 +1,11 @@
 @page "/events"
 @attribute [Authorize]
 @using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject IMeetupService MeetupService
 @inject NavigationManager NavManager
 @inject ILogger<Events> Logger
 
@@ -15,9 +17,23 @@
             <h1 class="h3 fw-bold mb-1">Meetup Events</h1>
             <p class="text-secondary mb-0">Create, schedule, clone, and manage community meetup events.</p>
         </div>
-        <a href="/events/new" class="btn btn-primary">
-            <i class="bi bi-plus-circle me-1"></i> New Event
-        </a>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-danger" @onclick="SyncPastMeetupEventsAsync" disabled="@(!Guid.TryParse(selectedGroupId, out _) || isSyncingMeetup)">
+                @if (isSyncingMeetup)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                    <span>Syncing...</span>
+                }
+                else
+                {
+                    <i class="bi bi-cloud-download me-1"></i>
+                    <span>Sync Past Meetup Events</span>
+                }
+            </button>
+            <a href="/events/new" class="btn btn-primary">
+                <i class="bi bi-plus-circle me-1"></i> New Event
+            </a>
+        </div>
     </div>
 
     @if (statusMessage != null)
@@ -173,6 +189,7 @@
     private string selectedStatus = string.Empty;
     private string? statusMessage;
     private bool isError;
+    private bool isSyncingMeetup;
 
     private IEnumerable<MeetupEvent>? filteredEvents => allEvents?
         .Where(e => (string.IsNullOrWhiteSpace(searchQuery) ||
@@ -279,6 +296,132 @@
             Logger.LogError(ex, "Failed to delete event {EventId}.", evt.Id);
             statusMessage = "Unable to delete this event. The error has been logged.";
             isError = true;
+        }
+    }
+
+    private async Task SyncPastMeetupEventsAsync()
+    {
+        if (!Guid.TryParse(selectedGroupId, out var groupId))
+        {
+            statusMessage = "Select a Meetup group before syncing its past events.";
+            isError = true;
+            return;
+        }
+
+        var group = groups?.FirstOrDefault(item => item.Id == groupId);
+        if (group == null)
+        {
+            statusMessage = "The selected Meetup group could not be found.";
+            isError = true;
+            return;
+        }
+
+        try
+        {
+            isSyncingMeetup = true;
+            statusMessage = null;
+            var import = await MeetupService.ImportPastEventsAsync(group.MeetupUrlName ?? "dotnetnotts");
+            if (!import.Success)
+            {
+                statusMessage = import.ErrorMessage ?? "Meetup could not return past events.";
+                isError = true;
+                return;
+            }
+
+            var importedEventCount = 0;
+            var importedSpeakerCount = 0;
+            var skippedEventCount = 0;
+            await using (var dbContext = await DbContextFactory.CreateDbContextAsync())
+            {
+                var externalEventIds = import.Events.Select(item => item.MeetupEventId).ToList();
+                var knownEventIds = await dbContext.MeetupEvents
+                    .Where(item => item.MeetupEventId != null && externalEventIds.Contains(item.MeetupEventId))
+                    .Select(item => item.MeetupEventId!)
+                    .ToListAsync();
+                var knownEventIdSet = knownEventIds.ToHashSet(StringComparer.Ordinal);
+                var knownSpeakers = await dbContext.Speakers.ToListAsync();
+
+                foreach (var importedEvent in import.Events)
+                {
+                    if (!knownEventIdSet.Add(importedEvent.MeetupEventId))
+                    {
+                        skippedEventCount++;
+                        continue;
+                    }
+
+                    var meetupEvent = new MeetupEvent
+                    {
+                        Id = Guid.NewGuid(),
+                        MeetupGroupId = groupId,
+                        Title = importedEvent.Title,
+                        Description = importedEvent.Description,
+                        EventDateTimeUtc = importedEvent.EventDateTimeUtc,
+                        DurationMinutes = importedEvent.DurationMinutes,
+                        LocationOrPlatform = importedEvent.Location,
+                        MeetupEventId = importedEvent.MeetupEventId,
+                        MeetupEventUrl = importedEvent.EventUrl,
+                        Status = EventStatus.Completed,
+                        CreatedAtUtc = DateTime.UtcNow,
+                        UpdatedAtUtc = DateTime.UtcNow
+                    };
+
+                    for (var index = 0; index < importedEvent.Speakers.Count; index++)
+                    {
+                        var importedSpeaker = importedEvent.Speakers[index];
+                        var speaker = knownSpeakers.FirstOrDefault(existing =>
+                            string.Equals(existing.Name, importedSpeaker.Name, StringComparison.OrdinalIgnoreCase));
+                        if (speaker == null)
+                        {
+                            speaker = new Speaker
+                            {
+                                Id = Guid.NewGuid(),
+                                Name = importedSpeaker.Name,
+                                Bio = importedSpeaker.Bio,
+                                CreatedAtUtc = DateTime.UtcNow,
+                                UpdatedAtUtc = DateTime.UtcNow
+                            };
+                            await dbContext.Speakers.AddAsync(speaker);
+                            knownSpeakers.Add(speaker);
+                            importedSpeakerCount++;
+                        }
+                        else if (string.IsNullOrWhiteSpace(speaker.Bio) && !string.IsNullOrWhiteSpace(importedSpeaker.Bio))
+                        {
+                            speaker.Bio = importedSpeaker.Bio;
+                            speaker.UpdatedAtUtc = DateTime.UtcNow;
+                        }
+
+                        meetupEvent.Sessions.Add(new EventSpeakerSession
+                        {
+                            Id = Guid.NewGuid(),
+                            MeetupEventId = meetupEvent.Id,
+                            SpeakerId = speaker.Id,
+                            TalkTitle = importedSpeaker.TalkTitle ?? importedEvent.Title,
+                            TalkDescription = null,
+                            OrderIndex = index + 1
+                        });
+                    }
+
+                    await dbContext.MeetupEvents.AddAsync(meetupEvent);
+                    importedEventCount++;
+                }
+
+                await dbContext.SaveChangesAsync();
+            }
+
+            await LoadEventsAsync();
+            statusMessage = $"Synced {importedEventCount} past events and added {importedSpeakerCount} speaker profiles. "
+                + $"{skippedEventCount} events were already in the app.";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to sync past Meetup events for group {GroupId}.", groupId);
+            statusMessage = "Unable to sync past Meetup events. The error has been logged.";
+            isError = true;
+        }
+        finally
+        {
+            isSyncingMeetup = false;
         }
     }
 

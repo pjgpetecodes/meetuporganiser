@@ -129,6 +129,12 @@ public class SettingsService : ISettingsService
             ZoomClientSecret = await GetSettingAsync("Integrations:Zoom:ClientSecret", cancellationToken),
             MeetupUrlname = await GetSettingAsync("Integrations:Meetup:Urlname", cancellationToken) ?? "dotnetnotts",
             MeetupApiKey = await GetSettingAsync("Integrations:Meetup:ApiKey", cancellationToken),
+            MeetupClientId = await GetSettingAsync("Integrations:Meetup:ClientId", cancellationToken),
+            MeetupClientSecret = await GetSettingAsync("Integrations:Meetup:ClientSecret", cancellationToken),
+            MeetupRedirectUri = await GetSettingAsync("Integrations:Meetup:RedirectUri", cancellationToken)
+                ?? "http://localhost:5107/integrations/meetup/callback",
+            MeetupOAuthConnected = !string.IsNullOrWhiteSpace(
+                await GetSettingAsync("Integrations:Meetup:OAuthTokenSet", cancellationToken)),
             SessionizeDefaultEventId = await GetSettingAsync("Integrations:Sessionize:DefaultEventId", cancellationToken),
             TwitterApiKey = await GetSettingAsync("Integrations:Twitter:ApiKey", cancellationToken),
             TwitterApiSecret = await GetSettingAsync("Integrations:Twitter:ApiSecret", cancellationToken),
@@ -152,6 +158,9 @@ public class SettingsService : ISettingsService
             ["Integrations:Zoom:ClientSecret"] = model.ZoomClientSecret,
             ["Integrations:Meetup:Urlname"] = model.MeetupUrlname,
             ["Integrations:Meetup:ApiKey"] = model.MeetupApiKey,
+            ["Integrations:Meetup:ClientId"] = model.MeetupClientId,
+            ["Integrations:Meetup:ClientSecret"] = model.MeetupClientSecret,
+            ["Integrations:Meetup:RedirectUri"] = model.MeetupRedirectUri,
             ["Integrations:Sessionize:DefaultEventId"] = model.SessionizeDefaultEventId,
             ["Integrations:Twitter:ApiKey"] = model.TwitterApiKey,
             ["Integrations:Twitter:ApiSecret"] = model.TwitterApiSecret,
@@ -182,6 +191,10 @@ public class SettingsService : ISettingsService
             // Meetup
             new AppSetting { Key = "Integrations:Meetup:Urlname", Category = "Meetup", Description = "Meetup Group URL name (e.g. dotnetnotts)", IsSecret = false },
             new AppSetting { Key = "Integrations:Meetup:ApiKey", Category = "Meetup", Description = "Meetup API Key or OAuth Token", IsSecret = true },
+            new AppSetting { Key = "Integrations:Meetup:ClientId", Category = "Meetup", Description = "Meetup OAuth client ID", IsSecret = false },
+            new AppSetting { Key = "Integrations:Meetup:ClientSecret", Category = "Meetup", Description = "Meetup OAuth client secret", IsSecret = true },
+            new AppSetting { Key = "Integrations:Meetup:RedirectUri", Category = "Meetup", Description = "Meetup OAuth callback URL", IsSecret = false },
+            new AppSetting { Key = "Integrations:Meetup:OAuthTokenSet", Category = "Meetup", Description = "Protected Meetup OAuth access and refresh tokens", IsSecret = true },
 
             // Sessionize
             new AppSetting { Key = "Integrations:Sessionize:DefaultEventId", Category = "Sessionize", Description = "Default Sessionize Event ID or Endpoint", IsSecret = false },

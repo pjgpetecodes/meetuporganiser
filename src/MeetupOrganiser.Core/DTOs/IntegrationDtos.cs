@@ -35,6 +35,25 @@ public record MeetupCreationResult(
     string? ErrorMessage
 );
 
+public record MeetupEventImportSpeaker(string Name, string? Bio, string? TalkTitle = null);
+
+public record MeetupEventImportDto(
+    string MeetupEventId,
+    string Title,
+    string? Description,
+    DateTime EventDateTimeUtc,
+    int DurationMinutes,
+    string? EventUrl,
+    string? Location,
+    List<MeetupEventImportSpeaker> Speakers
+);
+
+public record MeetupEventImportResult(
+    bool Success,
+    List<MeetupEventImportDto> Events,
+    string? ErrorMessage
+);
+
 public record SocialPostResult(
     string Platform,
     bool Success,

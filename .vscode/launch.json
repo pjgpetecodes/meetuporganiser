@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": ".NET Notts Web (Development)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-web",
+      "program": "${workspaceFolder}/src/MeetupOrganiser.Web/bin/Debug/net10.0/MeetupOrganiser.Web.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/MeetupOrganiser.Web",
+      "stopAtEntry": false,
+      "console": "internalConsole",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:5107"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+        "uriFormat": "%s"
+      }
+    }
+  ]
+}
