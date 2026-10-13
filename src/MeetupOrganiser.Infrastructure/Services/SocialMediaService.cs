@@ -5,6 +5,7 @@ using System.Text.Json;
 using MeetupOrganiser.Core.DTOs;
 using MeetupOrganiser.Core.Entities;
 using MeetupOrganiser.Core.Interfaces;
+using MeetupOrganiser.Core.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -147,34 +148,8 @@ public class SocialMediaService : ISocialMediaService
         return Task.FromResult(new SocialPostResult("LinkedIn", true, null, null, intentUrl, text, null));
     }
 
-    public string GeneratePlatformPostText(MeetupEvent meetupEvent, string platform)
-    {
-        var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
-        var speakerNames = string.Join(" & ", sessions.Select(s => s.Speaker?.Name ?? "Speaker"));
-        var talkTitles = string.Join(" & ", sessions.Select(s => $"\"{s.TalkTitle}\""));
-        var groupName = meetupEvent.MeetupGroup?.Name ?? ".NET Notts";
-        var dateStr = meetupEvent.EventDateTimeUtc.ToString("dddd, MMMM d, yyyy");
-        var timeStr = meetupEvent.EventDateTimeUtc.ToString("HH:mm") + " UTC";
-        var url = meetupEvent.ShortBitlyUrl ?? meetupEvent.MeetupEventUrl ?? "https://meetup.com";
-        var hashtags = meetupEvent.MeetupGroup?.DefaultHashtags ?? "#dotnet #meetup";
-
-        return platform.ToLowerInvariant() switch
-        {
-            "twitter" or "x" =>
-                $"Excited for the next {groupName} meetup on {dateStr} at {timeStr}!\n\n🎙️ {speakerNames}\n💡 {talkTitles}\n\nRSVP: {url}\n\n{hashtags}",
-
-            "bluesky" =>
-                $"Next {groupName} meetup is coming up!\n\n📅 {dateStr} at {timeStr}\n🎙️ {speakerNames}\n💡 {talkTitles}\n\nRSVP: {url}\n\n{hashtags}",
-
-            "linkedin" =>
-                $"We are pleased to announce our upcoming {groupName} meetup scheduled for {dateStr} at {timeStr}.\n\nFeatured Session(s):\n" +
-                string.Join("\n", sessions.Select(s => $"• {s.Speaker?.Name} presenting {s.TalkTitle}")) +
-                $"\n\nSecure your spot today:\n{url}\n\n{hashtags}",
-
-            _ =>
-                $"{groupName} - {meetupEvent.Title}\n{dateStr} at {timeStr}\nRSVP: {url}\n{hashtags}"
-        };
-    }
+    public string GeneratePlatformPostText(MeetupEvent meetupEvent, string platform) =>
+        SocialPostFormatter.Render(meetupEvent, platform, meetupEvent.MeetupGroup?.SocialPostTemplate);
 
     public string GetPlatformWebIntentUrl(MeetupEvent meetupEvent, string platform)
     {

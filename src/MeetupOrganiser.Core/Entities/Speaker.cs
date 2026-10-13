@@ -39,6 +39,9 @@ public class Speaker
     public string? GitHubHandle { get; set; }
 
     [MaxLength(500)]
+    public string? FacebookUrl { get; set; }
+
+    [MaxLength(500)]
     public string? WebsiteUrl { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;

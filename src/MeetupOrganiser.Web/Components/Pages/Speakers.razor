@@ -131,17 +131,35 @@
                                     <i class="bi bi-linkedin me-1"></i> LinkedIn
                                 </a>
                             }
-                            @if (!string.IsNullOrWhiteSpace(sp.BlueSkyHandle))
+                            @if (SocialLinks.BlueSkyUrl(sp.BlueSkyHandle) is { } blueSkyUrl)
                             {
-                                <span class="badge bg-info-subtle text-info text-decoration-none border border-info-subtle">
-                                    <i class="bi bi-cloud me-1"></i> @sp.BlueSkyHandle
-                                </span>
+                                <a href="@blueSkyUrl" target="_blank" rel="noopener noreferrer" class="badge bg-info-subtle text-info text-decoration-none border border-info-subtle">
+                                    <i class="bi bi-cloud me-1"></i> @SocialLinks.BlueSkyHandle(sp.BlueSkyHandle)
+                                </a>
                             }
-                            @if (!string.IsNullOrWhiteSpace(sp.TwitterHandle))
+                            @if (SocialLinks.XUrl(sp.TwitterHandle) is { } xUrl)
                             {
-                                <span class="badge bg-dark-subtle text-dark text-decoration-none border border-dark-subtle">
-                                    <i class="bi bi-twitter-x me-1"></i> @sp.TwitterHandle
-                                </span>
+                                <a href="@xUrl" target="_blank" rel="noopener noreferrer" class="badge bg-dark-subtle text-dark text-decoration-none border border-dark-subtle">
+                                    <i class="bi bi-twitter-x me-1"></i> @SocialLinks.XHandle(sp.TwitterHandle)
+                                </a>
+                            }
+                            @if (SocialLinks.WebUrl(sp.FacebookUrl) is { } facebookUrl)
+                            {
+                                <a href="@facebookUrl" target="_blank" rel="noopener noreferrer" class="badge bg-primary-subtle text-primary text-decoration-none border border-primary-subtle">
+                                    <i class="bi bi-facebook me-1"></i> Facebook
+                                </a>
+                            }
+                            @if (SocialLinks.WebUrl(sp.WebsiteUrl) is { } websiteUrl)
+                            {
+                                <a href="@websiteUrl" target="_blank" rel="noopener noreferrer" class="badge bg-success-subtle text-success text-decoration-none border border-success-subtle">
+                                    <i class="bi bi-globe me-1"></i> Website
+                                </a>
+                            }
+                            @if (SocialLinks.GitHubUrl(sp.GitHubHandle) is { } githubUrl)
+                            {
+                                <a href="@githubUrl" target="_blank" rel="noopener noreferrer" class="badge bg-secondary-subtle text-secondary text-decoration-none border border-secondary-subtle">
+                                    <i class="bi bi-github me-1"></i> @SocialLinks.GitHubLabel(sp.GitHubHandle)
+                                </a>
                             }
                         </div>
 
@@ -264,7 +282,15 @@
                             <input @bind="editingSpeaker.TwitterHandle" class="form-control" placeholder="@@username" />
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">GitHub / Website</label>
+                            <label class="form-label fw-semibold">Facebook URL</label>
+                            <input @bind="editingSpeaker.FacebookUrl" class="form-control" placeholder="https://facebook.com/..." />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">GitHub / Repo</label>
+                            <input @bind="editingSpeaker.GitHubHandle" class="form-control" placeholder="username or https://github.com/user/repo" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Website</label>
                             <input @bind="editingSpeaker.WebsiteUrl" class="form-control" placeholder="https://..." />
                         </div>
                     </div>
@@ -279,20 +305,6 @@
 }
 
 @code {
-    private static string BlueSkyUrl(string? handle)
-    {
-        var h = (handle ?? "").Trim();
-        if (h.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return h;
-        return $"https://bsky.app/profile/{Uri.EscapeDataString(h.TrimStart('@'))}";
-    }
-
-    private static string XUrl(string? handle)
-    {
-        var h = (handle ?? "").Trim();
-        if (h.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return h;
-        return $"https://x.com/{Uri.EscapeDataString(h.TrimStart('@'))}";
-    }
-
     private List<Speaker>? allSpeakers;
     private string searchQuery = string.Empty;
     private bool showModal = false;
@@ -435,6 +447,7 @@
                     changed |= FillIfBlank(existing.BlueSkyHandle, candidate.BlueSkyHandle, v => existing.BlueSkyHandle = v);
                     changed |= FillIfBlank(existing.GitHubHandle, candidate.GitHubHandle, v => existing.GitHubHandle = v);
                     changed |= FillIfBlank(existing.WebsiteUrl, candidate.WebsiteUrl, v => existing.WebsiteUrl = v);
+                    changed |= FillIfBlank(existing.FacebookUrl, candidate.FacebookUrl, v => existing.FacebookUrl = v);
                     if (changed)
                     {
                         existing.UpdatedAtUtc = DateTime.UtcNow;
@@ -521,6 +534,7 @@
             TwitterHandle = speaker.TwitterHandle,
             BlueSkyHandle = speaker.BlueSkyHandle,
             GitHubHandle = speaker.GitHubHandle,
+            FacebookUrl = speaker.FacebookUrl,
             WebsiteUrl = speaker.WebsiteUrl
         };
         showModal = true;
@@ -598,6 +612,7 @@
                     existing.TwitterHandle = editingSpeaker.TwitterHandle;
                     existing.BlueSkyHandle = editingSpeaker.BlueSkyHandle;
                     existing.GitHubHandle = editingSpeaker.GitHubHandle;
+                    existing.FacebookUrl = editingSpeaker.FacebookUrl;
                     existing.WebsiteUrl = editingSpeaker.WebsiteUrl;
                     existing.UpdatedAtUtc = DateTime.UtcNow;
                 }

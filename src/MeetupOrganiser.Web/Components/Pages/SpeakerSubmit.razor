@@ -162,7 +162,11 @@
                         <InputText @bind-Value="speaker.TwitterHandle" class="form-control" placeholder="@@username" />
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small fw-semibold">GitHub or Website</label>
+                        <label class="form-label small fw-semibold">Facebook URL</label>
+                        <InputText @bind-Value="speaker.FacebookUrl" class="form-control" placeholder="https://facebook.com/..." />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Website</label>
                         <InputText @bind-Value="speaker.WebsiteUrl" class="form-control" placeholder="https://..." />
                     </div>
                 </div>

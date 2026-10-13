@@ -47,12 +47,21 @@
                     <div class="card h-100 border-0 shadow-sm p-4">
                         <div class="d-flex justify-content-between align-items-start mb-3">
                             <div class="d-flex align-items-center gap-3">
-                                <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold shadow-sm"
-                                     style="width: 50px; height: 50px; background-color: @g.PrimaryColorHex;">
-                                    @g.Name[..Math.Min(2, g.Name.Length)]
-                                </div>
+                                @if (!string.IsNullOrWhiteSpace(g.LogoBlobUrl))
+                                {
+                                    <img src="@g.LogoBlobUrl" alt="@g.Name logo" class="rounded-circle shadow-sm" style="width: 50px; height: 50px; object-fit: cover;" />
+                                }
+                                else
+                                {
+                                    <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold shadow-sm"
+                                         style="width: 50px; height: 50px; background-color: @g.PrimaryColorHex;">
+                                        @g.Name[..Math.Min(2, g.Name.Length)]
+                                    </div>
+                                }
                                 <div>
-                                    <h5 class="fw-bold mb-0">@g.Name</h5>
+                                    <h5 class="fw-bold mb-0">
+                                        <a href="#" class="text-decoration-none text-reset" title="Edit group" @onclick="() => OpenEditModal(g)" @onclick:preventDefault>@g.Name</a>
+                                    </h5>
                                     @if (!string.IsNullOrWhiteSpace(g.WebsiteUrl))
                                     {
                                         <a href="@g.WebsiteUrl" target="_blank" class="small text-decoration-none">
@@ -156,9 +165,42 @@
                             <small class="text-secondary">Used in meetup.com/{urlname}/events</small>
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label fw-semibold">Short URL Stem (Bitly)</label>
+                            <input @bind="editingGroup.ShortUrlStem" class="form-control" placeholder="https://bit.ly/dotnetnotts" />
+                            <small class="text-secondary">Month and year are added per event, e.g. https://bit.ly/dotnetnottsoctober2026</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Social Post Template</label>
+                            <textarea @bind="editingGroup.SocialPostTemplate" class="form-control font-monospace small" rows="8" placeholder="Leave blank to use the built-in template"></textarea>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                @foreach (var (name, description) in MeetupOrganiser.Core.Services.SocialPostFormatter.Placeholders)
+                                {
+                                    <code title="@description" class="small">{{@name}}</code>
+                                }
+                            </div>
+                            <small class="text-secondary">Used for X, Bluesky and LinkedIn posts. Hover a placeholder for what it does.</small>
+                            <div><button type="button" class="btn btn-sm btn-link p-0" @onclick="() => editingGroup.SocialPostTemplate = MeetupOrganiser.Core.Services.SocialPostFormatter.Default">Reset to default</button></div>
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label fw-semibold">Meetup API Key Override (Optional)</label>
                             <input type="password" @bind="editingGroup.MeetupApiKeyOverride" class="form-control" placeholder="Leave blank to use global API key" />
                             <small class="text-secondary">Only needed if this group is under a different Meetup account.</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Group Logo (Optional)</label>
+                            <div class="d-flex align-items-center gap-3">
+                                @if (!string.IsNullOrWhiteSpace(editingGroup.LogoBlobUrl))
+                                {
+                                    <img src="@editingGroup.LogoBlobUrl" alt="Logo preview" class="rounded border" style="width: 64px; height: 64px; object-fit: cover;" />
+                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => editingGroup.LogoBlobUrl = null">Remove</button>
+                                }
+                                <InputFile OnChange="HandleLogoUploadAsync" class="form-control" accept=".png,.jpg,.jpeg,.webp" />
+                            </div>
+                            <small class="text-secondary">PNG, JPG or WebP, up to 2 MB. Click Save Group to keep it.</small>
+                            @if (!string.IsNullOrEmpty(logoError))
+                            {
+                                <div class="text-danger small">@logoError</div>
+                            }
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Custom PPTX Template (Optional)</label>
@@ -221,6 +263,8 @@
             DefaultLocation = group.DefaultLocation,
             DefaultHashtags = group.DefaultHashtags,
             MeetupUrlName = group.MeetupUrlName,
+            ShortUrlStem = group.ShortUrlStem,
+            SocialPostTemplate = group.SocialPostTemplate,
             MeetupApiKeyOverride = group.MeetupApiKeyOverride,
             PptxTemplateBlobUrl = group.PptxTemplateBlobUrl,
             LogoBlobUrl = group.LogoBlobUrl
@@ -231,6 +275,44 @@
     private void CloseModal()
     {
         showModal = false;
+    }
+
+    private string? logoError;
+
+    private static readonly Dictionary<string, string> LogoTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".png"] = "image/png",
+        [".jpg"] = "image/jpeg",
+        [".jpeg"] = "image/jpeg",
+        [".webp"] = "image/webp"
+    };
+
+    private async Task HandleLogoUploadAsync(InputFileChangeEventArgs e)
+    {
+        logoError = null;
+        var file = e.File;
+        if (file == null) return;
+
+        if (!LogoTypes.TryGetValue(Path.GetExtension(file.Name), out var contentType))
+        {
+            logoError = "Please choose a PNG, JPG or WebP image.";
+            return;
+        }
+
+        try
+        {
+            using var stream = file.OpenReadStream(2 * 1024 * 1024);
+            editingGroup.LogoBlobUrl = await BlobStorageService.UploadAsync("logos", file.Name, stream, contentType);
+        }
+        catch (IOException)
+        {
+            logoError = "That file is larger than 2 MB.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to upload group logo.");
+            logoError = "Logo upload failed. Please try again.";
+        }
     }
 
     private async Task HandleTemplateUploadAsync(InputFileChangeEventArgs e)
@@ -274,6 +356,9 @@
                 existing.DefaultLocation = editingGroup.DefaultLocation;
                 existing.DefaultHashtags = editingGroup.DefaultHashtags;
                 existing.MeetupUrlName = editingGroup.MeetupUrlName;
+                existing.ShortUrlStem = editingGroup.ShortUrlStem;
+                existing.SocialPostTemplate = string.IsNullOrWhiteSpace(editingGroup.SocialPostTemplate) ? null : editingGroup.SocialPostTemplate;
+                existing.LogoBlobUrl = editingGroup.LogoBlobUrl;
                 existing.MeetupApiKeyOverride = editingGroup.MeetupApiKeyOverride;
                 existing.PptxTemplateBlobUrl = editingGroup.PptxTemplateBlobUrl;
                 existing.UpdatedAtUtc = DateTime.UtcNow;

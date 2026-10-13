@@ -651,6 +651,11 @@ public class MeetupService : IMeetupService
             yield return ("GitHub", githubUrl);
         }
 
+        if (!string.IsNullOrWhiteSpace(speaker.FacebookUrl))
+        {
+            yield return ("Facebook", speaker.FacebookUrl);
+        }
+
         if (!string.IsNullOrWhiteSpace(speaker.WebsiteUrl))
         {
             yield return ("Personal Site", speaker.WebsiteUrl);

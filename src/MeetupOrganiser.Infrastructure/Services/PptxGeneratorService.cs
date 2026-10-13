@@ -11,10 +11,41 @@ namespace MeetupOrganiser.Infrastructure.Services;
 public class PptxGeneratorService : IPptxGeneratorService
 {
     private readonly ILogger<PptxGeneratorService> _logger;
+    private readonly IBlobStorageService? _blobStorage;
 
     public PptxGeneratorService(ILogger<PptxGeneratorService> logger)
+        : this(logger, null)
+    {
+    }
+
+    public PptxGeneratorService(ILogger<PptxGeneratorService> logger, IBlobStorageService? blobStorage)
     {
         _logger = logger;
+        _blobStorage = blobStorage;
+    }
+
+    // The group's uploaded template wins; any failure falls back to the built-in decks.
+    private async Task<byte[]?> TryLoadGroupTemplateAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken)
+    {
+        var url = meetupEvent.MeetupGroup?.PptxTemplateBlobUrl;
+        if (_blobStorage == null || string.IsNullOrWhiteSpace(url)) return null;
+
+        try
+        {
+            var segments = url.Split('?')[0].TrimEnd('/').Split('/');
+            if (segments.Length < 2) return null;
+
+            await using var stream = await _blobStorage.DownloadAsync(
+                Uri.UnescapeDataString(segments[^2]), Uri.UnescapeDataString(segments[^1]), cancellationToken);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, cancellationToken);
+            return buffer.Length > 0 ? buffer.ToArray() : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not load the group's PPTX template from {Url}; using the built-in deck.", url);
+            return null;
+        }
     }
 
     public async Task<byte[]> GenerateEventDeckAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default)
@@ -29,17 +60,18 @@ public class PptxGeneratorService : IPptxGeneratorService
             templatePath = Path.Combine(AppContext.BaseDirectory, "pptx", templateFileName);
             if (!File.Exists(templatePath))
             {
-                var candidate = Directory.GetFiles(Directory.GetCurrentDirectory(), templateFileName, SearchOption.AllDirectories).FirstOrDefault();
+                var candidate = FindUpwards(templateFileName);
                 if (candidate != null) templatePath = candidate;
             }
         }
 
-        byte[] templateBytes;
-        if (File.Exists(templatePath))
+        var templateBytes = await TryLoadGroupTemplateAsync(meetupEvent, cancellationToken);
+        if (templateBytes == null && File.Exists(templatePath))
         {
             templateBytes = await File.ReadAllBytesAsync(templatePath, cancellationToken);
         }
-        else
+
+        if (templateBytes == null)
         {
             _logger.LogWarning("PPTX template file {FileName} not found at {Path}. Creating empty deck.", templateFileName, templatePath);
             return CreateEmptyDeck(meetupEvent);
@@ -135,6 +167,20 @@ public class PptxGeneratorService : IPptxGeneratorService
         }
 
         return memoryStream.ToArray();
+    }
+
+    private static string? FindUpwards(string relativeFile)
+    {
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+        {
+            for (var dir = new DirectoryInfo(start); dir != null; dir = dir.Parent)
+            {
+                var candidate = Path.Combine(dir.FullName, "pptx", relativeFile);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+
+        return null;
     }
 
     private async Task TryReplaceSpeakerPhotosAsync(PresentationPart presentationPart, Speaker? speaker1, Speaker? speaker2)

@@ -224,7 +224,7 @@
     private string CurrentLinks()
     {
         if (Current == null) return "-";
-        var parts = new[] { Current.LinkedInUrl, Current.TwitterHandle, Current.BlueSkyHandle, Current.GitHubHandle, Current.WebsiteUrl }
+        var parts = new[] { Current.LinkedInUrl, Current.TwitterHandle, Current.BlueSkyHandle, Current.GitHubHandle, Current.FacebookUrl, Current.WebsiteUrl }
             .Where(v => !string.IsNullOrWhiteSpace(v));
         var text = string.Join(", ", parts);
         return text.Length == 0 ? "-" : text;

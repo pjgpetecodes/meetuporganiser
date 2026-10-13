@@ -67,7 +67,7 @@ public class SocialMediaServiceTests
         var text = service.GeneratePlatformPostText(evt, "Twitter");
 
         // Assert
-        Assert.Contains("Pete Gallagher", text);
+        Assert.Contains("@pete_codes", text);
         Assert.Contains("Zero to Hero", text);
         Assert.Contains("https://bit.ly/dotnetnotts-nov26", text);
     }
@@ -86,7 +86,7 @@ public class SocialMediaServiceTests
 
         // Assert
         Assert.StartsWith("https://twitter.com/intent/tweet?text=", intentUrl);
-        Assert.Contains("Pete", intentUrl);
+        Assert.Contains("pete_codes", intentUrl);
     }
 
     [Fact]

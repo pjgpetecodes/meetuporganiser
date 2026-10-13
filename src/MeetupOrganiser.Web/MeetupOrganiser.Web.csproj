@@ -15,6 +15,11 @@
     <PackageReference Include="Microsoft.Identity.Web.UI" Version="4.16.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Deck templates live at the repo root; ship them so the app finds them wherever it runs -->
+    <Content Include="..\..\pptx\*.pptx" Link="pptx\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
