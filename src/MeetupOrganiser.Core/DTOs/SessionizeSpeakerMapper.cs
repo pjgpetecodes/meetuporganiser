@@ -33,6 +33,8 @@ public static class SessionizeSpeakerMapper
         {
             ApplyLink(speaker, link);
         }
+
+        TidySocialFields(speaker);
     }
 
     public static void ApplyProfile(Speaker speaker, SessionizeProfile profile, SessionizeProfileFields fields)
@@ -60,46 +62,82 @@ public static class SessionizeSpeakerMapper
             {
                 ApplyLink(speaker, link);
             }
+
+            TidySocialFields(speaker);
         }
     }
 
     private static void ApplyLink(Speaker speaker, SessionizeLinkDto link)
     {
+        if (string.Equals(link.LinkType, "Sessionize", StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(link.LinkType, "Sessionize", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
+            return;
+        }
 
-            if (!Uri.TryCreate(link.Url?.Trim(), UriKind.Absolute, out var uri)
-                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-            {
-                return;
-            }
+        if (!Uri.TryCreate(link.Url?.Trim(), UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return;
+        }
 
-            var host = uri.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? uri.Host[4..] : uri.Host;
-            var handle = uri.AbsolutePath.Trim('/').Split('/')[^1];
+        var url = uri.AbsoluteUri;
+        var handle = uri.AbsolutePath.Trim('/').Split('/')[^1];
+        var type = link.LinkType?.Trim() ?? string.Empty;
 
-            if (host.EndsWith("linkedin.com", StringComparison.OrdinalIgnoreCase))
-            {
-                speaker.LinkedInUrl = Truncate(uri.AbsoluteUri, 500);
-            }
-            else if (host is "twitter.com" or "x.com")
-            {
-                if (handle.Length > 0) speaker.TwitterHandle = Truncate("@" + handle, 100);
-            }
-            else if (host == "bsky.app")
-            {
-                if (handle.Length > 0) speaker.BlueSkyHandle = Truncate(handle, 100);
-            }
-            else if (host == "github.com")
-            {
-                if (handle.Length > 0) speaker.GitHubHandle = Truncate(handle, 100);
-            }
-            else if (string.IsNullOrWhiteSpace(speaker.WebsiteUrl))
-            {
-                speaker.WebsiteUrl = Truncate(uri.AbsoluteUri, 500);
-            }
+        if (SocialLinks.IsHost(url, "linkedin.com") || type.Equals("LinkedIn", StringComparison.OrdinalIgnoreCase))
+        {
+            speaker.LinkedInUrl = Truncate(url, 500);
+        }
+        else if (SocialLinks.IsHost(url, "twitter.com", "x.com") || type.Equals("Twitter", StringComparison.OrdinalIgnoreCase))
+        {
+            if (handle.Length > 0) speaker.TwitterHandle = Truncate("@" + handle.TrimStart('@'), 100);
+        }
+        else if (SocialLinks.IsHost(url, "bsky.app") || type.Equals("Bluesky", StringComparison.OrdinalIgnoreCase))
+        {
+            if (handle.Length > 0) speaker.BlueSkyHandle = Truncate(handle, 100);
+        }
+        else if (SocialLinks.IsHost(url, "facebook.com", "fb.com") || type.Equals("Facebook", StringComparison.OrdinalIgnoreCase))
+        {
+            speaker.FacebookUrl = Truncate(url, 500);
+        }
+        else if (SocialLinks.IsHost(url, "github.com"))
+        {
+            // Keep the full URL for repos (github.com/user/repo); plain profiles stay as a handle.
+            speaker.GitHubHandle = uri.AbsolutePath.Trim('/').Contains('/')
+                ? Truncate(url.TrimEnd('/'), 100)
+                : handle.Length > 0 ? Truncate(handle, 100) : speaker.GitHubHandle;
+        }
+        else if (IsWebsiteType(type) && !SocialLinks.IsHost(url, "instagram.com", "youtube.com", "youtu.be", "tiktok.com"))
+        {
+            // Blog / company / other sites; never overwrite a website that is already set.
+            if (string.IsNullOrWhiteSpace(speaker.WebsiteUrl)) speaker.WebsiteUrl = Truncate(url, 500);
+        }
+    }
+
+    private static bool IsWebsiteType(string type) =>
+        type.Length == 0
+        || type.Equals("Blog", StringComparison.OrdinalIgnoreCase)
+        || type.Equals("Company_Website", StringComparison.OrdinalIgnoreCase)
+        || type.Equals("Other", StringComparison.OrdinalIgnoreCase)
+        || type.Equals("Website", StringComparison.OrdinalIgnoreCase);
+
+    // Earlier imports filed Facebook under Website and stored Bluesky/X links as handles; correct those.
+    public static void TidySocialFields(Speaker speaker)
+    {
+        if (SocialLinks.IsHost(speaker.WebsiteUrl, "facebook.com", "fb.com"))
+        {
+            if (string.IsNullOrWhiteSpace(speaker.FacebookUrl)) speaker.FacebookUrl = Truncate(speaker.WebsiteUrl, 500);
+            speaker.WebsiteUrl = null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(speaker.BlueSkyHandle))
+        {
+            speaker.BlueSkyHandle = Truncate(SocialLinks.BlueSkyHandle(speaker.BlueSkyHandle) ?? speaker.BlueSkyHandle, 100);
+        }
+
+        if (!string.IsNullOrWhiteSpace(speaker.TwitterHandle))
+        {
+            speaker.TwitterHandle = Truncate(SocialLinks.XHandle(speaker.TwitterHandle) ?? speaker.TwitterHandle, 100);
         }
     }
 

@@ -138,7 +138,14 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Bitly / Short URL</label>
-                            <input type="text" class="form-control" placeholder="https://bit.ly/dotnetnotts-oct" @bind="evt.ShortBitlyUrl" />
+                            <div class="input-group">
+                                <input type="text" class="form-control" placeholder="https://bit.ly/dotnetnottsoctober2026" @bind="evt.ShortBitlyUrl" />
+                                <button type="button" class="btn btn-outline-secondary" title="Use the group's short URL stem plus month and year" @onclick="ApplyShortUrlDefault" disabled="@(SuggestedShortUrl == null)">Use default</button>
+                            </div>
+                            @if (SuggestedShortUrl != null)
+                            {
+                                <div class="form-text">Default: @SuggestedShortUrl</div>
+                            }
                         </div>
                     </div>
 
@@ -375,6 +382,15 @@
     private bool isGeneratingZoom;
     private bool isSyncingSessionize;
 
+    private string? SuggestedShortUrl => evt == null
+        ? null
+        : ShortUrl.ForEvent(groups?.FirstOrDefault(g => g.Id == evt.MeetupGroupId)?.ShortUrlStem, localEventDateTime.ToUniversalTime());
+
+    private void ApplyShortUrlDefault()
+    {
+        if (evt != null && SuggestedShortUrl is { } url) evt.ShortBitlyUrl = url;
+    }
+
     private string EventHeaderPreview
     {
         get
@@ -564,6 +580,8 @@
             isSaving = true;
             evt.EventDateTimeUtc = localEventDateTime.ToUniversalTime();
             evt.UpdatedAtUtc = DateTime.UtcNow;
+
+            if (string.IsNullOrWhiteSpace(evt.ShortBitlyUrl)) ApplyShortUrlDefault();
 
             if (IsNew)
             {

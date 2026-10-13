@@ -218,15 +218,20 @@
                         <h5 class="fw-bold mb-0">
                             <i class="bi bi-cloud me-2 text-info"></i>BlueSky (AT Protocol)
                         </h5>
-                        <button type="button" class="btn btn-sm btn-info text-white" @onclick="PublishToBlueSkyAsync" disabled="@isPublishingBlueSky">
-                            <i class="bi bi-send me-1"></i> Post with Image
-                        </button>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-info text-white" @onclick="PublishToBlueSkyAsync" disabled="@isPublishingBlueSky">
+                                <i class="bi bi-send me-1"></i> Post with Image
+                            </button>
+                            <a href="@BlueSkyIntentUrl" target="_blank" rel="noopener noreferrer" class="btn btn-outline-info" title="Open Bluesky compose with this text pre-filled">
+                                <i class="bi bi-box-arrow-up-right me-1"></i> Web Intent
+                            </a>
+                        </div>
                     </div>
                     <div class="mb-2">
-                        <textarea class="form-control small" rows="3" @bind="blueSkyText"></textarea>
+                        <textarea class="form-control small" rows="3" @bind="blueSkyText" @bind:event="oninput"></textarea>
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
-                        <small class="text-muted">Posts directly to AT Protocol with social PNG card embedded.</small>
+                        <small class="text-muted">Character count: @(blueSkyText?.Length ?? 0) / 300. The web intent can't attach the image; download the PNG and add it manually.</small>
                         <span class="badge bg-light text-secondary border">AT Protocol</span>
                     </div>
                 </div>
@@ -250,6 +255,7 @@
     private string? twitterText;
     private string? twitterIntentUrl;
     private string? blueSkyText;
+    private string BlueSkyIntentUrl => $"https://bsky.app/intent/compose?text={Uri.EscapeDataString(blueSkyText ?? string.Empty)}";
 
     private bool isGeneratingImage;
     private bool isPublishingMeetup;

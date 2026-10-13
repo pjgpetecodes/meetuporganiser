@@ -1,4 +1,5 @@
 using MeetupOrganiser.Core.Entities;
+using MeetupOrganiser.Core.Services;
 using MeetupOrganiser.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -29,11 +30,23 @@ public static class DbInitializer
                     DefaultHashtags = "#dotnet #dotnetnotts #csharp #azure #developer",
                     DefaultLocation = "CGI, Nottingham & Online On Zoom",
                     MeetupUrlName = "dotnetnotts",
+                    ShortUrlStem = "https://bit.ly/dotnetnotts",
+                    SocialPostTemplate = SocialPostFormatter.DotNetNottsDefault,
                     CreatedAtUtc = DateTime.UtcNow,
                     UpdatedAtUtc = DateTime.UtcNow
                 };
 
                 await context.MeetupGroups.AddAsync(nottsGroup);
+            }
+
+            if (string.IsNullOrWhiteSpace(nottsGroup.ShortUrlStem) && nottsGroup.MeetupUrlName == "dotnetnotts")
+            {
+                nottsGroup.ShortUrlStem = "https://bit.ly/dotnetnotts";
+            }
+
+            if (string.IsNullOrWhiteSpace(nottsGroup.SocialPostTemplate) && nottsGroup.MeetupUrlName == "dotnetnotts")
+            {
+                nottsGroup.SocialPostTemplate = SocialPostFormatter.DotNetNottsDefault;
             }
 
             var speakerLuce = await EnsureSpeakerAsync(context, new Speaker

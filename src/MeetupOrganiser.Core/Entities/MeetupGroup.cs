@@ -37,6 +37,14 @@ public class MeetupGroup
     [MaxLength(100)]
     public string? MeetupUrlName { get; set; }
 
+    // e.g. https://bit.ly/dotnetnotts; the event month and year are appended per event
+    [MaxLength(200)]
+    public string? ShortUrlStem { get; set; }
+
+    // Announcement text for X, Bluesky and LinkedIn; see SocialPostTemplate for placeholders
+    [MaxLength(2000)]
+    public string? SocialPostTemplate { get; set; }
+
     [MaxLength(500)]
     public string? MeetupApiKeyOverride { get; set; }
 
