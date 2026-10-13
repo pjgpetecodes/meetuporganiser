@@ -69,19 +69,17 @@ public class MeetupService : IMeetupService
     {
         var sb = new StringBuilder();
         var group = meetupEvent.MeetupGroup;
+        var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
+        var ukTime = TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(meetupEvent.EventDateTimeUtc, DateTimeKind.Utc),
+            TimeZoneInfo.FindSystemTimeZoneById("Europe/London"));
+        var location = !string.IsNullOrWhiteSpace(meetupEvent.LocationOrPlatform)
+            ? meetupEvent.LocationOrPlatform
+            : group?.DefaultLocation ?? "Online on Zoom";
 
         sb.AppendLine($"# {meetupEvent.Title}");
         sb.AppendLine();
-        sb.AppendLine($"**Date & Time:** {meetupEvent.EventDateTimeUtc:dddd, MMMM d, yyyy} at {meetupEvent.EventDateTimeUtc:HH:mm} UTC");
-        sb.AppendLine($"**Location / Platform:** {meetupEvent.LocationOrPlatform ?? "Online on Zoom"}");
-        if (!string.IsNullOrWhiteSpace(meetupEvent.ZoomMeetingUrl))
-        {
-            sb.AppendLine($"**Zoom Link:** {meetupEvent.ZoomMeetingUrl}");
-            if (!string.IsNullOrWhiteSpace(meetupEvent.ZoomPasscode))
-            {
-                sb.AppendLine($"**Passcode:** {meetupEvent.ZoomPasscode}");
-            }
-        }
+        sb.AppendLine($"**Date & Time:** {ukTime:dddd, MMMM d, yyyy} at {ukTime:h:mm tt} UK time");
         sb.AppendLine();
         if (!string.IsNullOrWhiteSpace(meetupEvent.Description))
         {
@@ -89,19 +87,10 @@ public class MeetupService : IMeetupService
             sb.AppendLine();
         }
 
-        sb.AppendLine("## Agenda & Speakers");
-        sb.AppendLine();
-
-        foreach (var session in meetupEvent.Sessions.OrderBy(s => s.OrderIndex))
+        foreach (var session in sessions)
         {
             var speaker = session.Speaker;
-            sb.AppendLine($"### {session.TalkTitle}");
-            sb.AppendLine($"**Speaker:** {speaker?.Name ?? "Guest Speaker"}");
-            if (!string.IsNullOrWhiteSpace(speaker?.Bio))
-            {
-                sb.AppendLine();
-                sb.AppendLine($"*About {speaker.Name}:* {speaker.Bio}");
-            }
+            sb.AppendLine($"{session.TalkTitle} - {speaker?.Name ?? "Guest Speaker"}");
             if (!string.IsNullOrWhiteSpace(session.TalkDescription))
             {
                 sb.AppendLine();
@@ -109,6 +98,53 @@ public class MeetupService : IMeetupService
             }
             sb.AppendLine();
         }
+
+        var speakers = sessions
+            .Where(session => session.Speaker != null)
+            .Select(session => session.Speaker!)
+            .DistinctBy(speaker => speaker.Id)
+            .ToList();
+
+        if (speakers.Count > 0)
+        {
+            sb.AppendLine(speakers.Count == 1 ? "Our Speaker:" : "Our Speakers:");
+            sb.AppendLine();
+
+            foreach (var speaker in speakers)
+            {
+                sb.AppendLine($"{speaker.Name}:");
+                if (!string.IsNullOrWhiteSpace(speaker.Bio))
+                {
+                    sb.AppendLine();
+                    sb.AppendLine(speaker.Bio);
+                }
+
+                sb.AppendLine();
+
+                var contactLinks = GetSpeakerContactLinks(speaker).ToList();
+                if (contactLinks.Count > 0)
+                {
+                    sb.AppendLine($"How to find {speaker.Name}:");
+                    foreach (var (label, url) in contactLinks)
+                    {
+                        sb.AppendLine($"{label}: {url}");
+                    }
+                    sb.AppendLine();
+                }
+            }
+        }
+
+        sb.AppendLine("How to find us:");
+        sb.AppendLine(location);
+        if (!string.IsNullOrWhiteSpace(meetupEvent.ZoomMeetingUrl))
+        {
+            sb.AppendLine($"Online on Zoom: {meetupEvent.ZoomMeetingUrl}");
+            if (!string.IsNullOrWhiteSpace(meetupEvent.ZoomPasscode))
+            {
+                sb.AppendLine($"Passcode: {meetupEvent.ZoomPasscode}");
+            }
+        }
+        sb.AppendLine();
 
         sb.AppendLine("---");
         sb.AppendLine($"Hosted by **{group?.Name ?? ".NET Notts"}**");
@@ -123,5 +159,54 @@ public class MeetupService : IMeetupService
         }
 
         return sb.ToString();
+    }
+
+    private static IEnumerable<(string Label, string Url)> GetSpeakerContactLinks(Speaker speaker)
+    {
+        var blueskyUrl = GetProfileUrl(speaker.BlueSkyHandle, "https://bsky.app/profile");
+        if (blueskyUrl != null)
+        {
+            yield return ("Bluesky", blueskyUrl);
+        }
+
+        var xUrl = GetProfileUrl(speaker.TwitterHandle, "https://x.com");
+        if (xUrl != null)
+        {
+            yield return ("X", xUrl);
+        }
+
+        if (!string.IsNullOrWhiteSpace(speaker.LinkedInUrl))
+        {
+            yield return ("LinkedIn", speaker.LinkedInUrl);
+        }
+
+        var githubUrl = GetProfileUrl(speaker.GitHubHandle, "https://github.com");
+        if (githubUrl != null)
+        {
+            yield return ("GitHub", githubUrl);
+        }
+
+        if (!string.IsNullOrWhiteSpace(speaker.WebsiteUrl))
+        {
+            yield return ("Personal Site", speaker.WebsiteUrl);
+        }
+    }
+
+    private static string? GetProfileUrl(string? profile, string baseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(profile))
+        {
+            return null;
+        }
+
+        var value = profile.Trim();
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+        {
+            return value;
+        }
+
+        var handle = value.TrimStart('@', '/');
+        return string.IsNullOrWhiteSpace(handle) ? null : $"{baseUrl}/{Uri.EscapeDataString(handle)}";
     }
 }
