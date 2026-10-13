@@ -9,6 +9,12 @@ public interface ISessionizeService
     Task<List<SessionizeSessionDto>> GetSessionsAsync(string endpointOrEventId, CancellationToken cancellationToken = default);
 }
 
+public interface ISessionizeProfileService
+{
+    Task<List<SessionizeProfileCandidate>> SearchAsync(string name, CancellationToken cancellationToken = default);
+    Task<SessionizeProfile?> GetProfileAsync(string urlOrSlug, CancellationToken cancellationToken = default);
+}
+
 public interface IZoomService
 {
     Task<ZoomMeetingResult> CreateMeetingAsync(string topic, DateTime startTimeUtc, int durationMinutes, string? agenda = null, CancellationToken cancellationToken = default);
@@ -18,7 +24,7 @@ public interface IMeetupService
 {
     Task<MeetupCreationResult> CreateEventAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default);
     Task<MeetupEventImportResult> ImportPastEventsAsync(string urlname, CancellationToken cancellationToken = default);
-    string GenerateMeetupDescription(MeetupEvent meetupEvent);
+    string GenerateMeetupDescription(MeetupEvent meetupEvent, string? bioPreference = null, string? template = null);
 }
 
 public interface IMeetupOAuthService

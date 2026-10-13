@@ -17,6 +17,12 @@ public class Speaker
     [MaxLength(4000)]
     public string? Bio { get; set; }
 
+    [MaxLength(4000)]
+    public string? BioThirdPerson { get; set; }
+
+    [MaxLength(50)]
+    public string? Pronouns { get; set; }
+
     [MaxLength(1000)]
     public string? PhotoBlobUrl { get; set; }
 

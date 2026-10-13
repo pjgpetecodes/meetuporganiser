@@ -1,5 +1,6 @@
 using MeetupOrganiser.Core.Entities;
 using MeetupOrganiser.Core.Interfaces;
+using MeetupOrganiser.Core.Services;
 using Microsoft.Extensions.Logging;
 using SkiaSharp;
 
@@ -14,7 +15,7 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         _logger = logger;
     }
 
-    public Task<byte[]> GenerateSocialCardAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default)
+    public async Task<byte[]> GenerateSocialCardAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default)
     {
         const int width = 1280;
         const int height = 720;
@@ -24,6 +25,8 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
 
         var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
         var isTwoSpeakers = sessions.Count > 1;
+
+        RemotePhotos.Value = await PreloadRemotePhotosAsync(sessions, cancellationToken);
 
         // 1. Draw Teal Radial Background Gradient matching .NET Notts slide format
         // Teal gradient: center at top-right (1010, 90), color #1ABC9C radiating to #11816B at corners
@@ -61,7 +64,21 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
 
         using var image = SKImage.FromBitmap(bitmap);
         using var data = image.Encode(SKEncodedImageFormat.Png, 95);
-        return Task.FromResult(data.ToArray());
+        return data.ToArray();
+    }
+
+    private static readonly AsyncLocal<Dictionary<string, byte[]>?> RemotePhotos = new();
+
+    private static async Task<Dictionary<string, byte[]>> PreloadRemotePhotosAsync(IEnumerable<EventSpeakerSession> sessions, CancellationToken cancellationToken)
+    {
+        var photos = new Dictionary<string, byte[]>();
+        foreach (var url in sessions.Select(s => s.Speaker?.PhotoBlobUrl).Where(RemotePhotoLoader.IsRemote).Distinct())
+        {
+            var bytes = await RemotePhotoLoader.LoadAsync(url, cancellationToken);
+            if (bytes != null) photos[url!] = bytes;
+        }
+
+        return photos;
     }
 
     private static void RenderSingleSpeakerLayout(SKCanvas canvas, MeetupEvent meetupEvent, EventSpeakerSession? session)
@@ -70,14 +87,9 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         var speakerName = speaker?.Name ?? "Luce Carter";
         var talkTitle = session?.TalkTitle ?? "SQL to MongoDB API with C#";
 
-        // Date and Location Header:
-        // Line 1: MONDAY 27TH APRIL 2026
-        // Line 2: AT CGI ONLY FROM 18:30GMT!
-        // Line 3: Special Workshop Edition!
-        var dateFormatted = meetupEvent.EventDateTimeUtc.ToString("dddd d'TH' MMMM yyyy").ToUpperInvariant();
-        var venue = (meetupEvent.LocationOrPlatform ?? "AT CGI ONLY").ToUpperInvariant();
-        var timeFormatted = $"FROM {meetupEvent.EventDateTimeUtc:HH:mm}GMT!";
-        var line2 = $"{venue} {timeFormatted}";
+        // Header lines: date, format-dependent venue line, and an optional subtitle (only drawn when set)
+        var dateFormatted = EventHeader.DateLine(meetupEvent);
+        var line2 = EventHeader.VenueLine(meetupEvent);
 
         using (var fontHeaderBold = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 44))
         using (var textPaintWhite = new SKPaint { Color = SKColors.White, IsAntialias = true })
@@ -86,11 +98,11 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
             canvas.DrawText(line2, 60, 125, SKTextAlign.Left, fontHeaderBold, textPaintWhite);
         }
 
-        // Subtitle or Edition line
-        var subtitle = "Special Workshop Edition!";
-        using (var fontSubtitle = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 44))
-        using (var textPaintWhite = new SKPaint { Color = SKColors.White, IsAntialias = true })
+        var subtitle = EventHeader.Subtitle(meetupEvent);
+        if (subtitle != null)
         {
+            using var fontSubtitle = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 44);
+            using var textPaintWhite = new SKPaint { Color = SKColors.White, IsAntialias = true };
             canvas.DrawText(subtitle, 60, 185, SKTextAlign.Left, fontSubtitle, textPaintWhite);
         }
 
@@ -117,19 +129,56 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         // Speaker Name and Talk Title on Right
         // Name: Luce Carter (font size ~68pt)
         // Talk: SQL to MongoDB API with C# (font size ~38pt)
-        using (var fontSpeaker = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 68))
-        using (var namePaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
-        {
-            canvas.DrawText(speakerName, 520, 395, SKTextAlign.Left, fontSpeaker, namePaint);
-        }
+        using var fontSpeaker = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 68);
+        using var fontTalk = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 38);
+        using var textPaint = new SKPaint { Color = SKColors.White, IsAntialias = true };
 
-        using (var fontTalk = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 38))
-        using (var talkPaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
+        // Keep the name + wrapped title block vertically centred on the avatar
+        var talkLines = WrapLines(talkTitle, 720, 3, fontTalk).Count;
+        var shift = (Math.Max(talkLines, 1) - 1) * fontTalk.Size * 1.25f / 2f;
+        canvas.DrawText(speakerName, 520, 395 - shift, SKTextAlign.Left, fontSpeaker, textPaint);
+        DrawWrappedText(canvas, talkTitle, 520, 465 - shift, 720, 3, fontTalk, textPaint);
+    }
+    private static void DrawWrappedText(SKCanvas canvas, string text, float x, float y, float maxWidth, int maxLines, SKFont font, SKPaint paint)
+    {
+        var lines = WrapLines(text, maxWidth, maxLines, font);
+        var lineHeight = font.Size * 1.25f;
+        for (var i = 0; i < lines.Count; i++)
         {
-            canvas.DrawText(talkTitle, 520, 465, SKTextAlign.Left, fontTalk, talkPaint);
+            canvas.DrawText(lines[i], x, y + i * lineHeight, SKTextAlign.Left, font, paint);
         }
     }
 
+    private static List<string> WrapLines(string text, float maxWidth, int maxLines, SKFont font)
+    {
+        var lines = new List<string>();
+        var current = "";
+        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = current.Length == 0 ? word : current + " " + word;
+            if (current.Length > 0 && font.MeasureText(candidate) > maxWidth)
+            {
+                lines.Add(current);
+                current = word;
+            }
+            else
+            {
+                current = candidate;
+            }
+        }
+        if (current.Length > 0) lines.Add(current);
+
+        if (lines.Count > maxLines)
+        {
+            var kept = lines.Take(maxLines).ToList();
+            var last = kept[^1];
+            while (last.Length > 1 && font.MeasureText(last + "…") > maxWidth) last = last[..^1];
+            kept[^1] = last.TrimEnd() + "…";
+            lines = kept;
+        }
+
+        return lines;
+    }
     private static void RenderTwoSpeakersLayout(SKCanvas canvas, MeetupEvent meetupEvent, EventSpeakerSession session1, EventSpeakerSession session2)
     {
         // Top-left header: "TONIGHT!" (font size ~68pt, Bold)
@@ -163,7 +212,7 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         using (var textPaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
         {
             canvas.DrawText(name1, 350, 395, SKTextAlign.Left, fontName1, textPaint);
-            canvas.DrawText(talk1, 350, 450, SKTextAlign.Left, fontTalk1, textPaint);
+            DrawWrappedText(canvas, talk1, 350, 450, 560, 2, fontTalk1, textPaint);
         }
 
         // Speaker 2 (Right circle, details on left of avatar or center)
@@ -178,7 +227,7 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         using (var textPaint = new SKPaint { Color = SKColors.White, IsAntialias = true })
         {
             canvas.DrawText(name2, 530, 550, SKTextAlign.Left, fontName2, textPaint);
-            canvas.DrawText(talk2, 450, 605, SKTextAlign.Left, fontTalk2, textPaint);
+            DrawWrappedText(canvas, talk2, 450, 605, 480, 2, fontTalk2, textPaint);
         }
 
         DrawCircularAvatar(canvas, sp2?.PhotoBlobUrl, name2, 1085f, 595f, 120f);
@@ -275,14 +324,21 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
                 var found = candidates.FirstOrDefault(File.Exists);
                 if (found != null)
                 {
-                    return SKBitmap.Decode(found);
+                    return DecodeOriented(File.ReadAllBytes(found));
                 }
                 return null;
             }
 
+            if (RemotePhotoLoader.IsRemote(photoUrl))
+            {
+                return RemotePhotos.Value != null && RemotePhotos.Value.TryGetValue(photoUrl, out var remote)
+                    ? DecodeOriented(remote)
+                    : null;
+            }
+
             if (File.Exists(photoUrl))
             {
-                return SKBitmap.Decode(photoUrl);
+                return DecodeOriented(File.ReadAllBytes(photoUrl));
             }
 
             var localRel = photoUrl.TrimStart('/', '\\');
@@ -298,7 +354,7 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
             var valid = localCandidates.FirstOrDefault(File.Exists);
             if (valid != null)
             {
-                return SKBitmap.Decode(valid);
+                return DecodeOriented(File.ReadAllBytes(valid));
             }
         }
         catch
@@ -307,5 +363,39 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         }
 
         return null;
+    }
+
+    // SkiaSharp ignores EXIF orientation on decode, so apply it manually.
+    private static SKBitmap? DecodeOriented(byte[] data)
+    {
+        using var codec = SKCodec.Create(new MemoryStream(data));
+        var bitmap = SKBitmap.Decode(data);
+        if (codec == null || bitmap == null) return bitmap;
+
+        var origin = codec.EncodedOrigin;
+        if (origin is SKEncodedOrigin.TopLeft or SKEncodedOrigin.Default) return bitmap;
+
+        var swap = origin is SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop
+            or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom;
+        var w = swap ? bitmap.Height : bitmap.Width;
+        var h = swap ? bitmap.Width : bitmap.Height;
+        var result = new SKBitmap(w, h);
+        using (var canvas = new SKCanvas(result))
+        {
+            canvas.Clear();
+            switch (origin)
+            {
+                case SKEncodedOrigin.TopRight: canvas.Translate(w, 0); canvas.Scale(-1, 1); break;
+                case SKEncodedOrigin.BottomRight: canvas.Translate(w, h); canvas.RotateDegrees(180); break;
+                case SKEncodedOrigin.BottomLeft: canvas.Translate(0, h); canvas.Scale(1, -1); break;
+                case SKEncodedOrigin.LeftTop: canvas.SetMatrix(new SKMatrix(0, 1, 0, 1, 0, 0, 0, 0, 1)); break;
+                case SKEncodedOrigin.RightTop: canvas.SetMatrix(new SKMatrix(0, -1, bitmap.Height, 1, 0, 0, 0, 0, 1)); break;
+                case SKEncodedOrigin.RightBottom: canvas.SetMatrix(new SKMatrix(0, -1, bitmap.Height, -1, 0, bitmap.Width, 0, 0, 1)); break;
+                case SKEncodedOrigin.LeftBottom: canvas.SetMatrix(new SKMatrix(0, 1, 0, -1, 0, bitmap.Width, 0, 0, 1)); break;
+            }
+            canvas.DrawBitmap(bitmap, 0, 0);
+        }
+        bitmap.Dispose();
+        return result;
     }
 }

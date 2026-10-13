@@ -23,6 +23,16 @@ public class MeetupEvent
     [MaxLength(200)]
     public string? LocationOrPlatform { get; set; } = "Zoom";
 
+    public EventFormat Format { get; set; } = EventFormat.Hybrid;
+
+    /// <summary>Venue shown in the promo header for in-person and hybrid events (e.g. CGI).</summary>
+    [MaxLength(100)]
+    public string? VenueName { get; set; }
+
+    /// <summary>Optional line under the date and venue on promo images and slides (e.g. "Special Workshop Edition!").</summary>
+    [MaxLength(150)]
+    public string? Subtitle { get; set; }
+
     [MaxLength(100)]
     public string? ZoomMeetingId { get; set; }
 

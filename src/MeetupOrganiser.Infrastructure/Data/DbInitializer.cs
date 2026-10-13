@@ -132,6 +132,8 @@ public static class DbInitializer
                     EventDateTimeUtc = new DateTime(2026, 4, 27, 18, 30, 0, DateTimeKind.Utc),
                     DurationMinutes = 120,
                     LocationOrPlatform = "CGI, King Street Nottingham & Online",
+                    Format = EventFormat.Hybrid,
+                    VenueName = "CGI",
                     ShortBitlyUrl = "https://bit.ly/dotnetnottsapril2026",
                     MeetupEventUrl = "https://www.meetup.com/dotnetnotts/events/",
                     Status = EventStatus.Scheduled,

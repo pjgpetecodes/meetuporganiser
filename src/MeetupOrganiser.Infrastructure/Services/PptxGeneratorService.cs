@@ -3,6 +3,7 @@ using DocumentFormat.OpenXml.Presentation;
 using D = DocumentFormat.OpenXml.Drawing;
 using MeetupOrganiser.Core.Entities;
 using MeetupOrganiser.Core.Interfaces;
+using MeetupOrganiser.Core.Services;
 using Microsoft.Extensions.Logging;
 
 namespace MeetupOrganiser.Infrastructure.Services;
@@ -75,8 +76,12 @@ public class PptxGeneratorService : IPptxGeneratorService
                     { "{{Talk2Title}}", session2?.TalkTitle ?? "Talk 2" },
                     { "{{ShortUrl}}", shortUrl },
                     { "{{EventDate}}", dateFormatted },
-                    { "{{EventTime}}", meetupEvent.EventDateTimeUtc.ToString("HH:mm") + " UTC" },
+                    { "{{EventTime}}", EventHeader.ToUkTime(meetupEvent.EventDateTimeUtc).ToString("HH:mm") + " UK time" },
                     { "{{Venue}}", meetupEvent.LocationOrPlatform ?? "Online" },
+                    { "{{EventDateLine}}", EventHeader.DateLine(meetupEvent) },
+                    { "{{EventVenueLine}}", EventHeader.VenueLine(meetupEvent) },
+                    { "{{EventFormat}}", EventHeader.FormatLabel(meetupEvent.Format) },
+                    { "{{EventSubtitle}}", EventHeader.Subtitle(meetupEvent) ?? string.Empty },
 
                     // Sample template literal replacements
                     { "Luce Carter", speaker1?.Name ?? "Speaker Name" },
@@ -123,7 +128,7 @@ public class PptxGeneratorService : IPptxGeneratorService
                 }
 
                 // Replace speaker photo in image parts if available
-                TryReplaceSpeakerPhotos(presentationPart, speaker1, speaker2);
+                await TryReplaceSpeakerPhotosAsync(presentationPart, speaker1, speaker2);
 
                 presentationPart.Presentation.Save();
             }
@@ -132,12 +137,12 @@ public class PptxGeneratorService : IPptxGeneratorService
         return memoryStream.ToArray();
     }
 
-    private void TryReplaceSpeakerPhotos(PresentationPart presentationPart, Speaker? speaker1, Speaker? speaker2)
+    private async Task TryReplaceSpeakerPhotosAsync(PresentationPart presentationPart, Speaker? speaker1, Speaker? speaker2)
     {
         try
         {
-            byte[]? photo1Bytes = LoadSpeakerBytes(speaker1?.PhotoBlobUrl);
-            byte[]? photo2Bytes = LoadSpeakerBytes(speaker2?.PhotoBlobUrl);
+            byte[]? photo1Bytes = LoadSpeakerBytes(speaker1?.PhotoBlobUrl) ?? await RemotePhotoLoader.LoadAsync(speaker1?.PhotoBlobUrl);
+            byte[]? photo2Bytes = LoadSpeakerBytes(speaker2?.PhotoBlobUrl) ?? await RemotePhotoLoader.LoadAsync(speaker2?.PhotoBlobUrl);
 
             foreach (var slidePart in presentationPart.SlideParts)
             {

@@ -40,15 +40,18 @@ public class ZoomService : IZoomService
 
         if (string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
         {
-            _logger.LogInformation("Zoom credentials not configured. Generating placeholder meeting link.");
-            var fakeId = Random.Shared.Next(100000000, 999999999).ToString();
-            return new ZoomMeetingResult(
-                Success: true,
-                MeetingId: fakeId,
-                JoinUrl: $"https://us02web.zoom.us/j/{fakeId}?pwd=meetup{Random.Shared.Next(1000, 9999)}",
-                Passcode: $"meetup{Random.Shared.Next(1000, 9999)}",
-                ErrorMessage: null
-            );
+            var defaultUrl = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Zoom:DefaultMeetingUrl", cancellationToken) : null)
+                ?? _configuration["Integrations:Zoom:DefaultMeetingUrl"];
+            if (string.IsNullOrWhiteSpace(defaultUrl))
+            {
+                return new ZoomMeetingResult(false, null, null, null,
+                    "Zoom is not configured. Add API credentials or a default meeting URL in Settings.");
+            }
+
+            var defaultPasscode = (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Zoom:DefaultPasscode", cancellationToken) : null)
+                ?? _configuration["Integrations:Zoom:DefaultPasscode"];
+            _logger.LogInformation("Zoom API credentials not configured. Using the default meeting URL.");
+            return new ZoomMeetingResult(true, null, defaultUrl.Trim(), defaultPasscode, null);
         }
 
         try

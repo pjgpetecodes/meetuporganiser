@@ -1,10 +1,12 @@
 @page "/speakers"
 @attribute [Authorize]
 @using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Services
 @using MeetupOrganiser.Core.Interfaces
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject NavigationManager NavManager
 @using MeetupOrganiser.Core.DTOs
 @inject IBlobStorageService BlobStorageService
 @inject ISessionizeService SessionizeService
@@ -96,18 +98,20 @@
                 <div class="col-md-6 col-lg-4">
                     <div class="card h-100 border-0 shadow-sm p-4">
                         <div class="d-flex align-items-center gap-3 mb-3">
-                            @if (!string.IsNullOrWhiteSpace(sp.PhotoBlobUrl))
-                            {
-                                <img src="@sp.PhotoBlobUrl" alt="@sp.Name" class="rounded-circle border" style="width: 60px; height: 60px; object-fit: cover;" />
-                            }
-                            else
-                            {
-                                <div class="rounded-circle bg-primary-subtle text-primary border d-flex align-items-center justify-content-center fw-bold fs-5" style="width: 60px; height: 60px;">
-                                    @sp.Name[..Math.Min(2, sp.Name.Length)]
-                                </div>
-                            }
+                            <a href="#" class="text-decoration-none" title="Edit @sp.Name" @onclick="() => OpenEditModal(sp)" @onclick:preventDefault>
+                                @if (!string.IsNullOrWhiteSpace(sp.PhotoBlobUrl))
+                                {
+                                    <img src="@sp.PhotoBlobUrl" alt="@sp.Name" class="rounded-circle border" style="width: 60px; height: 60px; object-fit: cover;" />
+                                }
+                                else
+                                {
+                                    <div class="rounded-circle bg-primary-subtle text-primary border d-flex align-items-center justify-content-center fw-bold fs-5" style="width: 60px; height: 60px;">
+                                        @sp.Name[..Math.Min(2, sp.Name.Length)]
+                                    </div>
+                                }
+                            </a>
                             <div>
-                                <h5 class="fw-bold mb-0">@sp.Name</h5>
+                                <h5 class="fw-bold mb-0"><a href="#" class="text-reset text-decoration-none" title="Edit @sp.Name" @onclick="() => OpenEditModal(sp)" @onclick:preventDefault>@sp.Name</a></h5>
                                 @if (!string.IsNullOrWhiteSpace(sp.Email))
                                 {
                                     <div class="small text-secondary">@sp.Email</div>
@@ -203,6 +207,9 @@
                             }
                         </div>
                     }
+                    <div class="mb-3">
+                        <SessionizeProfileLookup @key="editingSpeaker.Id" InitialQuery="@editingSpeaker.Name" Current="editingSpeaker" OnApply="OnProfileApplied" />
+                    </div>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Full Name *</label>
@@ -212,9 +219,27 @@
                             <label class="form-label fw-semibold">Email Address</label>
                             <input @bind="editingSpeaker.Email" class="form-control" type="email" placeholder="name@example.com" />
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Pronouns</label>
+                            <select @bind="editingSpeaker.Pronouns" class="form-select">
+                                <option value="">Not set (use name)</option>
+                                <option value="she/her">she/her</option>
+                                <option value="he/him">he/him</option>
+                                <option value="they/them">they/them</option>
+                            </select>
+                        </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Bio</label>
                             <textarea @bind="editingSpeaker.Bio" class="form-control" rows="3" placeholder="Speaker bio, credentials, and achievements..."></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label fw-semibold mb-1">Third-person bio (used for Meetup descriptions)</label>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RegenerateThirdPersonBio">
+                                    <i class="bi bi-arrow-repeat me-1"></i> Regenerate
+                                </button>
+                            </div>
+                            <textarea @bind="editingSpeaker.BioThirdPerson" class="form-control" rows="3" placeholder="Generated from the bio above when you save. Edit to correct."></textarea>
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Speaker Photo / Headshot</label>
@@ -254,6 +279,20 @@
 }
 
 @code {
+    private static string BlueSkyUrl(string? handle)
+    {
+        var h = (handle ?? "").Trim();
+        if (h.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return h;
+        return $"https://bsky.app/profile/{Uri.EscapeDataString(h.TrimStart('@'))}";
+    }
+
+    private static string XUrl(string? handle)
+    {
+        var h = (handle ?? "").Trim();
+        if (h.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return h;
+        return $"https://x.com/{Uri.EscapeDataString(h.TrimStart('@'))}";
+    }
+
     private List<Speaker>? allSpeakers;
     private string searchQuery = string.Empty;
     private bool showModal = false;
@@ -272,6 +311,17 @@
         try
         {
             await LoadSpeakersAsync();
+            var editId = new Uri(NavManager.Uri).Query
+                .TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Split('=', 2))
+                .Where(p => p.Length == 2 && p[0] == "edit")
+                .Select(p => p[1])
+                .FirstOrDefault();
+            if (Guid.TryParse(editId, out var editGuid))
+            {
+                var target = allSpeakers?.FirstOrDefault(s => s.Id == editGuid);
+                if (target != null) OpenEditModal(target);
+            }
         }
         catch (Exception ex)
         {
@@ -377,7 +427,8 @@
                     }
 
                     var changed = false;
-                    changed |= FillIfBlank(existing.Bio, candidate.Bio, v => existing.Bio = v);
+                    changed |= FillIfBlank(existing.Bio, candidate.Bio, v => { existing.Bio = v; existing.BioThirdPerson = candidate.BioThirdPerson; });
+                    changed |= FillIfBlank(existing.Pronouns, candidate.Pronouns, v => existing.Pronouns = v);
                     changed |= FillIfBlank(existing.PhotoBlobUrl, candidate.PhotoBlobUrl, v => existing.PhotoBlobUrl = v);
                     changed |= FillIfBlank(existing.LinkedInUrl, candidate.LinkedInUrl, v => existing.LinkedInUrl = v);
                     changed |= FillIfBlank(existing.TwitterHandle, candidate.TwitterHandle, v => existing.TwitterHandle = v);
@@ -463,6 +514,8 @@
             Name = speaker.Name,
             Email = speaker.Email,
             Bio = speaker.Bio,
+            BioThirdPerson = speaker.BioThirdPerson,
+            Pronouns = speaker.Pronouns,
             PhotoBlobUrl = speaker.PhotoBlobUrl,
             LinkedInUrl = speaker.LinkedInUrl,
             TwitterHandle = speaker.TwitterHandle,
@@ -476,6 +529,14 @@
     private void CloseModal()
     {
         showModal = false;
+    }
+
+    private void RegenerateThirdPersonBio() => SpeakerBio.EnsureThirdPerson(editingSpeaker, force: true);
+
+    private void OnProfileApplied((SessionizeProfile Profile, SessionizeProfileFields Fields) result)
+    {
+        SessionizeSpeakerMapper.ApplyProfile(editingSpeaker, result.Profile, result.Fields);
+        StateHasChanged();
     }
 
     private async Task HandlePhotoUploadAsync(InputFileChangeEventArgs e)
@@ -509,6 +570,7 @@
                     editingSpeaker.Id = Guid.NewGuid();
                     editingSpeaker.CreatedAtUtc = DateTime.UtcNow;
                     editingSpeaker.UpdatedAtUtc = DateTime.UtcNow;
+                    SpeakerBio.EnsureThirdPerson(editingSpeaker);
                     await dbContext.Speakers.AddAsync(editingSpeaker);
                 }
                 else
@@ -521,9 +583,16 @@
                         return;
                     }
 
+                    var bioChanged = !string.Equals(existing.Bio, editingSpeaker.Bio, StringComparison.Ordinal)
+                        || !string.Equals(existing.Pronouns, editingSpeaker.Pronouns, StringComparison.Ordinal);
+                    var thirdPersonEdited = !string.Equals(existing.BioThirdPerson, editingSpeaker.BioThirdPerson, StringComparison.Ordinal);
+
                     existing.Name = editingSpeaker.Name;
                     existing.Email = editingSpeaker.Email;
                     existing.Bio = editingSpeaker.Bio;
+                    existing.Pronouns = editingSpeaker.Pronouns;
+                    existing.BioThirdPerson = editingSpeaker.BioThirdPerson;
+                    SpeakerBio.EnsureThirdPerson(existing, force: bioChanged && !thirdPersonEdited);
                     existing.PhotoBlobUrl = editingSpeaker.PhotoBlobUrl;
                     existing.LinkedInUrl = editingSpeaker.LinkedInUrl;
                     existing.TwitterHandle = editingSpeaker.TwitterHandle;

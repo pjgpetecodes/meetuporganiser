@@ -61,6 +61,48 @@ public class MeetupServiceDescriptionTests
     }
 
     [Fact]
+    public void GenerateMeetupDescription_WithTemplate_ReplacesPlaceholders()
+    {
+        var speaker = new Speaker
+        {
+            Id = Guid.NewGuid(),
+            Name = "Molly Painter",
+            Bio = "Molly has been working as a developer.",
+            TwitterHandle = "@molly"
+        };
+        var meetupEvent = new MeetupEvent
+        {
+            Title = "A Python and a Viking King - Molly Painter",
+            EventDateTimeUtc = new DateTime(2026, 10, 27, 18, 30, 0, DateTimeKind.Utc),
+            Sessions =
+            [
+                new EventSpeakerSession { TalkTitle = "A Python", TalkDescription = "In this talk I will explain.", Speaker = speaker }
+            ]
+        };
+
+        var description = CreateService()
+            .GenerateMeetupDescription(meetupEvent, null, MeetupOrganiser.Core.Services.MeetupDescriptionTemplate.Default)
+            .Replace("\r\n", "\n");
+
+        Assert.StartsWith("# A Python and a Viking King - Molly Painter\n\nIn this talk Molly will explain.", description);
+        Assert.Contains("Our Speaker:\n\nMolly Painter:\n\nMolly has been working as a developer.", description);
+        Assert.Contains("How to find Molly:\n\nX: https://x.com/molly", description);
+        Assert.Contains("live on Zoom from 6:30 PM UK Time.", description);
+        Assert.DoesNotContain("{{", description);
+        Assert.DoesNotContain("\n\n\n", description);
+    }
+
+    [Fact]
+    public void GenerateMeetupDescription_WithTemplate_LeavesUnknownPlaceholdersVisible()
+    {
+        var meetupEvent = new MeetupEvent { Title = "T", EventDateTimeUtc = DateTime.UtcNow };
+
+        var description = CreateService().GenerateMeetupDescription(meetupEvent, null, "{{eventtitle}} {{Typo}}");
+
+        Assert.Equal("T {{Typo}}\n", description.Replace("\r\n", "\n"));
+    }
+
+    [Fact]
     public void GenerateMeetupDescription_FormatsTwoSpeakersInSessionOrder()
     {
         var firstSpeaker = new Speaker { Id = Guid.NewGuid(), Name = "First Speaker", Bio = "First bio." };

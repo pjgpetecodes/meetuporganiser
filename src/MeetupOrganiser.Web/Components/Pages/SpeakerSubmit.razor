@@ -1,5 +1,6 @@
 @page "/speaker/submit/{Token}"
 @using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Services
 @using MeetupOrganiser.Core.Interfaces
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
@@ -112,6 +113,15 @@
                         <label class="form-label fw-semibold">Contact Email</label>
                         <InputText @bind-Value="speaker.Email" class="form-control" type="email" />
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Pronouns</label>
+                        <InputSelect @bind-Value="speaker.Pronouns" class="form-select">
+                            <option value="">Prefer not to say</option>
+                            <option value="she/her">she/her</option>
+                            <option value="he/him">he/him</option>
+                            <option value="they/them">they/them</option>
+                        </InputSelect>
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -193,6 +203,8 @@
     private string talkTitle = string.Empty;
     private string? talkDescription;
     private string? previewPhotoUrl;
+    private string? originalBio;
+    private string? originalPronouns;
 
     protected override async Task OnInitializedAsync()
     {
@@ -203,6 +215,8 @@
             if (tokenEntity != null && tokenEntity.Speaker != null)
             {
                 speaker = tokenEntity.Speaker;
+                originalBio = speaker.Bio;
+                originalPronouns = speaker.Pronouns;
                 previewPhotoUrl = speaker.PhotoBlobUrl;
                 session = tokenEntity.EventSpeakerSession;
                 if (session != null)
@@ -254,6 +268,9 @@
         try
         {
             speaker.UpdatedAtUtc = DateTime.UtcNow;
+            var bioChanged = !string.Equals(originalBio, speaker.Bio, StringComparison.Ordinal)
+                || !string.Equals(originalPronouns, speaker.Pronouns, StringComparison.Ordinal);
+            SpeakerBio.EnsureThirdPerson(speaker, force: bioChanged);
             session.TalkTitle = talkTitle;
             session.TalkDescription = talkDescription;
 
