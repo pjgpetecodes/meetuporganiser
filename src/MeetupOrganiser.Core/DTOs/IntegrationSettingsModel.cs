@@ -10,6 +10,11 @@ public class IntegrationSettingsModel
     public string? ZoomAccountId { get; set; }
     public string? ZoomClientId { get; set; }
     public string? ZoomClientSecret { get; set; }
+    public string? ZoomDefaultMeetingUrl { get; set; }
+    public string? ZoomDefaultPasscode { get; set; }
+
+    // Meetup description template
+    public string? DescriptionTemplate { get; set; }
 
     // Meetup
     public string? MeetupUrlname { get; set; } = "dotnetnotts";
@@ -21,6 +26,9 @@ public class IntegrationSettingsModel
 
     // Sessionize
     public string? SessionizeDefaultEventId { get; set; }
+
+    // Speaker bios: "ThirdPerson" (default) or "Original"
+    public string? BioPreference { get; set; } = "ThirdPerson";
 
     // LinkedIn
     public string? LinkedInClientId { get; set; }

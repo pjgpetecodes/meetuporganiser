@@ -1,6 +1,7 @@
 @page "/events"
 @attribute [Authorize]
 @using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Services
 @using MeetupOrganiser.Core.Interfaces
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
@@ -143,8 +144,25 @@
                                         @foreach (var s in evt.Sessions)
                                         {
                                             <div class="d-flex align-items-center gap-2 mb-1">
-                                                <i class="bi bi-person-fill text-primary"></i>
-                                                <span><strong>@(s.Speaker?.Name ?? "Speaker")</strong>: @s.TalkTitle</span>
+                                                @if (s.Speaker != null)
+                                                {
+                                                    <a href="/speakers?edit=@s.Speaker.Id" title="Edit @s.Speaker.Name">
+                                                        @if (!string.IsNullOrWhiteSpace(s.Speaker.PhotoBlobUrl))
+                                                        {
+                                                            <img src="@s.Speaker.PhotoBlobUrl" alt="@s.Speaker.Name" class="rounded-circle border" style="width: 28px; height: 28px; object-fit: cover;" />
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-person-fill text-primary"></i>
+                                                        }
+                                                    </a>
+                                                    <span><a href="/speakers?edit=@s.Speaker.Id" class="fw-bold text-reset text-decoration-none" title="Edit @s.Speaker.Name">@s.Speaker.Name</a>: @s.TalkTitle</span>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-person-fill text-primary"></i>
+                                                    <span><strong>Speaker</strong>: @s.TalkTitle</span>
+                                                }
                                             </div>
                                         }
                                     }
@@ -380,6 +398,7 @@
                                 CreatedAtUtc = DateTime.UtcNow,
                                 UpdatedAtUtc = DateTime.UtcNow
                             };
+                            SpeakerBio.EnsureThirdPerson(speaker);
                             await dbContext.Speakers.AddAsync(speaker);
                             knownSpeakers.Add(speaker);
                             importedSpeakerCount++;
@@ -387,6 +406,7 @@
                         else if (string.IsNullOrWhiteSpace(speaker.Bio) && !string.IsNullOrWhiteSpace(importedSpeaker.Bio))
                         {
                             speaker.Bio = importedSpeaker.Bio;
+                            SpeakerBio.EnsureThirdPerson(speaker, force: true);
                             speaker.UpdatedAtUtc = DateTime.UtcNow;
                         }
 

@@ -3,6 +3,7 @@
 @attribute [Authorize]
 @implements IAsyncDisposable
 @using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Services
 @using MeetupOrganiser.Core.Interfaces
 @using MeetupOrganiser.Core.DTOs
 @using MeetupOrganiser.Infrastructure.Data
@@ -11,6 +12,8 @@
 @inject IMagicLinkService MagicLinkService
 @inject IZoomService ZoomService
 @inject ISessionizeService SessionizeService
+@inject IMeetupService MeetupService
+@inject ISettingsService SettingsService
 @inject NavigationManager NavManager
 @inject ILogger<EventEdit> Logger
 
@@ -59,7 +62,7 @@
     {
         <div class="row g-4">
             <!-- Left Column: Core Event Information -->
-            <div class="col-lg-7">
+            <div class="col-lg-5 order-lg-2">
                 <div class="card border-0 shadow-sm p-4 mb-4">
                     <h5 class="fw-bold mb-3"><i class="bi bi-calendar4-event me-2 text-primary"></i>Event Details</h5>
 
@@ -83,7 +86,7 @@
 
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Event Description / Agenda</label>
-                        <textarea class="form-control" rows="4" placeholder="Overview of the event, talks, and timetable..." @bind="evt.Description"></textarea>
+                        <textarea class="form-control" rows="14" placeholder="Overview of the event, talks, and timetable..." @bind="evt.Description"></textarea>
                     </div>
 
                     <div class="row g-3 mb-3">
@@ -103,6 +106,28 @@
                                 <option value="@EventStatus.Published">Published</option>
                                 <option value="@EventStatus.Completed">Completed</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Event Format</label>
+                            <select class="form-select" @bind="evt.Format">
+                                <option value="@EventFormat.Hybrid">Hybrid (in person + Zoom)</option>
+                                <option value="@EventFormat.InPerson">In Person only</option>
+                                <option value="@EventFormat.Online">Online only (Zoom)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Venue Name</label>
+                            <input type="text" class="form-control" placeholder="CGI" @bind="evt.VenueName" disabled="@(evt.Format == EventFormat.Online)" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Promo Subtitle (optional)</label>
+                            <input type="text" class="form-control" placeholder="e.g. Special Workshop Edition!" @bind="evt.Subtitle" />
+                        </div>
+                        <div class="col-12">
+                            <div class="form-text">Promo header preview: <strong>@EventHeaderPreview</strong></div>
                         </div>
                     </div>
 
@@ -180,7 +205,7 @@
             </div>
 
             <!-- Right Column: Speakers & Sessions -->
-            <div class="col-lg-5">
+            <div class="col-lg-7 order-first order-lg-1">
                 <div class="card border-0 shadow-sm p-4 mb-4">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="fw-bold mb-0"><i class="bi bi-people-fill me-2 text-primary"></i>Speakers &amp; Sessions</h5>
@@ -225,11 +250,19 @@
                                     }
                                 }
                             </select>
+                            @if (SelectedSpeaker(session1SpeakerId) is { } sp1)
+                            {
+                                <div class="mt-2"><SessionizeTalkPicker @key="sp1.Id" Speaker="sp1" OnPick="s => OnTalkPicked(session1, sp1, s)" OnNewTalk="() => OnNewTalk(session1)" /></div>
+                                <details class="mt-1">
+                                    <summary class="small text-primary" style="cursor: pointer;">Look up @sp1.Name on Sessionize</summary>
+                                    <div class="mt-2"><SessionizeProfileLookup @key="sp1.Id" InitialQuery="@sp1.Name" Current="sp1" OnApply="r => ApplyProfileToSpeakerAsync(sp1, r)" /></div>
+                                </details>
+                            }
                         </div>
 
                         <div class="mb-2">
                             <label class="form-label small fw-semibold">Talk Title</label>
-                            <input type="text" class="form-control form-control-sm" placeholder="Title of talk..." @bind="session1.TalkTitle" />
+                            <input type="text" class="form-control form-control-sm" placeholder="Title of talk..." @bind="session1.TalkTitle" @bind:after="RefreshEventTitle" />
                         </div>
 
                         <div class="mb-1">
@@ -272,11 +305,19 @@
                                         }
                                     }
                                 </select>
+                                @if (SelectedSpeaker(session2SpeakerId) is { } sp2)
+                                {
+                                    <div class="mt-2"><SessionizeTalkPicker @key="sp2.Id" Speaker="sp2" OnPick="s => OnTalkPicked(session2, sp2, s)" OnNewTalk="() => OnNewTalk(session2)" /></div>
+                                    <details class="mt-1">
+                                        <summary class="small text-primary" style="cursor: pointer;">Look up @sp2.Name on Sessionize</summary>
+                                        <div class="mt-2"><SessionizeProfileLookup @key="sp2.Id" InitialQuery="@sp2.Name" Current="sp2" OnApply="r => ApplyProfileToSpeakerAsync(sp2, r)" /></div>
+                                    </details>
+                                }
                             </div>
 
                             <div class="mb-2">
                                 <label class="form-label small fw-semibold">Talk Title</label>
-                                <input type="text" class="form-control form-control-sm" placeholder="Title of talk..." @bind="session2.TalkTitle" />
+                                <input type="text" class="form-control form-control-sm" placeholder="Title of talk..." @bind="session2.TalkTitle" @bind:after="RefreshEventTitle" />
                             </div>
 
                             <div class="mb-1">
@@ -333,6 +374,109 @@
     private bool isSaving;
     private bool isGeneratingZoom;
     private bool isSyncingSessionize;
+
+    private string EventHeaderPreview
+    {
+        get
+        {
+            if (evt == null) return string.Empty;
+            var preview = new MeetupEvent
+            {
+                EventDateTimeUtc = localEventDateTime.ToUniversalTime(),
+                Format = evt.Format,
+                VenueName = evt.VenueName,
+                Subtitle = evt.Subtitle
+            };
+            var lines = new List<string> { EventHeader.DateLine(preview), EventHeader.VenueLine(preview) };
+            if (EventHeader.Subtitle(preview) is { } subtitle) lines.Add(subtitle);
+            return string.Join(" / ", lines);
+        }
+    }
+
+    private async Task OnTalkPicked(EventSpeakerSession session, Speaker speaker, SessionizeProfileSession talk)
+    {
+        session.TalkTitle = talk.Title;
+        session.TalkDescription = SpeakerBio.ResolveTalkDescription(talk.Summary, speaker);
+
+        RefreshEventTitle();
+        await PopulateEventDescriptionAsync();
+    }
+
+    private async Task PopulateEventDescriptionAsync()
+    {
+        if (evt == null) return;
+
+        var preview = new MeetupEvent
+        {
+            Title = evt.Title,
+            EventDateTimeUtc = localEventDateTime.ToUniversalTime(),
+            LocationOrPlatform = evt.LocationOrPlatform,
+            ZoomMeetingUrl = evt.ZoomMeetingUrl,
+            ZoomPasscode = evt.ZoomPasscode,
+            MeetupGroup = groups?.FirstOrDefault(g => g.Id == evt.MeetupGroupId)
+        };
+
+        var slots = new List<(EventSpeakerSession Session, string SpeakerId)> { (session1, session1SpeakerId) };
+        if (speakerCount >= 2) slots.Add((session2, session2SpeakerId));
+
+        foreach (var (session, speakerId) in slots)
+        {
+            if (string.IsNullOrWhiteSpace(session.TalkTitle)) continue;
+            preview.Sessions.Add(new EventSpeakerSession
+            {
+                OrderIndex = session.OrderIndex,
+                TalkTitle = session.TalkTitle,
+                TalkDescription = session.TalkDescription,
+                Speaker = SelectedSpeaker(speakerId)
+            });
+        }
+
+        var preference = await SettingsService.GetSettingAsync(SpeakerBio.SettingKey);
+        var template = await SettingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey) ?? MeetupDescriptionTemplate.Default;
+        evt.Description = MeetupService.GenerateMeetupDescription(preview, preference, template);
+    }
+
+    private void OnNewTalk(EventSpeakerSession session)
+    {
+        session.TalkTitle = string.Empty;
+        session.TalkDescription = string.Empty;
+    }
+
+    private void RefreshEventTitle()
+    {
+        if (evt == null) return;
+
+        var parts = new List<(string Title, string Name)>();
+        if (Guid.TryParse(session1SpeakerId, out _) && !string.IsNullOrWhiteSpace(session1.TalkTitle))
+            parts.Add((session1.TalkTitle, SelectedSpeaker(session1SpeakerId)?.Name ?? string.Empty));
+        if (speakerCount >= 2 && Guid.TryParse(session2SpeakerId, out _) && !string.IsNullOrWhiteSpace(session2.TalkTitle))
+            parts.Add((session2.TalkTitle, SelectedSpeaker(session2SpeakerId)?.Name ?? string.Empty));
+
+        if (parts.Count > 0)
+        {
+            evt.Title = string.Join(" | ", parts.Select(p => $"{p.Title} - {p.Name}"));
+        }
+    }
+    private Speaker? SelectedSpeaker(string id) =>
+        Guid.TryParse(id, out var guid) ? speakers?.FirstOrDefault(s => s.Id == guid) : null;
+
+    private async Task ApplyProfileToSpeakerAsync(Speaker speaker, (SessionizeProfile Profile, SessionizeProfileFields Fields) result)
+    {
+        try
+        {
+            SessionizeSpeakerMapper.ApplyProfile(speaker, result.Profile, result.Fields);
+            speaker.UpdatedAtUtc = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            statusMessage = $"Updated {speaker.Name} from their Sessionize profile.";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to apply Sessionize profile to speaker {SpeakerId}.", speaker.Id);
+            statusMessage = "Unable to save the Sessionize profile data. The error has been logged.";
+            isError = true;
+        }
+    }
     private string? statusMessage;
     private bool isError;
 
@@ -353,7 +497,9 @@
                     Title = string.Empty,
                     Description = string.Empty,
                     DurationMinutes = 90,
-                    LocationOrPlatform = "Zoom / Online",
+                    LocationOrPlatform = "CGI, King Street Nottingham & Online",
+                    Format = EventFormat.Hybrid,
+                    VenueName = "CGI",
                     Status = EventStatus.Draft,
                     CreatedAtUtc = DateTime.UtcNow,
                     UpdatedAtUtc = DateTime.UtcNow
@@ -538,6 +684,7 @@
                             CreatedAtUtc = DateTime.UtcNow,
                             UpdatedAtUtc = DateTime.UtcNow
                         };
+                        SpeakerBio.EnsureThirdPerson(existing);
                         await DbContext.Speakers.AddAsync(existing);
                         await DbContext.SaveChangesAsync();
                         speakers = await DbContext.Speakers.OrderBy(sp => sp.Name).ToListAsync();
@@ -566,6 +713,7 @@
                                 CreatedAtUtc = DateTime.UtcNow,
                                 UpdatedAtUtc = DateTime.UtcNow
                             };
+                            SpeakerBio.EnsureThirdPerson(existing2);
                             await DbContext.Speakers.AddAsync(existing2);
                             await DbContext.SaveChangesAsync();
                             speakers = await DbContext.Speakers.OrderBy(sp => sp.Name).ToListAsync();

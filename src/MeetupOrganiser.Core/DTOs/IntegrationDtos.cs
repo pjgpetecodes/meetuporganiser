@@ -9,8 +9,11 @@ public record SessionizeSpeakerDto(
     string? TagLine,
     string? ProfilePicture,
     List<SessionizeSpeakerSessionRefDto> Sessions,
-    List<SessionizeLinkDto>? Links = null
+    List<SessionizeLinkDto>? Links = null,
+    List<SessionizeQuestionAnswerDto>? QuestionAnswers = null
 );
+
+public record SessionizeQuestionAnswerDto(string? Question, string? Answer);
 
 public record SessionizeSpeakerSessionRefDto(int Id, string? Name);
 

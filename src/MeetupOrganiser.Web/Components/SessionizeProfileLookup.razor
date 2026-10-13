@@ -1,0 +1,232 @@
+@using MeetupOrganiser.Core.DTOs
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@inject ISessionizeProfileService ProfileService
+@inject ILogger<SessionizeProfileLookup> Logger
+
+<div class="border rounded p-3 bg-light">
+    <div class="fw-semibold mb-2"><i class="bi bi-search me-1"></i> Find on Sessionize</div>
+    <div class="input-group input-group-sm mb-2">
+        <input class="form-control" @bind="query" @bind:event="oninput" @onkeydown="OnKeyDown"
+               placeholder="Speaker name, or paste a sessionize.com profile URL" />
+        <button type="button" class="btn btn-outline-primary" @onclick="SearchAsync" disabled="@isBusy">
+            @(isBusy ? "Working..." : "Search")
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="small text-secondary mb-2">@message</div>
+    }
+
+    @if (candidates.Count > 0 && profile == null)
+    {
+        <div class="list-group list-group-flush mb-2">
+            @foreach (var c in candidates)
+            {
+                <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2" @onclick="() => LoadProfileAsync(c.Slug)">
+                    @if (!string.IsNullOrWhiteSpace(c.PhotoUrl))
+                    {
+                        <img src="@c.PhotoUrl" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover;" alt="" />
+                    }
+                    <div>
+                        <div class="fw-semibold">@c.Name</div>
+                        @if (!string.IsNullOrWhiteSpace(c.Tagline))
+                        {
+                            <div class="small text-secondary">@c.Tagline</div>
+                        }
+                    </div>
+                </button>
+            }
+        </div>
+    }
+
+    @if (profile != null)
+    {
+        <div class="small mb-2">
+            Profile: <a href="@profile.Url" target="_blank" rel="noopener noreferrer">@profile.Name</a>
+            @if (!string.IsNullOrWhiteSpace(profile.Location)) { <span class="text-secondary">&middot; @profile.Location</span> }
+        </div>
+        <table class="table table-sm align-middle mb-2">
+            <thead><tr><th style="width: 30px;"></th><th>Field</th><th>Current</th><th>From Sessionize</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><input type="checkbox" class="form-check-input" @bind="applyBio" disabled="@string.IsNullOrWhiteSpace(profile.Bio)" /></td>
+                    <td>Bio</td>
+                    <td class="small text-secondary">@Preview(Current?.Bio)</td>
+                    <td class="small">@Preview(profile.Bio)</td>
+                </tr>
+                <tr>
+                    <td><input type="checkbox" class="form-check-input" @bind="applyPhoto" disabled="@string.IsNullOrWhiteSpace(profile.PhotoUrl)" /></td>
+                    <td>Photo</td>
+                    <td>@if (!string.IsNullOrWhiteSpace(Current?.PhotoBlobUrl)) { <img src="@Current!.PhotoBlobUrl" class="rounded-circle" style="width: 40px; height: 40px; object-fit: cover;" alt="" /> }</td>
+                    <td>@if (!string.IsNullOrWhiteSpace(profile.PhotoUrl)) { <img src="@profile.PhotoUrl" class="rounded-circle" style="width: 40px; height: 40px; object-fit: cover;" alt="" /> }</td>
+                </tr>
+                <tr>
+                    <td><input type="checkbox" class="form-check-input" @bind="applyLinks" disabled="@(profile.Links.Count == 0)" /></td>
+                    <td>Links</td>
+                    <td class="small text-secondary">@CurrentLinks()</td>
+                    <td class="small">@(profile.Links.Count == 0 ? "-" : string.Join(", ", profile.Links.Select(l => l.Title ?? l.Url)))</td>
+                </tr>
+            </tbody>
+        </table>
+
+        @if (Current != null)
+        {
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <label class="small fw-semibold mb-0">Pronouns</label>
+                <select class="form-select form-select-sm w-auto" @bind="pronouns">
+                    <option value="">Not set (use name)</option>
+                    <option value="she/her">she/her</option>
+                    <option value="he/him">he/him</option>
+                    <option value="they/them">they/them</option>
+                </select>
+                <span class="small text-secondary">Not published on Sessionize profiles.</span>
+            </div>
+        }
+        @if (profile.Sessions.Count > 0)
+        {
+            <details class="small mb-2">
+                <summary>Past sessions (@profile.Sessions.Count)</summary>
+                <ul class="mb-0 mt-1">
+                    @foreach (var s in profile.Sessions)
+                    {
+                        <li><a href="@s.Url" target="_blank" rel="noopener noreferrer">@s.Title</a></li>
+                    }
+                </ul>
+            </details>
+        }
+
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-primary" @onclick="ApplyAsync" disabled="@(!AnySelected)">Apply selected</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Reset">Back</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? InitialQuery { get; set; }
+    [Parameter] public Speaker? Current { get; set; }
+    [Parameter] public EventCallback<(SessionizeProfile Profile, SessionizeProfileFields Fields)> OnApply { get; set; }
+
+    private string query = string.Empty;
+    private string? message;
+    private bool isBusy;
+    private List<SessionizeProfileCandidate> candidates = [];
+    private SessionizeProfile? profile;
+    private bool applyBio = true, applyPhoto = true, applyLinks = true;
+    private string pronouns = string.Empty;
+
+    private bool AnySelected => (applyBio && !string.IsNullOrWhiteSpace(profile?.Bio))
+        || (applyPhoto && !string.IsNullOrWhiteSpace(profile?.PhotoUrl))
+        || (applyLinks && profile?.Links.Count > 0);
+
+    protected override void OnInitialized()
+    {
+        query = InitialQuery ?? string.Empty;
+        pronouns = Current?.Pronouns ?? string.Empty;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(query)) return;
+
+        profile = null;
+        candidates = [];
+        message = null;
+        isBusy = true;
+        try
+        {
+            if (SessionizeProfileUrl.TryGetSlug(query) is { } slug && (query.Contains('/') || query.Contains('.')))
+            {
+                await LoadProfileAsync(slug);
+                return;
+            }
+
+            candidates = await ProfileService.SearchAsync(query);
+            message = candidates.Count == 0
+                ? "No public profiles found. Try a different spelling, or paste the profile URL."
+                : $"{candidates.Count} match(es). Pick the right speaker.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Sessionize search failed.");
+            message = "Could not reach Sessionize. Try again, or paste the profile URL.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task LoadProfileAsync(string slug)
+    {
+        isBusy = true;
+        message = null;
+        try
+        {
+            profile = await ProfileService.GetProfileAsync(slug);
+            if (profile == null)
+            {
+                message = "That profile could not be found or read.";
+                return;
+            }
+
+            applyBio = !string.IsNullOrWhiteSpace(profile.Bio);
+            applyPhoto = !string.IsNullOrWhiteSpace(profile.PhotoUrl);
+            applyLinks = profile.Links.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Sessionize profile fetch failed.");
+            message = "Could not read the Sessionize profile. Try again later.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (profile == null) return;
+
+        var fields = SessionizeProfileFields.None;
+        if (applyBio) fields |= SessionizeProfileFields.Bio;
+        if (applyPhoto) fields |= SessionizeProfileFields.Photo;
+        if (applyLinks) fields |= SessionizeProfileFields.Links;
+
+        if (Current != null)
+        {
+            Current.Pronouns = string.IsNullOrWhiteSpace(pronouns) ? null : pronouns;
+        }
+
+        await OnApply.InvokeAsync((profile, fields));
+        message = "Applied. Review the details and save.";
+        profile = null;
+        candidates = [];
+    }
+
+    private void Reset()
+    {
+        profile = null;
+        message = null;
+    }
+
+    private static string Preview(string? text) =>
+        string.IsNullOrWhiteSpace(text) ? "-" : (text.Length > 160 ? text[..157] + "..." : text);
+
+    private string CurrentLinks()
+    {
+        if (Current == null) return "-";
+        var parts = new[] { Current.LinkedInUrl, Current.TwitterHandle, Current.BlueSkyHandle, Current.GitHubHandle, Current.WebsiteUrl }
+            .Where(v => !string.IsNullOrWhiteSpace(v));
+        var text = string.Join(", ", parts);
+        return text.Length == 0 ? "-" : text;
+    }
+}

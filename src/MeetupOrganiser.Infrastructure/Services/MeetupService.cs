@@ -6,6 +6,7 @@ using System.Xml;
 using MeetupOrganiser.Core.DTOs;
 using MeetupOrganiser.Core.Entities;
 using MeetupOrganiser.Core.Interfaces;
+using MeetupOrganiser.Core.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -91,7 +92,11 @@ public class MeetupService : IMeetupService
             {
                 groupUrlname = urlname,
                 title = meetupEvent.Title,
-                description = GenerateMeetupDescription(meetupEvent),
+                description = GenerateMeetupDescription(
+                    meetupEvent,
+                    _settingsService != null ? await _settingsService.GetSettingAsync(SpeakerBio.SettingKey, cancellationToken) : null,
+                    (_settingsService != null ? await _settingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey, cancellationToken) : null)
+                        ?? MeetupDescriptionTemplate.Default),
                 startDateTime = DateTime.SpecifyKind(meetupEvent.EventDateTimeUtc, DateTimeKind.Utc).ToString("O"),
                 duration = XmlConvert.ToString(TimeSpan.FromMinutes(meetupEvent.DurationMinutes)),
                 publishStatus = "PUBLISHED",
@@ -244,8 +249,19 @@ public class MeetupService : IMeetupService
         }
     }
 
-    public string GenerateMeetupDescription(MeetupEvent meetupEvent)
+    public string GenerateMeetupDescription(MeetupEvent meetupEvent, string? bioPreference = null, string? template = null)
     {
+        // A description populated from the template in the event editor is used as-is.
+        if (meetupEvent.Description?.TrimStart().StartsWith("# ", StringComparison.Ordinal) == true)
+        {
+            return meetupEvent.Description;
+        }
+
+        if (!string.IsNullOrWhiteSpace(template))
+        {
+            return RenderTemplate(meetupEvent, bioPreference, template);
+        }
+
         var sb = new StringBuilder();
         var group = meetupEvent.MeetupGroup;
         var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
@@ -270,10 +286,11 @@ public class MeetupService : IMeetupService
         {
             var speaker = session.Speaker;
             sb.AppendLine($"{session.TalkTitle} - {speaker?.Name ?? "Guest Speaker"}");
-            if (!string.IsNullOrWhiteSpace(session.TalkDescription))
+            var talkDescription = SpeakerBio.ResolveTalkDescription(session.TalkDescription, speaker, bioPreference);
+            if (!string.IsNullOrWhiteSpace(talkDescription))
             {
                 sb.AppendLine();
-                sb.AppendLine(session.TalkDescription);
+                sb.AppendLine(talkDescription);
             }
             sb.AppendLine();
         }
@@ -292,10 +309,11 @@ public class MeetupService : IMeetupService
             foreach (var speaker in speakers)
             {
                 sb.AppendLine($"{speaker.Name}:");
-                if (!string.IsNullOrWhiteSpace(speaker.Bio))
+                var bio = SpeakerBio.Resolve(speaker, bioPreference);
+                if (!string.IsNullOrWhiteSpace(bio))
                 {
                     sb.AppendLine();
-                    sb.AppendLine(speaker.Bio);
+                    sb.AppendLine(bio);
                 }
 
                 sb.AppendLine();
@@ -338,6 +356,94 @@ public class MeetupService : IMeetupService
         }
 
         return sb.ToString();
+    }
+
+    private static string RenderTemplate(MeetupEvent meetupEvent, string? bioPreference, string template)
+    {
+        var group = meetupEvent.MeetupGroup;
+        var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
+        var ukTime = TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(meetupEvent.EventDateTimeUtc, DateTimeKind.Utc),
+            TimeZoneInfo.FindSystemTimeZoneById("Europe/London"));
+        var speakers = sessions
+            .Where(session => session.Speaker != null)
+            .Select(session => session.Speaker!)
+            .DistinctBy(speaker => speaker.Id)
+            .ToList();
+        var first = sessions.FirstOrDefault();
+
+        var talks = new StringBuilder();
+        var talkDescriptions = new StringBuilder();
+        foreach (var session in sessions)
+        {
+            var description = SpeakerBio.ResolveTalkDescription(session.TalkDescription, session.Speaker, bioPreference);
+            talks.AppendLine($"{session.TalkTitle} - {session.Speaker?.Name ?? "Guest Speaker"}").AppendLine();
+            if (!string.IsNullOrWhiteSpace(description))
+            {
+                talks.AppendLine(description).AppendLine();
+                talkDescriptions.AppendLine(description).AppendLine();
+            }
+        }
+
+        var speakerSection = new StringBuilder();
+        if (speakers.Count > 0)
+        {
+            speakerSection.AppendLine(speakers.Count == 1 ? "Our Speaker:" : "Our Speakers:").AppendLine();
+            foreach (var speaker in speakers)
+            {
+                speakerSection.AppendLine($"{speaker.Name}:").AppendLine();
+                var bio = SpeakerBio.Resolve(speaker, bioPreference);
+                if (!string.IsNullOrWhiteSpace(bio))
+                {
+                    speakerSection.AppendLine(bio).AppendLine();
+                }
+
+                var links = GetSpeakerContactLinks(speaker).ToList();
+                if (links.Count > 0)
+                {
+                    var firstName = speaker.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? speaker.Name;
+                    speakerSection.AppendLine($"How to find {firstName}:").AppendLine();
+                    foreach (var (label, url) in links)
+                    {
+                        speakerSection.AppendLine($"{label}: {url}").AppendLine();
+                    }
+                }
+            }
+        }
+
+        var zoomSection = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(meetupEvent.ZoomMeetingUrl))
+        {
+            zoomSection.AppendLine($"Online on Zoom: {meetupEvent.ZoomMeetingUrl}");
+            if (!string.IsNullOrWhiteSpace(meetupEvent.ZoomPasscode))
+            {
+                zoomSection.AppendLine($"Passcode: {meetupEvent.ZoomPasscode}");
+            }
+        }
+
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["EventTitle"] = meetupEvent.Title,
+            ["EventDate"] = ukTime.ToString("dddd, MMMM d, yyyy"),
+            ["EventTime"] = ukTime.ToString("h:mm tt"),
+            ["EventDescription"] = meetupEvent.Description?.Trim() ?? string.Empty,
+            ["TalkTitle"] = first?.TalkTitle ?? string.Empty,
+            ["SpeakerName"] = string.Join(" and ", speakers.Select(s => s.Name)),
+            ["Talks"] = talks.ToString().Trim(),
+            ["TalkDescriptions"] = talkDescriptions.ToString().Trim(),
+            ["SpeakerSection"] = speakerSection.ToString().Trim(),
+            ["Location"] = !string.IsNullOrWhiteSpace(meetupEvent.LocationOrPlatform)
+                ? meetupEvent.LocationOrPlatform
+                : group?.DefaultLocation ?? "Online on Zoom",
+            ["ZoomUrl"] = meetupEvent.ZoomMeetingUrl ?? string.Empty,
+            ["ZoomPasscode"] = meetupEvent.ZoomPasscode ?? string.Empty,
+            ["ZoomSection"] = zoomSection.ToString().Trim(),
+            ["GroupName"] = group?.Name ?? ".NET Notts",
+            ["WebsiteUrl"] = group?.WebsiteUrl ?? string.Empty,
+            ["Hashtags"] = group?.DefaultHashtags ?? string.Empty
+        };
+
+        return MeetupDescriptionTemplate.Render(template, values);
     }
 
     private async Task<JsonDocument> SendGraphQlAsync(

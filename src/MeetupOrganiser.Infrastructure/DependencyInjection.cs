@@ -31,6 +31,7 @@ public static class DependencyInjection
         });
 
         services.AddHttpClient<ISessionizeService, SessionizeService>();
+        services.AddHttpClient<ISessionizeProfileService, SessionizeProfileService>();
         services.AddHttpClient("ZoomService");
         services.AddScoped<IZoomService>(serviceProvider => new ZoomService(
             serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("ZoomService"),

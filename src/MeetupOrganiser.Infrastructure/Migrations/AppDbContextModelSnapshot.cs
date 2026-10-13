@@ -179,6 +179,9 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.Property<DateTime>("EventDateTimeUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("Format")
+                        .HasColumnType("int");
+
                     b.Property<string>("LocationOrPlatform")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -201,6 +204,10 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
+                    b.Property<string>("Subtitle")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(250)
@@ -208,6 +215,10 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("VenueName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("ZoomMeetingId")
                         .HasMaxLength(100)
@@ -336,6 +347,10 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
 
+                    b.Property<string>("BioThirdPerson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
                     b.Property<string>("BlueSkyHandle")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -363,6 +378,10 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.Property<string>("PhotoBlobUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Pronouns")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("TwitterHandle")
                         .HasMaxLength(100)

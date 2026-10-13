@@ -1,0 +1,85 @@
+@using MeetupOrganiser.Core.DTOs
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@inject ISessionizeProfileService ProfileService
+@inject ILogger<SessionizeTalkPicker> Logger
+
+<div class="border rounded p-2 bg-light mb-2">
+    <div class="small fw-semibold mb-1"><i class="bi bi-mic me-1"></i> @Speaker.Name's Sessionize talks</div>
+
+    @if (isLoading)
+    {
+        <div class="small text-secondary">Looking up talks on Sessionize...</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="small text-secondary">@message</div>
+    }
+
+    @if (!isLoading)
+    {
+        <select class="form-select form-select-sm" @onchange="OnPicked">
+            <option value="">-- Choose a talk, or create a new one --</option>
+            @for (var i = 0; i < sessions.Count; i++)
+            {
+                <option value="@i">@sessions[i].Title</option>
+            }
+            <option value="new">+ Create a new talk</option>
+        </select>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Speaker Speaker { get; set; } = default!;
+    [Parameter] public EventCallback<SessionizeProfileSession> OnPick { get; set; }
+    [Parameter] public EventCallback OnNewTalk { get; set; }
+
+    private List<SessionizeProfileSession> sessions = [];
+    private string? message;
+    private bool isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+        try
+        {
+            var candidates = await ProfileService.SearchAsync(Speaker.Name);
+            var match = candidates.FirstOrDefault(c => string.Equals(c.Name, Speaker.Name, StringComparison.OrdinalIgnoreCase))
+                ?? (candidates.Count == 1 ? candidates[0] : null);
+
+            if (match == null)
+            {
+                message = candidates.Count == 0
+                    ? "No public Sessionize profile found for this speaker."
+                    : "Several Sessionize profiles match; use the profile lookup below to pick the right one.";
+                return;
+            }
+
+            var profile = await ProfileService.GetProfileAsync(match.Slug);
+            sessions = profile?.Sessions ?? [];
+            message = sessions.Count == 0 ? "No public talks listed on their Sessionize profile." : null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Sessionize talk lookup failed for {Speaker}.", Speaker.Name);
+            message = "Could not reach Sessionize to list talks.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OnPicked(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (value == "new")
+        {
+            await OnNewTalk.InvokeAsync();
+        }
+        else if (int.TryParse(value, out var index) && index >= 0 && index < sessions.Count)
+        {
+            await OnPick.InvokeAsync(sessions[index]);
+        }
+    }
+}
