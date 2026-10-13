@@ -14,6 +14,10 @@ public class IntegrationSettingsModel
     // Meetup
     public string? MeetupUrlname { get; set; } = "dotnetnotts";
     public string? MeetupApiKey { get; set; }
+    public string? MeetupClientId { get; set; }
+    public string? MeetupClientSecret { get; set; }
+    public string? MeetupRedirectUri { get; set; }
+    public bool MeetupOAuthConnected { get; set; }
 
     // Sessionize
     public string? SessionizeDefaultEventId { get; set; }

@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using MeetupOrganiser.Core.Interfaces;
 using MeetupOrganiser.Infrastructure;
 using MeetupOrganiser.Infrastructure.Data;
@@ -114,6 +116,85 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseAntiforgery();
+
+const string meetupOAuthStateCookie = "MeetupOAuthState";
+app.MapGet("/integrations/meetup/connect", async (
+    HttpContext context,
+    IMeetupOAuthService meetupOAuthService,
+    ILogger<Program> logger) =>
+{
+    var state = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+        .TrimEnd('=')
+        .Replace('+', '-')
+        .Replace('/', '_');
+    context.Response.Cookies.Append(meetupOAuthStateCookie, state, new CookieOptions
+    {
+        HttpOnly = true,
+        IsEssential = true,
+        SameSite = SameSiteMode.Lax,
+        Secure = context.Request.IsHttps,
+        MaxAge = TimeSpan.FromMinutes(10),
+        Path = "/integrations/meetup"
+    });
+
+    try
+    {
+        return Results.Redirect(await meetupOAuthService.CreateAuthorizationUrlAsync(state, context.RequestAborted));
+    }
+    catch (InvalidOperationException ex)
+    {
+        logger.LogWarning(ex, "Meetup OAuth connection could not be started.");
+        return Results.Redirect("/settings?meetup=error");
+    }
+}).RequireAuthorization("OrganizerOnly");
+
+app.MapGet("/integrations/meetup/callback", async (
+    HttpContext context,
+    IMeetupOAuthService meetupOAuthService,
+    ILogger<Program> logger,
+    string? code,
+    string? state,
+    string? error) =>
+{
+    var expectedState = context.Request.Cookies[meetupOAuthStateCookie];
+    context.Response.Cookies.Delete(meetupOAuthStateCookie, new CookieOptions
+    {
+        Path = "/integrations/meetup",
+        Secure = context.Request.IsHttps,
+        SameSite = SameSiteMode.Lax
+    });
+
+    if (string.IsNullOrWhiteSpace(expectedState)
+        || string.IsNullOrWhiteSpace(state)
+        || !CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(expectedState),
+            Encoding.UTF8.GetBytes(state)))
+    {
+        return Results.Redirect("/settings?meetup=state-error");
+    }
+
+    if (!string.IsNullOrWhiteSpace(error))
+    {
+        logger.LogInformation("Meetup OAuth authorization returned {OAuthError}.", error);
+        return Results.Redirect("/settings?meetup=cancelled");
+    }
+
+    if (string.IsNullOrWhiteSpace(code))
+    {
+        return Results.Redirect("/settings?meetup=error");
+    }
+
+    try
+    {
+        await meetupOAuthService.CompleteAuthorizationAsync(code, context.RequestAborted);
+        return Results.Redirect("/settings?meetup=connected");
+    }
+    catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or System.Text.Json.JsonException)
+    {
+        logger.LogError(ex, "Meetup OAuth authorization-code exchange failed.");
+        return Results.Redirect("/settings?meetup=error");
+    }
+}).RequireAuthorization("OrganizerOnly");
 
 // Developer Sign-In / Sign-Out endpoints for testing when Entra is in dev mode
 app.MapGet("/login", async (HttpContext context) =>

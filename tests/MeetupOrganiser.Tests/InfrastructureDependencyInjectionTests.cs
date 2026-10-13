@@ -24,6 +24,7 @@ public class InfrastructureDependencyInjectionTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<ISessionizeService>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IZoomService>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IMeetupService>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IMeetupOAuthService>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<ISocialMediaService>());
     }
 }

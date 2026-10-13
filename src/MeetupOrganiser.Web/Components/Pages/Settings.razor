@@ -4,6 +4,7 @@
 @using MeetupOrganiser.Core.Interfaces
 @inject ISettingsService SettingsService
 @inject ILogger<Settings> Logger
+@inject NavigationManager NavManager
 
 <PageTitle>API Integrations &amp; Settings - Meetup Organiser</PageTitle>
 
@@ -174,7 +175,7 @@
                             <i class="bi bi-calendar-check text-danger fs-4"></i>
                             <h5 class="fw-bold mb-0">Meetup.com</h5>
                         </div>
-                        @if (!string.IsNullOrWhiteSpace(model.MeetupApiKey))
+                        @if (model.MeetupOAuthConnected || !string.IsNullOrWhiteSpace(model.MeetupApiKey))
                         {
                             <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
                                 <i class="bi bi-check-circle me-1"></i> API Mode
@@ -188,15 +189,44 @@
                         }
                     </div>
                     <div class="card-body p-4">
-                        <p class="small text-muted mb-3">Coordinates Meetup events, pre-formats rich descriptions, and links to your group's event creator. Note: Each Meetup Group under <em>Meetup Groups</em> can also specify its own URL slug and optional API Key override.</p>
+                        <p class="small text-muted mb-3">Connect with Meetup OAuth to publish events and import past events for your group. Each Meetup Group under <em>Meetup Groups</em> can also specify its own URL slug and optional access-token override.</p>
                         <div class="mb-3">
                             <label class="form-label fw-semibold small">Default Group URL Name (Fallback)</label>
                             <input type="text" class="form-control" placeholder="e.g. dotnetnotts"
                                    @bind="model.MeetupUrlname" />
                             <div class="form-text">Default slug used when a group doesn't have an explicit slug defined.</div>
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">OAuth Client ID</label>
+                            <input type="text" class="form-control" placeholder="Meetup OAuth client ID"
+                                   @bind="model.MeetupClientId" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">OAuth Client Secret</label>
+                            <div class="input-group">
+                                <input type="@(showPasswords.Contains("MeetupClientSecret") ? "text" : "password")"
+                                       class="form-control" placeholder="Meetup OAuth client secret"
+                                       @bind="model.MeetupClientSecret" />
+                                <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("MeetupClientSecret")'>
+                                    <i class="bi @(showPasswords.Contains("MeetupClientSecret") ? "bi-eye-slash" : "bi-eye")"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">OAuth Redirect URL</label>
+                            <input type="url" class="form-control"
+                                   @bind="model.MeetupRedirectUri" />
+                            <div class="form-text">Register this exact URL in your Meetup OAuth client. For F5, use <code>http://localhost:5107/integrations/meetup/callback</code>.</div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(model.MeetupClientId) && !string.IsNullOrWhiteSpace(model.MeetupClientSecret))
+                        {
+                            <a class="btn btn-outline-danger mb-3" href="/integrations/meetup/connect">
+                                <i class="bi bi-link-45deg me-1"></i> @(model.MeetupOAuthConnected ? "Reconnect Meetup" : "Connect Meetup")
+                            </a>
+                            <div class="form-text mb-3">Save your OAuth client ID, secret, and redirect URL before connecting.</div>
+                        }
                         <div class="mb-2">
-                            <label class="form-label fw-semibold small">Global API Key / OAuth Token (Optional)</label>
+                            <label class="form-label fw-semibold small">Legacy Access Token (Optional)</label>
                             <div class="input-group">
                                 <input type="@(showPasswords.Contains("Meetup") ? "text" : "password")"
                                        class="form-control" placeholder="Meetup OAuth Access Token"
@@ -205,7 +235,7 @@
                                     <i class="bi @(showPasswords.Contains("Meetup") ? "bi-eye-slash" : "bi-eye")"></i>
                                 </button>
                             </div>
-                            <div class="form-text">Acts as the global key across all groups unless overridden on a specific group.</div>
+                            <div class="form-text">Optional fallback for manually supplied access tokens. OAuth connection above is preferred.</div>
                         </div>
                     </div>
                 </div>
@@ -386,6 +416,23 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadSettingsAsync();
+        var uri = new Uri(NavManager.Uri);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        if (query.TryGetValue("meetup", out var meetupStatus))
+        {
+            successMessage = meetupStatus.ToString() switch
+            {
+                "connected" => "Meetup account connected successfully.",
+                "cancelled" => "Meetup authorization was cancelled.",
+                _ => null
+            };
+            if (meetupStatus.ToString() is "error" or "state-error")
+            {
+                errorMessage = meetupStatus.ToString() == "state-error"
+                    ? "Meetup authorization could not be verified. Please try connecting again."
+                    : "Meetup authorization failed. Check the OAuth client configuration and try again.";
+            }
+        }
     }
 
     private async Task LoadSettingsAsync()

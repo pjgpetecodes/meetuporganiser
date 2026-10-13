@@ -17,7 +17,15 @@ public interface IZoomService
 public interface IMeetupService
 {
     Task<MeetupCreationResult> CreateEventAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default);
+    Task<MeetupEventImportResult> ImportPastEventsAsync(string urlname, CancellationToken cancellationToken = default);
     string GenerateMeetupDescription(MeetupEvent meetupEvent);
+}
+
+public interface IMeetupOAuthService
+{
+    Task<string> CreateAuthorizationUrlAsync(string state, CancellationToken cancellationToken = default);
+    Task CompleteAuthorizationAsync(string code, CancellationToken cancellationToken = default);
+    Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default);
 }
 
 public interface ISocialMediaService

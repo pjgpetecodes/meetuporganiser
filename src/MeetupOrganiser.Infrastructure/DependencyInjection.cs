@@ -1,6 +1,7 @@
 using MeetupOrganiser.Core.Interfaces;
 using MeetupOrganiser.Infrastructure.Data;
 using MeetupOrganiser.Infrastructure.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +13,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddDataProtection();
+
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? "Server=(localdb)\\mssqllocaldb;Database=MeetupOrganiserDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
 
@@ -34,12 +37,16 @@ public static class DependencyInjection
             serviceProvider.GetRequiredService<ISettingsService>(),
             configuration,
             serviceProvider.GetRequiredService<ILogger<ZoomService>>()));
+        services.AddHttpClient<MeetupOAuthService>();
+        services.AddScoped<IMeetupOAuthService>(serviceProvider =>
+            serviceProvider.GetRequiredService<MeetupOAuthService>());
         services.AddHttpClient("MeetupService");
         services.AddScoped<IMeetupService>(serviceProvider => new MeetupService(
             serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("MeetupService"),
             serviceProvider.GetRequiredService<ISettingsService>(),
             configuration,
-            serviceProvider.GetRequiredService<ILogger<MeetupService>>()));
+            serviceProvider.GetRequiredService<ILogger<MeetupService>>(),
+            serviceProvider.GetRequiredService<IMeetupOAuthService>()));
         services.AddHttpClient("SocialMediaService");
         services.AddScoped<ISocialMediaService>(serviceProvider => new SocialMediaService(
             serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("SocialMediaService"),
