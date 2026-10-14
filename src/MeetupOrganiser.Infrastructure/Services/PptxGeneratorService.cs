@@ -127,6 +127,11 @@ public class PptxGeneratorService : IPptxGeneratorService
                 var speaker1 = sessions.FirstOrDefault()?.Speaker;
                 var speaker2 = sessions.Skip(1).FirstOrDefault()?.Speaker;
                 var replacements = PptxTokens.BuildReplacements(meetupEvent, includeSampleLiterals: true, nextEvent);
+                var photos = new[]
+                {
+                    await PptxSpeakerPhotos.LoadAsync(speaker1, cancellationToken),
+                    await PptxSpeakerPhotos.LoadAsync(speaker2, cancellationToken)
+                };
 
                 // Iterate through all slide parts and replace text occurrences
                 foreach (var slideId in presentationPart.Presentation.SlideIdList?.Elements<SlideId>() ?? [])
@@ -135,12 +140,11 @@ public class PptxGeneratorService : IPptxGeneratorService
                     var slidePart = (SlidePart)presentationPart.GetPartById(slideId.RelationshipId!);
                     if (slidePart?.Slide == null) continue;
 
+                    var kind = PptxTokens.Classify(PptxTokens.DetectTokens(slidePart.Slide));
                     PptxTokens.ApplyToSlide(slidePart.Slide, replacements);
+                    PptxSpeakerPhotos.Apply(slidePart, kind, photos);
                     slidePart.Slide.Save();
                 }
-
-                // Replace speaker photo in image parts if available
-                await TryReplaceSpeakerPhotosAsync(presentationPart, speaker1, speaker2);
 
                 presentationPart.Presentation.Save();
             }
@@ -161,45 +165,6 @@ public class PptxGeneratorService : IPptxGeneratorService
         }
 
         return null;
-    }
-
-    private async Task TryReplaceSpeakerPhotosAsync(PresentationPart presentationPart, Speaker? speaker1, Speaker? speaker2)
-    {
-        try
-        {
-            byte[]? photo1Bytes = LoadSpeakerBytes(speaker1?.PhotoBlobUrl) ?? await RemotePhotoLoader.LoadAsync(speaker1?.PhotoBlobUrl);
-            byte[]? photo2Bytes = LoadSpeakerBytes(speaker2?.PhotoBlobUrl) ?? await RemotePhotoLoader.LoadAsync(speaker2?.PhotoBlobUrl);
-            if (photo1Bytes != null) photo1Bytes = ImageOrientation.Normalize(photo1Bytes);
-            if (photo2Bytes != null) photo2Bytes = ImageOrientation.Normalize(photo2Bytes);
-
-            foreach (var slidePart in presentationPart.SlideParts)
-            {
-                var uri = slidePart.Uri.ToString();
-
-                // Slide 7 and Slide 9 contain speaker 1 photo (image32.png via rId3)
-                if (photo1Bytes != null && (uri.EndsWith("slide7.xml") || uri.EndsWith("slide9.xml")))
-                {
-                    ReplaceImagePart(slidePart, "rId3", photo1Bytes);
-                }
-
-                // Slide 10 contains speaker 1 (rId3 -> image35.png) and speaker 2 (rId2 -> image34.png)
-                if (uri.EndsWith("slide10.xml"))
-                {
-                    if (photo1Bytes != null)
-                    {
-                        ReplaceImagePart(slidePart, "rId3", photo1Bytes);
-                    }
-                    if (photo2Bytes != null)
-                    {
-                        ReplaceImagePart(slidePart, "rId2", photo2Bytes);
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to swap speaker headshot images in presentation deck.");
-        }
     }
 
     private static void NormalizeImagePart(ImagePart imagePart)
@@ -226,38 +191,12 @@ public class PptxGeneratorService : IPptxGeneratorService
         }
     }
 
-    private static void ReplaceImagePart(SlidePart slidePart, string relId, byte[] newImageBytes)
-    {
-        try
-        {
-            if (slidePart.TryGetPartById(relId, out var part) && part is ImagePart imagePart)
-            {
-                using var stream = imagePart.GetStream(FileMode.Create, FileAccess.Write);
-                stream.Write(newImageBytes, 0, newImageBytes.Length);
-            }
-        }
-        catch
-        {
-            // Ignore if relationship is not found or cannot be overwritten
-        }
-    }
-
-    private static byte[]? LoadSpeakerBytes(string? photoUrl)
+    internal static byte[]? LoadSpeakerBytes(string? photoUrl)
     {
         try
         {
             if (string.IsNullOrWhiteSpace(photoUrl))
             {
-                var defaultPath = Path.Combine(Directory.GetCurrentDirectory(), "images", "speakers", "Luce Carter.jpg");
-                if (File.Exists(defaultPath))
-                {
-                    return File.ReadAllBytes(defaultPath);
-                }
-                var altDefault = Path.Combine(Directory.GetCurrentDirectory(), "src", "MeetupOrganiser.Web", "wwwroot", "images", "speakers", "Luce Carter.jpg");
-                if (File.Exists(altDefault))
-                {
-                    return File.ReadAllBytes(altDefault);
-                }
                 return null;
             }
 

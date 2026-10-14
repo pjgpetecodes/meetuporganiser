@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Net.Http.Json;
 using System.Text.RegularExpressions;
 using System.Xml;
+using AngleSharp.Dom;
+using AngleSharp.Html.Parser;
 using MeetupOrganiser.Core.DTOs;
 using MeetupOrganiser.Core.Entities;
 using MeetupOrganiser.Core.Interfaces;
@@ -156,7 +158,7 @@ public class MeetupService : IMeetupService
         accessToken ??= _configuration["Integrations:Meetup:ApiKey"];
         if (string.IsNullOrWhiteSpace(accessToken))
         {
-            return new MeetupEventImportResult(false, [], "Connect a Meetup OAuth account before importing past events.");
+            return await ImportPastEventsFromHtmlAsync(urlname, cancellationToken);
         }
 
         const string query = """
@@ -193,7 +195,10 @@ public class MeetupService : IMeetupService
                 var group = document.RootElement.GetProperty("data").GetProperty("groupByUrlname");
                 if (group.ValueKind == JsonValueKind.Null)
                 {
-                    return new MeetupEventImportResult(false, [], $"Meetup group '{urlname}' was not found or is not accessible.");
+                    return await ImportPastEventsFromHtmlAsync(
+                        urlname,
+                        cancellationToken,
+                        $"Meetup API could not access group '{urlname}'.");
                 }
 
                 var events = group.GetProperty("events");
@@ -243,14 +248,514 @@ public class MeetupService : IMeetupService
                 }
             } while (true);
 
-            return new MeetupEventImportResult(true, importedEvents, null);
+            if (importedEvents.Count > 0)
+            {
+                return new MeetupEventImportResult(true, importedEvents, null);
+            }
+
+            return await ImportPastEventsFromHtmlAsync(
+                urlname,
+                cancellationToken,
+                "Meetup API returned no past events.");
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException)
         {
             _logger.LogError(ex, "Importing past Meetup events failed for group {GroupUrlname}.", urlname);
-            return new MeetupEventImportResult(false, [], ex.Message);
+            return await ImportPastEventsFromHtmlAsync(urlname, cancellationToken, ex.Message);
         }
     }
+
+    private async Task<MeetupEventImportResult> ImportPastEventsFromHtmlAsync(
+        string urlname,
+        CancellationToken cancellationToken,
+        string? apiError = null)
+    {
+        if (!Regex.IsMatch(urlname, @"\A[A-Za-z0-9_-]{1,100}\z"))
+        {
+            return new MeetupEventImportResult(false, [],
+                "The Meetup group URL name is invalid." + FormatApiError(apiError));
+        }
+
+        try
+        {
+            var eventById = new Dictionary<string, MeetupEventImportDto>(StringComparer.OrdinalIgnoreCase);
+            var eventLinks = new Dictionary<string, Uri>(StringComparer.OrdinalIgnoreCase);
+            var listingErrors = new List<string>();
+            foreach (var eventType in new[] { "past", "upcoming" })
+            {
+                var groupUrl = new Uri(
+                    $"https://www.meetup.com/{Uri.EscapeDataString(urlname)}/events/?type={eventType}");
+                try
+                {
+                    var groupHtml = await FetchMeetupHtmlAsync(groupUrl, cancellationToken);
+                    foreach (var importedEvent in ParsePastEventsFromListing(groupHtml))
+                    {
+                        eventById.TryAdd(importedEvent.MeetupEventId, importedEvent);
+                    }
+
+                    foreach (var (eventId, eventUrl) in ParsePastEventLinks(groupHtml, urlname))
+                    {
+                        eventLinks.TryAdd(eventId, eventUrl);
+                    }
+                }
+                catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException)
+                {
+                    _logger.LogWarning(ex, "Could not read Meetup {EventType} event listing for group {GroupUrlname}.", eventType, urlname);
+                    listingErrors.Add(ex.Message);
+                }
+            }
+
+            if (eventById.Count > 0)
+            {
+                return new MeetupEventImportResult(
+                    true,
+                    eventById.Values.OrderByDescending(item => item.EventDateTimeUtc).ToList(),
+                    null);
+            }
+
+            if (eventLinks.Count == 0)
+            {
+                var reason = listingErrors.Count > 0
+                    ? $" Meetup listing errors: {string.Join("; ", listingErrors.Distinct())}."
+                    : string.Empty;
+                return new MeetupEventImportResult(false, [],
+                    "Meetup's public pages did not expose any past event data or links." + reason + FormatApiError(apiError));
+            }
+
+            var importedEvents = new Dictionary<string, MeetupEventImportDto>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (eventId, eventUrl) in eventLinks.Take(100))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var eventHtml = await FetchMeetupHtmlAsync(eventUrl, cancellationToken);
+                    var importedEvent = ParsePastEvent(eventHtml, eventId, eventUrl);
+                    if (importedEvent == null)
+                    {
+                        _logger.LogWarning("Skipping scraped Meetup event {EventId}: missing event date.", eventId);
+                        continue;
+                    }
+
+                    if (importedEvent.EventDateTimeUtc < DateTime.UtcNow)
+                    {
+                        importedEvents.TryAdd(importedEvent.MeetupEventId, importedEvent);
+                    }
+                }
+                catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException)
+                {
+                    _logger.LogWarning(ex, "Could not scrape Meetup event {EventId}.", eventId);
+                }
+            }
+
+            if (importedEvents.Count == 0)
+            {
+                return new MeetupEventImportResult(false, [],
+                    "Meetup's public pages did not contain any readable past events." + FormatApiError(apiError));
+            }
+
+            _logger.LogInformation(
+                "Scraped {EventCount} past Meetup events for group {GroupUrlname} after API import was unavailable.",
+                importedEvents.Count,
+                urlname);
+            return new MeetupEventImportResult(
+                true,
+                importedEvents.Values.OrderByDescending(item => item.EventDateTimeUtc).ToList(),
+                null);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Scraping past Meetup events failed for group {GroupUrlname}.", urlname);
+            return new MeetupEventImportResult(false, [],
+                $"Meetup's public event pages could not be read: {ex.Message}" + FormatApiError(apiError));
+        }
+    }
+
+    private static List<MeetupEventImportDto> ParsePastEventsFromListing(string html)
+    {
+        var document = new HtmlParser().ParseDocument(html);
+        var nextData = document.QuerySelector("script#__NEXT_DATA__")?.TextContent;
+        if (string.IsNullOrWhiteSpace(nextData)) return [];
+
+        using var json = JsonDocument.Parse(nextData);
+        if (!json.RootElement.TryGetProperty("props", out var props)
+            || !props.TryGetProperty("pageProps", out var pageProps)
+            || !pageProps.TryGetProperty("__APOLLO_STATE__", out var apolloState)
+            || apolloState.ValueKind != JsonValueKind.Object)
+        {
+            return [];
+        }
+
+        var events = new List<MeetupEventImportDto>();
+        foreach (var entity in apolloState.EnumerateObject())
+        {
+            var eventData = entity.Value;
+            if (GetString(eventData, "__typename") != "Event") continue;
+            if (TryParsePastMeetupEvent(eventData, apolloState, out var importedEvent))
+            {
+                events.Add(importedEvent);
+            }
+        }
+
+        return events;
+    }
+
+    private static bool TryParsePastMeetupEvent(
+        JsonElement eventData,
+        JsonElement apolloState,
+        out MeetupEventImportDto importedEvent)
+    {
+        importedEvent = default!;
+        if (!DateTimeOffset.TryParse(GetString(eventData, "dateTime"), out var startDate)
+            || startDate.UtcDateTime >= DateTime.UtcNow)
+        {
+            return false;
+        }
+
+        var id = GetString(eventData, "id");
+        var eventUrl = GetString(eventData, "eventUrl");
+        var title = GetString(eventData, "title");
+        if (string.IsNullOrWhiteSpace(id)
+            || id.Length > 100
+            || string.IsNullOrWhiteSpace(title)
+            || !Uri.TryCreate(eventUrl, UriKind.Absolute, out var parsedEventUrl)
+            || !IsMeetupHost(parsedEventUrl.Host))
+        {
+            return false;
+        }
+
+        var description = LimitLength(GetString(eventData, "description"), 8000);
+        var duration = ParseDurationMinutes(null);
+        if (DateTimeOffset.TryParse(GetString(eventData, "endTime"), out var endDate))
+        {
+            var durationMinutes = (int)Math.Ceiling((endDate - startDate).TotalMinutes);
+            if (durationMinutes > 0) duration = durationMinutes;
+        }
+
+        var location = GetMeetupVenueName(eventData, apolloState);
+        var structuredSpeakers = ReadSpeakers(eventData, title, description);
+        importedEvent = new MeetupEventImportDto(
+            id,
+            LimitLength(title.Trim(), 250) ?? "Untitled Meetup event",
+            description,
+            startDate.UtcDateTime,
+            duration,
+            parsedEventUrl.AbsoluteUri,
+            LimitLength(location, 200),
+            structuredSpeakers,
+            GetMeetupImageUrl(eventData, apolloState));
+        return true;
+    }
+
+    private static string? GetMeetupImageUrl(JsonElement eventData, JsonElement apolloState)
+    {
+        foreach (var property in new[] { "featuredEventPhoto", "displayPhoto" })
+        {
+            if (!eventData.TryGetProperty(property, out var photo)) continue;
+            if (photo.ValueKind == JsonValueKind.Object
+                && photo.TryGetProperty("__ref", out var reference)
+                && reference.ValueKind == JsonValueKind.String
+                && reference.GetString() is { } key
+                && apolloState.TryGetProperty(key, out var referencedPhoto))
+            {
+                photo = referencedPhoto;
+            }
+
+            if (photo.ValueKind != JsonValueKind.Object) continue;
+            var url = GetString(photo, "highResUrl") ?? GetString(photo, "baseUrl");
+            if (IsSafeMeetupImageUrl(url)) return url;
+        }
+
+        return null;
+    }
+
+    private static bool IsSafeMeetupImageUrl(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && url!.Length <= 1000
+        && (uri.Host.EndsWith("meetupstatic.com", StringComparison.OrdinalIgnoreCase)
+            || IsMeetupHost(uri.Host));
+
+    private static string? GetMeetupVenueName(JsonElement eventData, JsonElement apolloState)
+    {
+        if (!eventData.TryGetProperty("venue", out var venue)) return null;
+        if (venue.ValueKind == JsonValueKind.Object
+            && venue.TryGetProperty("__ref", out var reference)
+            && reference.ValueKind == JsonValueKind.String
+            && apolloState.TryGetProperty(reference.GetString(), out var referencedVenue))
+        {
+            venue = referencedVenue;
+        }
+
+        if (venue.ValueKind != JsonValueKind.Object) return null;
+        var name = GetString(venue, "name");
+        var address = venue.TryGetProperty("address", out var addressValue)
+            ? addressValue.ValueKind == JsonValueKind.String
+                ? addressValue.GetString()
+                : addressValue.ValueKind == JsonValueKind.Object
+                    ? string.Join(", ", new[]
+                    {
+                        GetString(addressValue, "streetAddress"),
+                        GetString(addressValue, "addressLocality"),
+                        GetString(addressValue, "addressRegion"),
+                        GetString(addressValue, "postalCode")
+                    }.Where(value => !string.IsNullOrWhiteSpace(value)))
+                    : null
+            : null;
+        return string.Join(", ", new[] { name, address }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private async Task<string> FetchMeetupHtmlAsync(Uri url, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.UserAgent.ParseAdd("MeetupOrganiser/1.0 (+past event import)");
+        request.Headers.Accept.ParseAdd("text/html");
+        using var response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var finalUri = response.RequestMessage?.RequestUri ?? request.RequestUri;
+        if (finalUri == null || !IsMeetupHost(finalUri.Host))
+        {
+            throw new HttpRequestException("Meetup redirected to an unexpected host.");
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[16 * 1024];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            buffer.Write(chunk, 0, read);
+            if (buffer.Length > 6 * 1024 * 1024)
+            {
+                throw new InvalidOperationException("Meetup's HTML response exceeded the 6 MB limit.");
+            }
+        }
+
+        return Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    private static List<(string EventId, Uri EventUrl)> ParsePastEventLinks(string html, string urlname)
+    {
+        var document = new HtmlParser().ParseDocument(html);
+        var links = new List<(string EventId, Uri EventUrl)>();
+        foreach (var anchor in document.QuerySelectorAll("a[href]"))
+        {
+            var href = anchor.GetAttribute("href");
+            if (!Uri.TryCreate(new Uri("https://www.meetup.com"), href, out var eventUrl)
+                || !IsMeetupHost(eventUrl.Host))
+            {
+                continue;
+            }
+
+            var segments = eventUrl.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length < 3
+                || !string.Equals(Uri.UnescapeDataString(segments[0]), urlname, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(segments[1], "events", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var eventId = segments[2];
+            if (eventId.Length is < 1 or > 100 || eventId.Any(char.IsControl))
+            {
+                continue;
+            }
+
+            links.Add((eventId, new Uri($"https://www.meetup.com/{Uri.EscapeDataString(urlname)}/events/{Uri.EscapeDataString(eventId)}/")));
+        }
+
+        return links.DistinctBy(link => link.EventId, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static MeetupEventImportDto? ParsePastEvent(string html, string eventId, Uri eventUrl)
+    {
+        var document = new HtmlParser().ParseDocument(html);
+        JsonElement? eventData = null;
+        foreach (var script in document.QuerySelectorAll("script[type='application/ld+json']"))
+        {
+            if (string.IsNullOrWhiteSpace(script.TextContent)) continue;
+            try
+            {
+                using var json = JsonDocument.Parse(script.TextContent);
+                eventData ??= FindJsonLdEvent(json.RootElement);
+            }
+            catch (JsonException)
+            {
+                // Meetup pages can include unrelated or incomplete structured-data scripts.
+            }
+        }
+
+        var title = eventData is { } data
+            ? GetJsonLdString(data, "name")
+            : null;
+        title ??= document.QuerySelector("h1")?.TextContent.Trim();
+        title ??= document.QuerySelector("meta[property='og:title']")?.GetAttribute("content")?.Trim();
+        if (string.IsNullOrWhiteSpace(title)) return null;
+        title = Regex.Replace(title, @"\s*[|–-]\s*Meetup\s*$", string.Empty, RegexOptions.IgnoreCase).Trim();
+
+        var dateText = eventData is { } structured
+            ? GetJsonLdString(structured, "startDate")
+            : null;
+        dateText ??= document.QuerySelector("time[datetime]")?.GetAttribute("datetime");
+        if (!DateTimeOffset.TryParse(dateText, out var startDate)) return null;
+
+        var description = eventData is { } eventJson
+            ? GetJsonLdString(eventJson, "description")
+            : null;
+        description ??= document.QuerySelector("meta[property='og:description']")?.GetAttribute("content");
+        description ??= document.QuerySelector("meta[name='description']")?.GetAttribute("content");
+        description ??= document.QuerySelector("[data-testid*='description'], [class*='description']")?.TextContent.Trim();
+        description = LimitLength(description, 8000);
+
+        var durationText = eventData is { } durationData
+            ? GetJsonLdString(durationData, "duration")
+            : null;
+        var duration = ParseDurationMinutes(durationText);
+        var location = eventData is { } locationData
+            ? GetJsonLdLocation(locationData)
+            : null;
+        var structuredSpeakers = eventData is { } speakerData
+            ? ReadJsonLdSpeakers(speakerData, title)
+            : [];
+        var speakers = structuredSpeakers
+            .Concat(ReadSpeakers(default, title, description))
+            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.Name))
+            .GroupBy(speaker => speaker.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.FirstOrDefault(speaker => !string.IsNullOrWhiteSpace(speaker.Bio)) ?? group.First())
+            .ToList();
+
+        var imageUrl = document.QuerySelector("meta[property='og:image']")?.GetAttribute("content");
+        if (!IsSafeMeetupImageUrl(imageUrl)) imageUrl = null;
+
+        return new MeetupEventImportDto(
+            eventId,
+            LimitLength(title, 250) ?? "Untitled Meetup event",
+            description,
+            startDate.UtcDateTime,
+            duration,
+            eventUrl.AbsoluteUri,
+            LimitLength(location, 200),
+            speakers,
+            imageUrl);
+    }
+
+    private static JsonElement? FindJsonLdEvent(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            if (element.TryGetProperty("@type", out var type))
+            {
+                var isEvent = type.ValueKind == JsonValueKind.String
+                    ? IsJsonLdEventType(type.GetString())
+                    : type.ValueKind == JsonValueKind.Array
+                      && type.EnumerateArray().Any(item =>
+                          item.ValueKind == JsonValueKind.String && IsJsonLdEventType(item.GetString()));
+                if (isEvent) return element.Clone();
+            }
+
+            foreach (var property in element.EnumerateObject())
+            {
+                var match = FindJsonLdEvent(property.Value);
+                if (match != null) return match;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                var match = FindJsonLdEvent(item);
+                if (match != null) return match;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsJsonLdEventType(string? value) =>
+        string.Equals(value, "Event", StringComparison.OrdinalIgnoreCase)
+        || value?.EndsWith("/Event", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static List<MeetupEventImportSpeaker> ReadJsonLdSpeakers(JsonElement eventData, string eventTitle)
+    {
+        if (eventData.TryGetProperty("speakerDetails", out var speakerDetails)
+            && speakerDetails.ValueKind == JsonValueKind.Object
+            && !string.IsNullOrWhiteSpace(GetJsonLdString(speakerDetails, "name")))
+        {
+            return [new MeetupEventImportSpeaker(
+                LimitLength(GetJsonLdString(speakerDetails, "name")!.Trim(), 200) ?? string.Empty,
+                LimitLength(GetJsonLdString(speakerDetails, "description"), 4000),
+                eventTitle)];
+        }
+
+        if (!eventData.TryGetProperty("performer", out var performers)) return [];
+        var items = performers.ValueKind == JsonValueKind.Array
+            ? performers.EnumerateArray().ToList()
+            : [performers];
+        return items
+            .Where(item => item.ValueKind == JsonValueKind.Object)
+            .Select(item => new MeetupEventImportSpeaker(
+                LimitLength(GetJsonLdString(item, "name")?.Trim(), 200) ?? string.Empty,
+                LimitLength(GetJsonLdString(item, "description"), 4000),
+                eventTitle))
+            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.Name))
+            .DistinctBy(speaker => speaker.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string? GetJsonLdLocation(JsonElement eventData)
+    {
+        if (!eventData.TryGetProperty("location", out var location)) return null;
+        if (location.ValueKind == JsonValueKind.String) return location.GetString();
+        if (location.ValueKind != JsonValueKind.Object) return null;
+
+        var name = GetJsonLdString(location, "name");
+        if (location.TryGetProperty("address", out var address))
+        {
+            var addressText = address.ValueKind == JsonValueKind.String
+                ? address.GetString()
+                : address.ValueKind == JsonValueKind.Object
+                    ? string.Join(", ", new[] {
+                        GetJsonLdString(address, "streetAddress"),
+                        GetJsonLdString(address, "addressLocality"),
+                        GetJsonLdString(address, "addressRegion"),
+                        GetJsonLdString(address, "postalCode")
+                    }.Where(value => !string.IsNullOrWhiteSpace(value)))
+                    : null;
+            return string.Join(", ", new[] { name, addressText }
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+
+        return name;
+    }
+
+    private static string? GetJsonLdString(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(propertyName, out var property))
+        {
+            return null;
+        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString(),
+            JsonValueKind.Number => property.ToString(),
+            _ => null
+        };
+    }
+
+    private static bool IsMeetupHost(string host) =>
+        host.Equals("meetup.com", StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith(".meetup.com", StringComparison.OrdinalIgnoreCase);
+
+    private static string FormatApiError(string? apiError) =>
+        string.IsNullOrWhiteSpace(apiError) ? string.Empty : $" Meetup API fallback reason: {apiError}";
 
     public string GenerateMeetupDescription(MeetupEvent meetupEvent, string? bioPreference = null, string? template = null)
     {
@@ -503,7 +1008,8 @@ public class MeetupService : IMeetupService
         string eventTitle,
         string? description)
     {
-        if (eventNode.TryGetProperty("speakerDetails", out var speakerDetails)
+        if (eventNode.ValueKind == JsonValueKind.Object
+            && eventNode.TryGetProperty("speakerDetails", out var speakerDetails)
             && speakerDetails.ValueKind == JsonValueKind.Object)
         {
             var name = GetString(speakerDetails, "name");
@@ -524,8 +1030,12 @@ public class MeetupService : IMeetupService
             return [];
         }
 
-        var speakerSection = Regex.Match(
+        var speakerDescription = Regex.Replace(
             description,
+            @"(?m)^\s*\*{1,2}(?<text>[^*\r\n]+?)\*{1,2}\s*$",
+            "${text}");
+        var speakerSection = Regex.Match(
+            speakerDescription,
             @"(?is)\bOur Speakers?:\s*(?<section>.*?)(?=\bHow to find\b|$)");
         if (speakerSection.Success)
         {
@@ -549,7 +1059,7 @@ public class MeetupService : IMeetupService
             }
         }
 
-        var inferred = InferSpeakerFromTitle(eventTitle, description);
+        var inferred = InferSpeakerFromTitle(eventTitle, speakerDescription);
         return inferred == null ? [] : [inferred];
     }
 

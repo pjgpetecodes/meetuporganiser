@@ -1,5 +1,6 @@
 @page "/events"
 @attribute [Authorize]
+@using MeetupOrganiser.Core.DTOs
 @using MeetupOrganiser.Core.Entities
 @using MeetupOrganiser.Core.Services
 @using MeetupOrganiser.Core.Interfaces
@@ -19,11 +20,11 @@
             <p class="text-secondary mb-0">Create, schedule, clone, and manage community meetup events.</p>
         </div>
         <div class="d-flex gap-2">
-            <button class="btn btn-outline-danger" @onclick="SyncPastMeetupEventsAsync" disabled="@(!Guid.TryParse(selectedGroupId, out _) || isSyncingMeetup)">
+            <button class="btn btn-outline-danger" @onclick="SyncPastMeetupEventsAsync" disabled="@(!Guid.TryParse(selectedGroupId, out _) || isSyncingMeetup || pendingMeetupImport != null)">
                 @if (isSyncingMeetup)
                 {
                     <span class="spinner-border spinner-border-sm me-1"></span>
-                    <span>Syncing...</span>
+                    <span>Loading...</span>
                 }
                 else
                 {
@@ -40,6 +41,100 @@
     @if (statusMessage != null)
     {
         <div class="alert @(isError ? "alert-danger" : "alert-success")" role="alert">@statusMessage</div>
+    }
+
+    @if (pendingMeetupImport is { } pendingImport)
+    {
+        <div class="card border-0 shadow-sm p-3 mb-4">
+            <div class="d-flex justify-content-between align-items-start gap-3">
+                <div>
+                    <h2 class="h5 fw-bold mb-1">Review past Meetup events</h2>
+                    <p class="text-secondary mb-3">
+                        @pendingImport.Events.Count event(s) found. Add a matching Sessionize profile to any speaker before importing.
+                        Existing Meetup events will be skipped.
+                    </p>
+                </div>
+                <button type="button" class="btn-close" aria-label="Cancel import" @onclick="CancelMeetupImport" disabled="@isSyncingMeetup"></button>
+            </div>
+
+            <div class="row g-3 mb-3">
+                @foreach (var importedEvent in pendingImport.Events)
+                {
+                    <div class="col-12 col-lg-6" @key="importedEvent.MeetupEventId">
+                        <div class="card h-100 border">
+                            @if (!string.IsNullOrWhiteSpace(importedEvent.ImageUrl))
+                            {
+                                <img src="@importedEvent.ImageUrl" alt="" class="card-img-top" loading="lazy" style="max-height: 200px; object-fit: cover;" />
+                            }
+                            <div class="card-body">
+                                <h3 class="h6 fw-bold mb-1">@importedEvent.Title</h3>
+                                <div class="small text-secondary mb-2">
+                                    <i class="bi bi-calendar-event me-1"></i>@importedEvent.EventDateTimeUtc.ToString("ddd d MMM yyyy, HH:mm") UTC
+                                    @if (!string.IsNullOrWhiteSpace(importedEvent.Location))
+                                    {
+                                        <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>@importedEvent.Location</span>
+                                    }
+                                </div>
+                                @if (AbridgeDescription(importedEvent.Description) is { Length: > 0 } summary)
+                                {
+                                    <p class="small mb-3">@summary</p>
+                                }
+
+                                @foreach (var importedSpeaker in importedEvent.Speakers.Where(item => !string.IsNullOrWhiteSpace(item.Name)))
+                                {
+                                    var speaker = importSpeakers.FirstOrDefault(item => string.Equals(item.Name, importedSpeaker.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+                                    if (speaker is null) continue;
+                                    var isApplied = selectedSessionizeProfiles.ContainsKey(speaker.Name);
+                                    var useMeetup = meetupDetailsSpeakers.Contains(speaker.Name);
+                                    <div class="border-top pt-2 mt-2" @key="@($"{importedEvent.MeetupEventId}:{speaker.Name}")">
+                                        <div class="d-flex flex-wrap align-items-center gap-2">
+                                            <span class="fw-semibold">@speaker.Name</span>
+                                            @if (isApplied)
+                                            {
+                                                <span class="badge text-bg-success">Profile created</span>
+                                                <button type="button" class="btn btn-sm btn-link p-0" @onclick="() => UseMeetupSpeakerDetails(speaker)">Use Meetup details instead</button>
+                                            }
+                                            else if (useMeetup)
+                                            {
+                                                <span class="badge text-bg-secondary">Using Meetup details</span>
+                                                <button type="button" class="btn btn-sm btn-link p-0" @onclick="() => FindOnSessionize(speaker)">Find on Sessionize</button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => UseMeetupDetailsOnly(speaker)">Use Meetup details instead</button>
+                                            }
+                                        </div>
+                                        @if (!isApplied && !useMeetup)
+                                        {
+                                            <SessionizeProfileLookup @key="speaker.Name"
+                                                                     InitialQuery="@speaker.Name"
+                                                                     Current="speaker"
+                                                                     OnApply="result => ApplyImportedSpeakerProfileAsync(speaker, result)" />
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-primary" @onclick="ImportPendingMeetupEventsAsync" disabled="@isSyncingMeetup">
+                    @if (isSyncingMeetup)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                        <span>Importing...</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-cloud-download me-1"></i>
+                        <span>Import events</span>
+                    }
+                </button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="CancelMeetupImport" disabled="@isSyncingMeetup">Cancel</button>
+            </div>
+        </div>
     }
 
     <!-- Filter & Search Controls -->
@@ -208,6 +303,11 @@
     private string? statusMessage;
     private bool isError;
     private bool isSyncingMeetup;
+    private MeetupEventImportResult? pendingMeetupImport;
+    private Guid? pendingMeetupGroupId;
+    private List<Speaker> importSpeakers = [];
+    private readonly Dictionary<string, SelectedSessionizeProfile> selectedSessionizeProfiles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> meetupDetailsSpeakers = new(StringComparer.OrdinalIgnoreCase);
 
     private IEnumerable<MeetupEvent>? filteredEvents => allEvents?
         .Where(e => (string.IsNullOrWhiteSpace(searchQuery) ||
@@ -346,6 +446,76 @@
                 return;
             }
 
+            pendingMeetupImport = import;
+            pendingMeetupGroupId = groupId;
+            selectedSessionizeProfiles.Clear();
+            meetupDetailsSpeakers.Clear();
+            importSpeakers = import.Events
+                .SelectMany(item => item.Speakers)
+                .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+                .GroupBy(item => item.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(group => new Speaker
+                {
+                    Name = group.Key,
+                    Bio = group.Select(item => item.Bio).FirstOrDefault(bio => !string.IsNullOrWhiteSpace(bio))
+                })
+                .ToList();
+            statusMessage = null;
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to sync past Meetup events for group {GroupId}.", groupId);
+            statusMessage = "Unable to sync past Meetup events. The error has been logged.";
+            isError = true;
+        }
+        finally
+        {
+            isSyncingMeetup = false;
+        }
+    }
+
+    private Task ApplyImportedSpeakerProfileAsync(
+        Speaker speaker,
+        (SessionizeProfile Profile, SessionizeProfileFields Fields) selection)
+    {
+        selectedSessionizeProfiles[speaker.Name] = new SelectedSessionizeProfile(selection.Profile, selection.Fields, speaker.Pronouns);
+        speaker.Pronouns = null;
+        return Task.CompletedTask;
+    }
+
+    private void UseMeetupSpeakerDetails(Speaker speaker)
+    {
+        selectedSessionizeProfiles.Remove(speaker.Name);
+        speaker.Pronouns = null;
+        meetupDetailsSpeakers.Add(speaker.Name);
+    }
+
+    private void UseMeetupDetailsOnly(Speaker speaker) => meetupDetailsSpeakers.Add(speaker.Name);
+
+    private void FindOnSessionize(Speaker speaker) => meetupDetailsSpeakers.Remove(speaker.Name);
+
+    private static string AbridgeDescription(string? description, int maxLength = 220)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return string.Empty;
+        var text = System.Text.RegularExpressions.Regex.Replace(description, @"[*_#>`]+|\[([^\]]*)\]\([^)]*\)", "$1");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+        return text.Length <= maxLength ? text : text[..maxLength].TrimEnd() + "…";
+    }
+
+    private async Task ImportPendingMeetupEventsAsync()
+    {
+        if (pendingMeetupImport is not { Success: true } import || pendingMeetupGroupId is not { } groupId)
+        {
+            statusMessage = "Load past Meetup events before importing.";
+            isError = true;
+            return;
+        }
+
+        try
+        {
+            isSyncingMeetup = true;
+            statusMessage = null;
             var importedEventCount = 0;
             var importedSpeakerCount = 0;
             var skippedEventCount = 0;
@@ -410,6 +580,13 @@
                             speaker.UpdatedAtUtc = DateTime.UtcNow;
                         }
 
+                        if (selectedSessionizeProfiles.TryGetValue(importedSpeaker.Name.Trim(), out var selectedProfile))
+                        {
+                            SessionizeSpeakerMapper.ApplyProfile(speaker, selectedProfile.Profile, selectedProfile.Fields);
+                            speaker.Pronouns = selectedProfile.Pronouns;
+                            speaker.UpdatedAtUtc = DateTime.UtcNow;
+                        }
+
                         meetupEvent.Sessions.Add(new EventSpeakerSession
                         {
                             Id = Guid.NewGuid(),
@@ -429,14 +606,19 @@
             }
 
             await LoadEventsAsync();
+            pendingMeetupImport = null;
+            pendingMeetupGroupId = null;
+            importSpeakers = [];
+            selectedSessionizeProfiles.Clear();
+            meetupDetailsSpeakers.Clear();
             statusMessage = $"Synced {importedEventCount} past events and added {importedSpeakerCount} speaker profiles. "
                 + $"{skippedEventCount} events were already in the app.";
             isError = false;
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to sync past Meetup events for group {GroupId}.", groupId);
-            statusMessage = "Unable to sync past Meetup events. The error has been logged.";
+            Logger.LogError(ex, "Failed to import past Meetup events for group {GroupId}.", groupId);
+            statusMessage = "Unable to import past Meetup events. The error has been logged.";
             isError = true;
         }
         finally
@@ -444,6 +626,19 @@
             isSyncingMeetup = false;
         }
     }
+
+    private void CancelMeetupImport()
+    {
+        pendingMeetupImport = null;
+        pendingMeetupGroupId = null;
+        importSpeakers = [];
+        selectedSessionizeProfiles.Clear();
+        meetupDetailsSpeakers.Clear();
+        statusMessage = null;
+        isError = false;
+    }
+
+    private sealed record SelectedSessionizeProfile(SessionizeProfile Profile, SessionizeProfileFields Fields, string? Pronouns);
 
     private static string GetStatusBadge(EventStatus status) => status switch
     {
