@@ -75,10 +75,24 @@
                                         <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>@importedEvent.Location</span>
                                     }
                                 </div>
-                                @if (AbridgeDescription(importedEvent.Description) is { Length: > 0 } summary)
-                                {
-                                    <p class="small mb-3">@summary</p>
-                                }
+                                <div class="mb-3">
+                                    <label class="form-label small fw-semibold" for="@($"meetup-title-{importedEvent.MeetupEventId}")">Title</label>
+                                    <div class="input-group">
+                                        <input id="@($"meetup-title-{importedEvent.MeetupEventId}")" class="form-control" value="@importedEvent.Title" readonly />
+                                        <button type="button" class="btn btn-outline-primary" @onclick="() => CopyMeetupTextAsync(importedEvent.Title, nameof(importedEvent.Title), importedEvent.MeetupEventId)">
+                                            <i class="bi bi-clipboard me-1"></i> Copy
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-semibold" for="@($"meetup-description-{importedEvent.MeetupEventId}")">Meetup details</label>
+                                    <div class="input-group">
+                                        <textarea id="@($"meetup-description-{importedEvent.MeetupEventId}")" class="form-control" rows="8" readonly>@importedEvent.Description</textarea>
+                                        <button type="button" class="btn btn-outline-primary" @onclick="() => CopyMeetupTextAsync(importedEvent.Description ?? string.Empty, nameof(importedEvent.Description), importedEvent.MeetupEventId)">
+                                            <i class="bi bi-clipboard me-1"></i> Copy
+                                        </button>
+                                    </div>
+                                </div>
 
                                 @foreach (var importedSpeaker in importedEvent.Speakers.Where(item => !string.IsNullOrWhiteSpace(item.Name)))
                                 {
@@ -309,12 +323,32 @@
     private readonly Dictionary<string, SelectedSessionizeProfile> selectedSessionizeProfiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> meetupDetailsSpeakers = new(StringComparer.OrdinalIgnoreCase);
 
+    [Inject]
+    private IJSRuntime JS { get; set; } = default!;
+
     private IEnumerable<MeetupEvent>? filteredEvents => allEvents?
         .Where(e => (string.IsNullOrWhiteSpace(searchQuery) ||
                      e.Title.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
                      e.Sessions.Any(s => s.Speaker != null && s.Speaker.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))) &&
                     (string.IsNullOrWhiteSpace(selectedGroupId) || e.MeetupGroupId.ToString() == selectedGroupId) &&
                     (string.IsNullOrWhiteSpace(selectedStatus) || e.Status.ToString() == selectedStatus));
+
+    private async Task CopyMeetupTextAsync(string text, string field, string meetupEventId)
+    {
+        field = field == nameof(MeetupEventImportDto.Title) ? "title" : "details";
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            statusMessage = $"Meetup {field} copied to the clipboard.";
+            isError = false;
+        }
+        catch (JSException ex)
+        {
+            Logger.LogError(ex, "Failed to copy Meetup {Field} for event {MeetupEventId}.", field, meetupEventId);
+            statusMessage = $"Unable to copy Meetup {field}. Please check your browser clipboard permissions.";
+            isError = true;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
