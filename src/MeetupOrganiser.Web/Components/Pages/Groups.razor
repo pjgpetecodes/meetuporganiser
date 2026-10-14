@@ -1,14 +1,9 @@
 @page "/groups"
 @attribute [Authorize]
 @using MeetupOrganiser.Core.Entities
-@using MeetupOrganiser.Core.Interfaces
 @using MeetupOrganiser.Infrastructure.Data
-@using MeetupOrganiser.Infrastructure.Services
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext DbContext
-@inject IPptxPreviewService PreviewService
-@inject IBlobStorageService BlobStorageService
-@inject ILogger<Groups> Logger
 
 <PageTitle>Meetup Groups - Meetup Organiser</PageTitle>
 
@@ -18,9 +13,9 @@
             <h1 class="h3 fw-bold mb-1">Meetup Groups</h1>
             <p class="text-secondary mb-0">Manage community groups, branding colors, logos, and presentation templates.</p>
         </div>
-        <button class="btn btn-primary" @onclick="OpenCreateModal">
+        <a href="/groups/new" class="btn btn-primary">
             <i class="bi bi-plus-circle me-1"></i> New Group
-        </button>
+        </a>
     </div>
 
     @if (groups == null)
@@ -36,7 +31,7 @@
             <h4 class="fw-bold">No Meetup Groups Yet</h4>
             <p class="text-secondary">Create your first meetup group to organize events and decks.</p>
             <div>
-                <button class="btn btn-primary" @onclick="OpenCreateModal">Create Meetup Group</button>
+                <a href="/groups/new" class="btn btn-primary">Create Meetup Group</a>
             </div>
         </div>
     }
@@ -62,7 +57,7 @@
                                 }
                                 <div>
                                     <h5 class="fw-bold mb-0">
-                                        <a href="#" class="text-decoration-none text-reset" title="Edit group" @onclick="() => OpenEditModal(g)" @onclick:preventDefault>@g.Name</a>
+                                        <a href="/groups/edit/@g.Id" class="text-decoration-none text-reset" title="Edit group">@g.Name</a>
                                     </h5>
                                     @if (!string.IsNullOrWhiteSpace(g.WebsiteUrl))
                                     {
@@ -100,9 +95,9 @@
                                 @g.Events.Count Event(s)
                             </span>
                             <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-secondary" @onclick="() => OpenEditModal(g)">
+                                <a href="/groups/edit/@g.Id" class="btn btn-outline-secondary" title="Edit group">
                                     <i class="bi bi-pencil me-1"></i> Edit
-                                </button>
+                                </a>
                                 <button class="btn btn-outline-danger" @onclick="() => DeleteGroupAsync(g)">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -115,181 +110,8 @@
     }
 </div>
 
-<!-- Modal for Create / Edit -->
-@if (showModal)
-{
-    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold">@(editingGroup.Id == Guid.Empty ? "Create Meetup Group" : "Edit Meetup Group")</h5>
-                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Group Name *</label>
-                            <input @bind="editingGroup.Name" class="form-control" placeholder="e.g. .NET Notts" required />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Website URL</label>
-                            <input @bind="editingGroup.WebsiteUrl" class="form-control" placeholder="https://..." />
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Description / Tagline</label>
-                            <textarea @bind="editingGroup.Description" class="form-control" rows="2" placeholder="Talks from the world of Microsoft and beyond"></textarea>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Primary Brand Color (Hex)</label>
-                            <div class="input-group">
-                                <input type="color" @bind="editingGroup.PrimaryColorHex" class="form-control form-control-color" style="max-width: 60px;" />
-                                <input type="text" @bind="editingGroup.PrimaryColorHex" class="form-control" />
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Secondary Brand Color (Hex)</label>
-                            <div class="input-group">
-                                <input type="color" @bind="editingGroup.SecondaryColorHex" class="form-control form-control-color" style="max-width: 60px;" />
-                                <input type="text" @bind="editingGroup.SecondaryColorHex" class="form-control" />
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Default Location</label>
-                            <input @bind="editingGroup.DefaultLocation" class="form-control" placeholder="e.g. CGI, Nottingham & Online On Zoom" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Default Hashtags</label>
-                            <input @bind="editingGroup.DefaultHashtags" class="form-control" placeholder="#dotnet #dotnetnotts #azure" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Meetup Group Slug (urlname)</label>
-                            <input @bind="editingGroup.MeetupUrlName" class="form-control" placeholder="e.g. dotnetnotts" />
-                            <small class="text-secondary">Used in meetup.com/{urlname}/events</small>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Short URL Stem (Bitly)</label>
-                            <input @bind="editingGroup.ShortUrlStem" class="form-control" placeholder="https://bit.ly/dotnetnotts" />
-                            <small class="text-secondary">Month and year are added per event, e.g. https://bit.ly/dotnetnottsoctober2026</small>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Social Post Template</label>
-                            <textarea @bind="editingGroup.SocialPostTemplate" class="form-control font-monospace small" rows="8" placeholder="Leave blank to use the built-in template"></textarea>
-                            <div class="d-flex flex-wrap gap-1 mt-1">
-                                @foreach (var (name, description) in MeetupOrganiser.Core.Services.SocialPostFormatter.Placeholders)
-                                {
-                                    <code title="@description" class="small">{{@name}}</code>
-                                }
-                            </div>
-                            <small class="text-secondary">Used for X, Bluesky and LinkedIn posts. Hover a placeholder for what it does.</small>
-                            <div><button type="button" class="btn btn-sm btn-link p-0" @onclick="() => editingGroup.SocialPostTemplate = MeetupOrganiser.Core.Services.SocialPostFormatter.Default">Reset to default</button></div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Meetup API Key Override (Optional)</label>
-                            <input type="password" @bind="editingGroup.MeetupApiKeyOverride" class="form-control" placeholder="Leave blank to use global API key" />
-                            <small class="text-secondary">Only needed if this group is under a different Meetup account.</small>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Group Logo (Optional)</label>
-                            <div class="d-flex align-items-center gap-3">
-                                @if (!string.IsNullOrWhiteSpace(editingGroup.LogoBlobUrl))
-                                {
-                                    <img src="@editingGroup.LogoBlobUrl" alt="Logo preview" class="rounded border" style="width: 64px; height: 64px; object-fit: cover;" />
-                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => editingGroup.LogoBlobUrl = null">Remove</button>
-                                }
-                                <InputFile OnChange="HandleLogoUploadAsync" class="form-control" accept=".png,.jpg,.jpeg,.webp" />
-                            </div>
-                            <small class="text-secondary">PNG, JPG or WebP, up to 2 MB. Click Save Group to keep it.</small>
-                            @if (!string.IsNullOrEmpty(logoError))
-                            {
-                                <div class="text-danger small">@logoError</div>
-                            }
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Custom PPTX Template (Optional)</label>
-                            <InputFile OnChange="HandleTemplateUploadAsync" class="form-control" accept=".pptx" disabled="@(templateUploading || slidesLoading)" />
-                            @if (templateUploading || slidesLoading)
-                            {
-                                <div class="d-flex align-items-center gap-2 text-secondary small mt-2" role="status">
-                                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                                    <span>@(templateUploading ? "Uploading and processing your deck... please wait." : "Rendering slide previews... please wait.")</span>
-                                </div>
-                            }
-                            @if (!string.IsNullOrEmpty(templateError))
-                            {
-                                <div class="text-danger small">@templateError</div>
-                            }                            <small class="text-secondary d-block">Upload a full deck with <code>{{placeholders}}</code> on the slides to fill (e.g. {{SpeakerName}}, {{TalkTitle}}, {{Speaker2Name}}, {{Talk2Title}}, {{EventDateLine}}, {{EventVenueLine}}, {{EventSubtitle}}, {{ShortUrl}}). Next-event versions use a NextEvent prefix (e.g. {{NextEventSpeakers}}, {{NextEventTalkTitle}}, {{NextEventDate}}) and show TBC until the next event exists. Slides with placeholders are filled; slides using {{Speaker2Name}}/{{Talk2Title}} are hidden for 1-speaker events and speaker-1-only slides are hidden for 2-speaker events. Other slides are left as uploaded. Leave a token off a slide to leave that text alone. Re-upload if the preview isn't right.</small>
-
-                            @if (TemplateFileName is { } templateFile)
-                            {
-                                @if (slidesLoading)
-                                {
-                                    <div class="text-secondary small mt-2">Reading slides...</div>
-                                }
-                                else if (templateUploading)
-                                {
-                                }
-                                else if (slides.Count == 0)
-                                {
-                                    <div class="text-warning small mt-2">Could not read any slides from this deck.</div>
-                                }
-                                else
-                                {
-                                    @if (!slides.Any(s => s.Tokens.Count > 0))
-                                    {
-                                        <div class="alert alert-warning py-2 small mt-2 mb-2">
-                                            No {{placeholders}} found in this deck, so the built-in deck will be used. Add placeholders and re-upload.
-                                        </div>
-                                    }
-
-                                    <div class="btn-group btn-group-sm mt-2" role="group">
-                                        <button type="button" class="btn @(previewSpeakers == 1 ? "btn-primary" : "btn-outline-primary")" @onclick="() => previewSpeakers = 1">Preview 1 speaker</button>
-                                        <button type="button" class="btn @(previewSpeakers == 2 ? "btn-primary" : "btn-outline-primary")" @onclick="() => previewSpeakers = 2">Preview 2 speakers</button>
-                                    </div>
-
-                                    <div class="d-flex flex-wrap gap-2 py-2">
-                                        @foreach (var s in slides)
-                                        {
-                                            var filled = s.Tokens.Count > 0;
-                                            var hidden = IsHidden(s);
-                                            <div class="card" style="width: 300px; @(!filled || hidden ? "opacity:.45;" : "")">
-                                                @if (filled)
-                                                {
-                                                    <img src="/api/templates/@Uri.EscapeDataString(templateFile)/slides/@s.Number/filled.png?speakers=@previewSpeakers&w=600" class="card-img-top" loading="lazy" alt="Slide @s.Number" />
-                                                }
-                                                else
-                                                {
-                                                    <img src="/api/templates/@Uri.EscapeDataString(templateFile)/slides/@(s.Number).png?w=600" class="card-img-top" loading="lazy" alt="Slide @s.Number" style="filter: grayscale(1);" />
-                                                }
-                                                <div class="card-body p-2">
-                                                    <div class="small fw-semibold text-truncate" title="@s.Caption">@s.Number. @s.Caption</div>
-                                                    <div class="text-secondary" style="font-size: .7rem;">
-                                                        @(filled ? $"{s.Tokens.Count} placeholder(s) filled" : "No placeholders - unchanged")
-                                                        @if (filled) { <span> · @KindLabel(s.Kind)</span> }
-                                                        @if (hidden) { <span class="badge bg-secondary ms-1">Hidden</span> }
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        }
-                                    </div>
-                                    <div class="text-secondary" style="font-size: .7rem;">Approximate preview with sample data; PowerPoint will look slightly different.</div>
-                                }
-                            }
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="SaveGroupAsync">Save Group</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
 @code {
     private List<MeetupGroup>? groups;
-    private bool showModal = false;
-    private MeetupGroup editingGroup = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -302,197 +124,6 @@
             .Include(g => g.Events)
             .OrderBy(g => g.Name)
             .ToListAsync();
-    }
-
-    private void OpenCreateModal()
-    {
-        editingGroup = new MeetupGroup
-        {
-            Id = Guid.Empty,
-            PrimaryColorHex = "#512BD4",
-            SecondaryColorHex = "#0078D4",
-            DefaultLocation = "Online on Zoom",
-            DefaultHashtags = "#dotnet #meetup",
-            MeetupUrlName = "dotnetnotts"
-        };
-        showModal = true;
-    }
-
-    private void OpenEditModal(MeetupGroup group)
-    {
-        editingGroup = new MeetupGroup
-        {
-            Id = group.Id,
-            Name = group.Name,
-            Description = group.Description,
-            WebsiteUrl = group.WebsiteUrl,
-            PrimaryColorHex = group.PrimaryColorHex,
-            SecondaryColorHex = group.SecondaryColorHex,
-            DefaultLocation = group.DefaultLocation,
-            DefaultHashtags = group.DefaultHashtags,
-            MeetupUrlName = group.MeetupUrlName,
-            ShortUrlStem = group.ShortUrlStem,
-            SocialPostTemplate = group.SocialPostTemplate,
-            MeetupApiKeyOverride = group.MeetupApiKeyOverride,
-            PptxTemplateBlobUrl = group.PptxTemplateBlobUrl,
-            LogoBlobUrl = group.LogoBlobUrl
-        };
-        showModal = true;
-        slides = [];
-        _ = LoadSlidesAsync();
-    }
-
-    private IReadOnlyList<PptxSlideInfo> slides = [];
-    private bool slidesLoading;
-
-    private string? TemplateFileName =>
-        PptxTemplateStore.TryParseFileName(editingGroup.PptxTemplateBlobUrl, out var name) ? name : null;
-
-    private async Task LoadSlidesAsync()
-    {
-        if (TemplateFileName is not { } name) { slides = []; return; }
-
-        slidesLoading = true;
-        try
-        {
-            slides = await PreviewService.GetSlidesAsync(name);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Could not read template slides.");
-            slides = [];
-        }
-
-        slidesLoading = false;
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private int previewSpeakers = 1;
-
-    private static string KindLabel(PptxTokens.SlideKind kind) => kind switch
-    {
-        PptxTokens.SlideKind.OneSpeaker => "1-speaker slide",
-        PptxTokens.SlideKind.TwoSpeakers => "2-speaker slide",
-        _ => "Always shown"
-    };
-
-    private bool IsHidden(PptxSlideInfo s) =>
-        previewSpeakers > 1
-            ? s.Kind == PptxTokens.SlideKind.OneSpeaker && slides.Any(x => x.Kind == PptxTokens.SlideKind.TwoSpeakers)
-            : s.Kind == PptxTokens.SlideKind.TwoSpeakers;
-
-    private void CloseModal()
-    {
-        showModal = false;
-    }
-
-    private string? logoError;
-
-    private static readonly Dictionary<string, string> LogoTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [".png"] = "image/png",
-        [".jpg"] = "image/jpeg",
-        [".jpeg"] = "image/jpeg",
-        [".webp"] = "image/webp"
-    };
-
-    private async Task HandleLogoUploadAsync(InputFileChangeEventArgs e)
-    {
-        logoError = null;
-        var file = e.File;
-        if (file == null) return;
-
-        if (!LogoTypes.TryGetValue(Path.GetExtension(file.Name), out var contentType))
-        {
-            logoError = "Please choose a PNG, JPG or WebP image.";
-            return;
-        }
-
-        try
-        {
-            using var stream = file.OpenReadStream(2 * 1024 * 1024);
-            editingGroup.LogoBlobUrl = await BlobStorageService.UploadAsync("logos", file.Name, stream, contentType);
-        }
-        catch (IOException)
-        {
-            logoError = "That file is larger than 2 MB.";
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to upload group logo.");
-            logoError = "Logo upload failed. Please try again.";
-        }
-    }
-
-    private string? templateError;
-
-    private async Task HandleTemplateUploadAsync(InputFileChangeEventArgs e)
-    {
-        templateError = null;
-        var file = e.File;
-        if (file == null) return;
-
-        templateUploading = true;
-        StateHasChanged();
-        await Task.Yield();
-        try
-        {
-            using var stream = file.OpenReadStream(100 * 1024 * 1024);
-            var url = await BlobStorageService.UploadAsync("templates", file.Name, stream, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
-            editingGroup.PptxTemplateBlobUrl = url;
-            await LoadSlidesAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to upload PPTX template.");
-            templateError = ex is IOException
-                ? "That file is larger than 100 MB."
-                : "Template upload failed: " + ex.Message;
-        }
-        finally
-        {
-            templateUploading = false;
-        }
-    }
-
-    private bool templateUploading;
-
-    private async Task SaveGroupAsync()
-    {
-        if (string.IsNullOrWhiteSpace(editingGroup.Name)) return;
-
-        if (editingGroup.Id == Guid.Empty)
-        {
-            editingGroup.Id = Guid.NewGuid();
-            editingGroup.CreatedAtUtc = DateTime.UtcNow;
-            editingGroup.UpdatedAtUtc = DateTime.UtcNow;
-            await DbContext.MeetupGroups.AddAsync(editingGroup);
-        }
-        else
-        {
-            var existing = await DbContext.MeetupGroups.FindAsync(editingGroup.Id);
-            if (existing != null)
-            {
-                existing.Name = editingGroup.Name;
-                existing.Description = editingGroup.Description;
-                existing.WebsiteUrl = editingGroup.WebsiteUrl;
-                existing.PrimaryColorHex = editingGroup.PrimaryColorHex;
-                existing.SecondaryColorHex = editingGroup.SecondaryColorHex;
-                existing.DefaultLocation = editingGroup.DefaultLocation;
-                existing.DefaultHashtags = editingGroup.DefaultHashtags;
-                existing.MeetupUrlName = editingGroup.MeetupUrlName;
-                existing.ShortUrlStem = editingGroup.ShortUrlStem;
-                existing.SocialPostTemplate = string.IsNullOrWhiteSpace(editingGroup.SocialPostTemplate) ? null : editingGroup.SocialPostTemplate;
-                existing.LogoBlobUrl = editingGroup.LogoBlobUrl;
-                existing.MeetupApiKeyOverride = editingGroup.MeetupApiKeyOverride;
-                existing.PptxTemplateBlobUrl = editingGroup.PptxTemplateBlobUrl;
-                existing.UpdatedAtUtc = DateTime.UtcNow;
-            }
-        }
-
-        await DbContext.SaveChangesAsync();
-        showModal = false;
-        await LoadGroupsAsync();
     }
 
     private async Task DeleteGroupAsync(MeetupGroup group)
