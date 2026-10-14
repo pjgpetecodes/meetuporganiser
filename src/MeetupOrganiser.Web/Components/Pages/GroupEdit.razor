@@ -1,0 +1,454 @@
+@page "/groups/new"
+@page "/groups/edit/{Id:guid}"
+@attribute [Authorize]
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@using MeetupOrganiser.Core.Services
+@using MeetupOrganiser.Infrastructure.Data
+@using MeetupOrganiser.Infrastructure.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject IPptxPreviewService PreviewService
+@inject IBlobStorageService BlobStorageService
+@inject NavigationManager NavManager
+@inject ILogger<GroupEdit> Logger
+
+<PageTitle>@(IsNew ? "New Group" : "Edit Group") - Meetup Organiser</PageTitle>
+
+<div class="container-fluid py-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold mb-1">@(IsNew ? "Create Meetup Group" : "Edit Meetup Group")</h1>
+            <p class="text-secondary mb-0">Configure branding, social post template, logo and presentation template.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/groups" class="btn btn-outline-secondary">Back to Groups</a>
+            <button type="button" class="btn btn-primary" @onclick="SaveGroupAsync" disabled="@(saving || group == null)">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> }
+                <i class="bi bi-check-circle me-1"></i> Save Group
+            </button>
+        </div>
+    </div>
+
+    @if (statusMessage != null)
+    {
+        <div class="alert @(isError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+            <i class="bi @(isError ? "bi-exclamation-triangle" : "bi-check-circle") me-2"></i>
+            @statusMessage
+            <button type="button" class="btn-close" @onclick="() => statusMessage = null"></button>
+        </div>
+    }
+
+    @if (group == null)
+    {
+        @if (statusMessage == null)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning">The group editor could not be loaded. Use <a href="/groups">Back to Groups</a> to return to the list.</div>
+        }
+    }
+    else
+    {
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-people me-2 text-primary"></i>Group Details</h5>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Group Name *</label>
+                            <input @bind="group.Name" class="form-control" placeholder="e.g. .NET Notts" required />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Website URL</label>
+                            <input @bind="group.WebsiteUrl" class="form-control" placeholder="https://..." />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Description / Tagline</label>
+                            <textarea @bind="group.Description" class="form-control" rows="2" placeholder="Talks from the world of Microsoft and beyond"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Primary Brand Color (Hex)</label>
+                            <div class="input-group">
+                                <input type="color" @bind="group.PrimaryColorHex" class="form-control form-control-color" style="max-width: 60px;" />
+                                <input type="text" @bind="group.PrimaryColorHex" class="form-control" />
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Secondary Brand Color (Hex)</label>
+                            <div class="input-group">
+                                <input type="color" @bind="group.SecondaryColorHex" class="form-control form-control-color" style="max-width: 60px;" />
+                                <input type="text" @bind="group.SecondaryColorHex" class="form-control" />
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Default Location</label>
+                            <input @bind="group.DefaultLocation" class="form-control" placeholder="e.g. CGI, Nottingham & Online On Zoom" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Default Hashtags</label>
+                            <input @bind="group.DefaultHashtags" class="form-control" placeholder="#dotnet #dotnetnotts #azure" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Group Logo (Optional)</label>
+                            <div class="d-flex align-items-center gap-3">
+                                @if (!string.IsNullOrWhiteSpace(group.LogoBlobUrl))
+                                {
+                                    <img src="@group.LogoBlobUrl" alt="Logo preview" class="rounded border" style="width: 64px; height: 64px; object-fit: cover;" />
+                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => group.LogoBlobUrl = null">Remove</button>
+                                }
+                                <InputFile OnChange="HandleLogoUploadAsync" class="form-control" accept=".png,.jpg,.jpeg,.webp" />
+                            </div>
+                            <small class="text-secondary">PNG, JPG or WebP, up to 2 MB. Click Save Group to keep it.</small>
+                            @if (!string.IsNullOrEmpty(logoError))
+                            {
+                                <div class="text-danger small">@logoError</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-share me-2 text-primary"></i>Meetup &amp; Social</h5>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Meetup Group Slug (urlname)</label>
+                            <input @bind="group.MeetupUrlName" class="form-control" placeholder="e.g. dotnetnotts" />
+                            <small class="text-secondary">Used in meetup.com/{urlname}/events</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Short URL Stem (Bitly)</label>
+                            <input @bind="group.ShortUrlStem" class="form-control" placeholder="https://bit.ly/dotnetnotts" />
+                            <small class="text-secondary">Month and year are added per event, e.g. https://bit.ly/dotnetnottsoctober2026</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Meetup API Key Override (Optional)</label>
+                            <input type="password" @bind="group.MeetupApiKeyOverride" class="form-control" placeholder="Leave blank to use global API key" />
+                            <small class="text-secondary">Only needed if this group is under a different Meetup account.</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Social Post Template</label>
+                            <textarea @bind="group.SocialPostTemplate" class="form-control font-monospace small" rows="8" placeholder="Leave blank to use the built-in template"></textarea>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                @foreach (var (name, description) in SocialPostFormatter.Placeholders)
+                                {
+                                    <code title="@description" class="small">{{@name}}</code>
+                                }
+                            </div>
+                            <small class="text-secondary">Used for X, Bluesky and LinkedIn posts. Hover a placeholder for what it does.</small>
+                            <div><button type="button" class="btn btn-sm btn-link p-0" @onclick="() => group.SocialPostTemplate = SocialPostFormatter.Default">Reset to default</button></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card border-0 shadow-sm p-4">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-file-earmark-slides me-2 text-primary"></i>Custom PPTX Template (Optional)</h5>
+                    <InputFile OnChange="HandleTemplateUploadAsync" class="form-control" accept=".pptx" disabled="@(templateUploading || slidesLoading)" />
+                    @if (templateUploading || slidesLoading)
+                    {
+                        <div class="d-flex align-items-center gap-2 text-secondary small mt-2" role="status">
+                            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                            <span>@(templateUploading ? "Uploading and processing your deck... please wait." : "Rendering slide previews... please wait.")</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(templateError))
+                    {
+                        <div class="text-danger small">@templateError</div>
+                    }
+                    <small class="text-secondary d-block">Upload a full deck with <code>{{placeholders}}</code> on the slides to fill (e.g. {{SpeakerName}}, {{TalkTitle}}, {{Speaker2Name}}, {{Talk2Title}}, {{EventDateLine}}, {{EventVenueLine}}, {{EventSubtitle}}, {{ShortUrl}}). Next-event versions use a NextEvent prefix (e.g. {{NextEventSpeakers}}, {{NextEventTalkTitle}}, {{NextEventDate}}) and show TBC until the next event exists. Slides with placeholders are filled; slides using {{Speaker2Name}}/{{Talk2Title}} are hidden for 1-speaker events and speaker-1-only slides are hidden for 2-speaker events. Other slides are left as uploaded. Leave a token off a slide to leave that text alone. Re-upload if the preview isn't right.</small>
+
+                    @if (TemplateFileName is { } templateFile && !templateUploading)
+                    {
+                        @if (slidesLoading)
+                        {
+                            <div class="text-secondary small mt-2">Reading slides...</div>
+                        }
+                        else if (slides.Count == 0)
+                        {
+                            <div class="text-warning small mt-2">Could not read any slides from this deck.</div>
+                        }
+                        else
+                        {
+                            @if (!slides.Any(s => s.Tokens.Count > 0))
+                            {
+                                <div class="alert alert-warning py-2 small mt-2 mb-2">
+                                    No {{placeholders}} found in this deck, so the built-in deck will be used. Add placeholders and re-upload.
+                                </div>
+                            }
+
+                            <div class="btn-group btn-group-sm mt-2" role="group">
+                                <button type="button" class="btn @(previewSpeakers == 1 ? "btn-primary" : "btn-outline-primary")" @onclick="() => previewSpeakers = 1">Preview 1 speaker</button>
+                                <button type="button" class="btn @(previewSpeakers == 2 ? "btn-primary" : "btn-outline-primary")" @onclick="() => previewSpeakers = 2">Preview 2 speakers</button>
+                            </div>
+
+                            <div class="d-flex flex-wrap gap-2 py-2">
+                                @foreach (var s in slides)
+                                {
+                                    var filled = s.Tokens.Count > 0;
+                                    var hidden = IsHidden(s);
+                                    <div class="card" style="width: 300px; @(!filled || hidden ? "opacity:.45;" : "")">
+                                        @if (filled)
+                                        {
+                                            <img src="/api/templates/@Uri.EscapeDataString(templateFile)/slides/@s.Number/filled.png?speakers=@previewSpeakers&w=600" class="card-img-top" loading="lazy" alt="Slide @s.Number" />
+                                        }
+                                        else
+                                        {
+                                            <img src="/api/templates/@Uri.EscapeDataString(templateFile)/slides/@(s.Number).png?w=600" class="card-img-top" loading="lazy" alt="Slide @s.Number" style="filter: grayscale(1);" />
+                                        }
+                                        <div class="card-body p-2">
+                                            <div class="small fw-semibold text-truncate" title="@s.Caption">@s.Number. @s.Caption</div>
+                                            <div class="text-secondary" style="font-size: .7rem;">
+                                                @(filled ? $"{s.Tokens.Count} placeholder(s) filled" : "No placeholders - unchanged")
+                                                @if (filled) { <span> · @KindLabel(s.Kind)</span> }
+                                                @if (hidden) { <span class="badge bg-secondary ms-1">Hidden</span> }
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            <div class="text-secondary" style="font-size: .7rem;">Approximate preview with sample data; PowerPoint will look slightly different.</div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-4">
+            <a href="/groups" class="btn btn-secondary">Cancel</a>
+            <button type="button" class="btn btn-primary" @onclick="SaveGroupAsync" disabled="@saving">Save Group</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private MeetupGroup? group;
+    private string? statusMessage;
+    private bool isError;
+    private bool saving;
+    private bool IsNew => Id == null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        statusMessage = null;
+        group = null;
+        slides = [];
+
+        if (IsNew)
+        {
+            group = new MeetupGroup
+            {
+                Id = Guid.Empty,
+                PrimaryColorHex = "#512BD4",
+                SecondaryColorHex = "#0078D4",
+                DefaultLocation = "Online on Zoom",
+                DefaultHashtags = "#dotnet #meetup",
+                MeetupUrlName = "dotnetnotts"
+            };
+            return;
+        }
+
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            group = await db.MeetupGroups.AsNoTracking().FirstOrDefaultAsync(g => g.Id == Id);
+            if (group == null)
+            {
+                statusMessage = "That meetup group was not found.";
+                isError = true;
+                return;
+            }
+
+            await LoadSlidesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load group {GroupId}.", Id);
+            statusMessage = "Could not load the group: " + ex.Message;
+            isError = true;
+        }
+    }
+
+    private IReadOnlyList<PptxSlideInfo> slides = [];
+    private bool slidesLoading;
+    private int previewSpeakers = 1;
+
+    private string? TemplateFileName =>
+        PptxTemplateStore.TryParseFileName(group?.PptxTemplateBlobUrl, out var name) ? name : null;
+
+    private async Task LoadSlidesAsync()
+    {
+        if (TemplateFileName is not { } name) { slides = []; return; }
+
+        slidesLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            slides = await PreviewService.GetSlidesAsync(name);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not read template slides.");
+            slides = [];
+        }
+        finally
+        {
+            slidesLoading = false;
+        }
+    }
+
+    private static string KindLabel(PptxTokens.SlideKind kind) => kind switch
+    {
+        PptxTokens.SlideKind.OneSpeaker => "1-speaker slide",
+        PptxTokens.SlideKind.TwoSpeakers => "2-speaker slide",
+        _ => "Always shown"
+    };
+
+    private bool IsHidden(PptxSlideInfo s) =>
+        previewSpeakers > 1
+            ? s.Kind == PptxTokens.SlideKind.OneSpeaker && slides.Any(x => x.Kind == PptxTokens.SlideKind.TwoSpeakers)
+            : s.Kind == PptxTokens.SlideKind.TwoSpeakers;
+
+    private string? logoError;
+
+    private static readonly Dictionary<string, string> LogoTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".png"] = "image/png",
+        [".jpg"] = "image/jpeg",
+        [".jpeg"] = "image/jpeg",
+        [".webp"] = "image/webp"
+    };
+
+    private async Task HandleLogoUploadAsync(InputFileChangeEventArgs e)
+    {
+        logoError = null;
+        var file = e.File;
+        if (file == null || group == null) return;
+
+        if (!LogoTypes.TryGetValue(Path.GetExtension(file.Name), out var contentType))
+        {
+            logoError = "Please choose a PNG, JPG or WebP image.";
+            return;
+        }
+
+        try
+        {
+            using var stream = file.OpenReadStream(2 * 1024 * 1024);
+            group.LogoBlobUrl = await BlobStorageService.UploadAsync("logos", file.Name, stream, contentType);
+        }
+        catch (IOException)
+        {
+            logoError = "That file is larger than 2 MB.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to upload group logo.");
+            logoError = "Logo upload failed. Please try again.";
+        }
+    }
+
+    private string? templateError;
+    private bool templateUploading;
+
+    private async Task HandleTemplateUploadAsync(InputFileChangeEventArgs e)
+    {
+        templateError = null;
+        var file = e.File;
+        if (file == null || group == null) return;
+
+        templateUploading = true;
+        StateHasChanged();
+        await Task.Yield();
+        try
+        {
+            using var stream = file.OpenReadStream(100 * 1024 * 1024);
+            group.PptxTemplateBlobUrl = await BlobStorageService.UploadAsync("templates", file.Name, stream, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+            await LoadSlidesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to upload PPTX template.");
+            templateError = ex is IOException
+                ? "That file is larger than 100 MB."
+                : "Template upload failed: " + ex.Message;
+        }
+        finally
+        {
+            templateUploading = false;
+        }
+    }
+
+    private async Task SaveGroupAsync()
+    {
+        if (group == null) return;
+        if (string.IsNullOrWhiteSpace(group.Name))
+        {
+            statusMessage = "Group name is required.";
+            isError = true;
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            var social = string.IsNullOrWhiteSpace(group.SocialPostTemplate) ? null : group.SocialPostTemplate;
+
+            if (IsNew)
+            {
+                group.Id = Guid.NewGuid();
+                group.SocialPostTemplate = social;
+                group.CreatedAtUtc = DateTime.UtcNow;
+                group.UpdatedAtUtc = DateTime.UtcNow;
+                db.MeetupGroups.Add(group);
+            }
+            else
+            {
+                var existing = await db.MeetupGroups.FindAsync(group.Id);
+                if (existing == null)
+                {
+                    statusMessage = "That meetup group no longer exists.";
+                    isError = true;
+                    return;
+                }
+
+                existing.Name = group.Name;
+                existing.Description = group.Description;
+                existing.WebsiteUrl = group.WebsiteUrl;
+                existing.PrimaryColorHex = group.PrimaryColorHex;
+                existing.SecondaryColorHex = group.SecondaryColorHex;
+                existing.DefaultLocation = group.DefaultLocation;
+                existing.DefaultHashtags = group.DefaultHashtags;
+                existing.MeetupUrlName = group.MeetupUrlName;
+                existing.ShortUrlStem = group.ShortUrlStem;
+                existing.SocialPostTemplate = social;
+                existing.LogoBlobUrl = group.LogoBlobUrl;
+                existing.MeetupApiKeyOverride = group.MeetupApiKeyOverride;
+                existing.PptxTemplateBlobUrl = group.PptxTemplateBlobUrl;
+                existing.UpdatedAtUtc = DateTime.UtcNow;
+            }
+
+            await db.SaveChangesAsync();
+            NavManager.NavigateTo("/groups");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save group.");
+            statusMessage = "Could not save the group: " + ex.Message;
+            isError = true;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}
