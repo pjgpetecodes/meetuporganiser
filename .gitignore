@@ -435,3 +435,4 @@ publish/
 
 # Runtime uploads (logos, templates)
 src/MeetupOrganiser.Web/wwwroot/storage/
+details.txt

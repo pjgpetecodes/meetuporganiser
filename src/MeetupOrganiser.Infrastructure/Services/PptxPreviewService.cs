@@ -458,12 +458,19 @@ public class PptxPreviewService : IPptxPreviewService
 
         var defaults = body.GetFirstChild<D.ListStyle>()?.GetFirstChild<D.Level1ParagraphProperties>()?.GetFirstChild<D.DefaultRunProperties>();
         var fallbackAlign = body.GetFirstChild<D.ListStyle>()?.GetFirstChild<D.Level1ParagraphProperties>()?.Alignment?.Value;
-        var scale = 1f;
+        // Honour the shrink PowerPoint stored for this shape so text matches the template's own sizing.
+        var autofit = props?.GetFirstChild<D.NormalAutoFit>();
+        var stored = autofit?.FontScale?.Value is > 0;
+        var scale = stored ? autofit!.FontScale!.Value / 100000f : 1f;
+        var lineReduction = (autofit?.LineSpaceReduction?.Value ?? 0) / 100000f;
+        var tolerance = stored ? 1.15f : 1f;
+        // Only boxes set to "shrink text on overflow" are resized; others draw at their authored size.
+        var maxAttempts = autofit != null ? 4 : 0;
         List<(List<(string Word, SKFont Font, SKPaint Paint)> Words, float Height, D.TextAlignmentTypeValues Align)> lines;
         for (var attempt = 0; ; attempt++)
         {
-            lines = BuildLines(ctx, body, defaults, fallbackAlign, area.Width, scale);
-            if (attempt >= 4 || lines.Sum(l => l.Height) <= area.Height) break;
+            lines = BuildLines(ctx, body, defaults, fallbackAlign, area.Width, scale, lineReduction);
+            if (attempt >= maxAttempts || lines.Sum(l => l.Height) <= area.Height * tolerance) break;
             scale *= 0.8f;
         }
 
@@ -471,12 +478,15 @@ public class PptxPreviewService : IPptxPreviewService
     }
 
     private static List<(List<(string Word, SKFont Font, SKPaint Paint)> Words, float Height, D.TextAlignmentTypeValues Align)> BuildLines(
-        RenderContext ctx, TextBody body, D.DefaultRunProperties? defaults, D.TextAlignmentTypeValues? fallbackAlign, float width, float scale)
+        RenderContext ctx, TextBody body, D.DefaultRunProperties? defaults, D.TextAlignmentTypeValues? fallbackAlign, float width, float scale, float lineReduction)
     {
         var lines = new List<(List<(string Word, SKFont Font, SKPaint Paint)> Words, float Height, D.TextAlignmentTypeValues Align)>();
+        var level1 = body.GetFirstChild<D.ListStyle>()?.GetFirstChild<D.Level1ParagraphProperties>();
         foreach (var paragraph in body.Elements<D.Paragraph>())
         {
             var align = paragraph.ParagraphProperties?.Alignment?.Value ?? fallbackAlign ?? D.TextAlignmentTypeValues.Left;
+            var spacingPct = (paragraph.ParagraphProperties?.LineSpacing ?? level1?.LineSpacing)?.SpacingPercent?.Val?.Value ?? 100000;
+            var lineFactor = 1.2f * Math.Max(0.5f, spacingPct / 100000f - lineReduction);
             var words = new List<(string, SKFont, SKPaint)>();
             float maxSize = 0;
             foreach (var run in paragraph.Elements<D.Run>())
@@ -495,7 +505,7 @@ public class PptxPreviewService : IPptxPreviewService
             }
 
             if (maxSize == 0) maxSize = (paragraph.GetFirstChild<D.EndParagraphRunProperties>()?.FontSize?.Value ?? defaults?.FontSize?.Value ?? 1800) / 100f * (float)EmuPerPoint * scale;
-            lines.AddRange(Wrap(words, width, align, maxSize));
+            lines.AddRange(Wrap(words, width, align, maxSize, lineFactor));
         }
 
         return lines;
@@ -545,7 +555,7 @@ public class PptxPreviewService : IPptxPreviewService
     }
 
     private static IEnumerable<(List<(string, SKFont, SKPaint)>, float, D.TextAlignmentTypeValues)> Wrap(
-        List<(string Word, SKFont Font, SKPaint Paint)> words, float maxWidth, D.TextAlignmentTypeValues align, float height)
+        List<(string Word, SKFont Font, SKPaint Paint)> words, float maxWidth,         D.TextAlignmentTypeValues align, float height, float lineFactor)
     {
         var line = new List<(string, SKFont, SKPaint)>();
         float width = 0;
@@ -554,7 +564,7 @@ public class PptxPreviewService : IPptxPreviewService
             var w1 = w.Font.MeasureText(w.Word + " ");
             if (line.Count > 0 && width + w1 > maxWidth)
             {
-                yield return (line, height * 1.2f, align);
+                yield return (line, height * lineFactor, align);
                 line = [];
                 width = 0;
             }
@@ -563,7 +573,7 @@ public class PptxPreviewService : IPptxPreviewService
             width += w1;
         }
 
-        yield return (line, height * 1.2f, align);
+        yield return (line, height * lineFactor, align);
     }
 }
 
