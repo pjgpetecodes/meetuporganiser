@@ -33,7 +33,7 @@ public class PptxGeneratorService : IPptxGeneratorService
     }
 
     // Slides containing {{tokens}} are filled; slides for the other speaker count are hidden; the rest are untouched.
-    private byte[]? GenerateFromGroupTemplate(MeetupEvent meetupEvent, byte[] templateBytes, int speakerCount)
+    private byte[]? GenerateFromGroupTemplate(MeetupEvent meetupEvent, MeetupEvent? nextEvent, byte[] templateBytes, int speakerCount)
     {
         using var memoryStream = new MemoryStream();
         memoryStream.Write(templateBytes);
@@ -54,7 +54,7 @@ public class PptxGeneratorService : IPptxGeneratorService
                 return null;
             }
 
-            var replacements = PptxTokens.BuildReplacements(meetupEvent, includeSampleLiterals: false);
+            var replacements = PptxTokens.BuildReplacements(meetupEvent, includeSampleLiterals: false, nextEvent);
             var hasTwoSpeakerSlides = slideParts.Any(s => s.Kind == PptxTokens.SlideKind.TwoSpeakers);
             foreach (var (part, kind, hasTokens) in slideParts)
             {
@@ -73,13 +73,13 @@ public class PptxGeneratorService : IPptxGeneratorService
         return memoryStream.ToArray();
     }
 
-    public async Task<byte[]> GenerateEventDeckAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default)
+    public async Task<byte[]> GenerateEventDeckAsync(MeetupEvent meetupEvent, MeetupEvent? nextEvent = null, CancellationToken cancellationToken = default)
     {
         var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
 
         if (await TryLoadGroupTemplateAsync(meetupEvent, cancellationToken) is { } custom)
         {
-            var deck = GenerateFromGroupTemplate(meetupEvent, custom, sessions.Count);
+            var deck = GenerateFromGroupTemplate(meetupEvent, nextEvent, custom, sessions.Count);
             if (deck != null) return deck;
         }
 
@@ -120,7 +120,7 @@ public class PptxGeneratorService : IPptxGeneratorService
             {
                 var speaker1 = sessions.FirstOrDefault()?.Speaker;
                 var speaker2 = sessions.Skip(1).FirstOrDefault()?.Speaker;
-                var replacements = PptxTokens.BuildReplacements(meetupEvent, includeSampleLiterals: true);
+                var replacements = PptxTokens.BuildReplacements(meetupEvent, includeSampleLiterals: true, nextEvent);
 
                 // Iterate through all slide parts and replace text occurrences
                 foreach (var slideId in presentationPart.Presentation.SlideIdList?.Elements<SlideId>() ?? [])

@@ -26,7 +26,9 @@ public class PptxTemplateSlideTests
     }
 
     // Three slides; the middle slide splits its token across two runs like PowerPoint does.
-    private static byte[] BuildDeck()
+    private static byte[] BuildDeckWithText(string text) => BuildDeck([[text]]);
+
+    private static byte[] BuildDeck(string[][]? slideRuns = null)
     {
         using var stream = new MemoryStream();
         using (var doc = PresentationDocument.Create(stream, PresentationDocumentType.Presentation))
@@ -37,7 +39,7 @@ public class PptxTemplateSlideTests
                 new SlideSize { Cx = 12192000, Cy = 6858000 });
 
             var ids = presentationPart.Presentation.SlideIdList!;
-            string[][] slideRuns = [["Intro slide"], ["Talk by {{Speak", "erName}} on {{TalkTitle}}"], ["Duo {{Speaker1Name}} and {{Speaker2Name}}"], ["Tonight {{EventSubtitle}}!"]];
+            slideRuns ??= [["Intro slide"], ["Talk by {{Speak", "erName}} on {{TalkTitle}}"], ["Duo {{Speaker1Name}} and {{Speaker2Name}}"], ["Tonight {{EventSubtitle}}!"]];
             uint id = 256;
             foreach (var runs in slideRuns)
             {
@@ -130,6 +132,21 @@ public class PptxTemplateSlideTests
 
         Assert.Equal("Duo Speaker 1 and Speaker 2", texts[2]);
         Assert.Equal([false, true, false, false], SlideHidden(output));
+    }
+
+    [Fact]
+    public async Task NextEventTokens_UseNextEventOrFallBackToTbc()
+    {
+        var deck = BuildDeckWithText("Next: {{NextEventSpeakers}} - {{NextEventTalkTitle}} on {{NextEventDate}}");
+        var evt = CreateEvent(1);
+
+        var without = SlideTexts(await Generator(deck).GenerateEventDeckAsync(evt));
+        Assert.Equal("Next: TBC - TBC on TBC", without[0]);
+
+        var next = CreateEvent(2);
+        next.EventDateTimeUtc = new DateTime(2026, 11, 17, 18, 30, 0, DateTimeKind.Utc);
+        var with = SlideTexts(await Generator(deck).GenerateEventDeckAsync(evt, next));
+        Assert.Equal("Next: Speaker 1 & Speaker 2 - Talk 1 on Tuesday 17th November 2026", with[0]);
     }
 
     [Fact]

@@ -96,6 +96,16 @@ public class PptxPreviewService : IPptxPreviewService
         return evt;
     }
 
+    private static MeetupEvent SampleNextEvent()
+    {
+        var next = SampleEvent(1);
+        next.Title = "Next Sample Meetup";
+        next.EventDateTimeUtc = next.EventDateTimeUtc.AddMonths(1);
+        next.Sessions.Clear();
+        next.Sessions.Add(new EventSpeakerSession { OrderIndex = 0, TalkTitle = "Next Month's Talk", Speaker = new Speaker { Name = "Molly Next" } });
+        return next;
+    }
+
     private async Task<byte[]?> GetDeckAsync(string fileName, CancellationToken cancellationToken)
     {
         if (!PptxTemplateStore.IsValidFileName(fileName)) return null;
@@ -132,7 +142,7 @@ public class PptxPreviewService : IPptxPreviewService
             var part = parts[slideNumber - 1];
             if (sample != null && part.Slide != null)
             {
-                PptxTokens.ApplyToSlide(part.Slide, PptxTokens.BuildReplacements(sample, includeSampleLiterals: false));
+                PptxTokens.ApplyToSlide(part.Slide, PptxTokens.BuildReplacements(sample, includeSampleLiterals: false, SampleNextEvent()));
             }
 
             var size = doc.PresentationPart!.Presentation.SlideSize;
