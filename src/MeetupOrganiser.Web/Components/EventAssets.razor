@@ -148,6 +148,10 @@
                     <div class="mb-2">
                         <textarea class="form-control small" rows="4" @bind="linkedInText"></textarea>
                     </div>
+                    <div class="form-check mb-2">
+                        <input id="linkedin-attach-image" type="checkbox" class="form-check-input" @bind="attachLinkedInImage" />
+                        <label class="form-check-label" for="linkedin-attach-image">Attach social card image</label>
+                    </div>
                     <div class="d-flex justify-content-between align-items-center">
                         <small class="text-muted">Includes event title, speaker tags, and registration link.</small>
                         <span class="badge bg-light text-secondary border">LinkedIn Posts API</span>
@@ -189,7 +193,7 @@
                         </h5>
                         <div class="btn-group btn-group-sm">
                             <button type="button" class="btn btn-info text-white" @onclick="PublishToBlueSkyAsync" disabled="@isPublishingBlueSky">
-                                <i class="bi bi-send me-1"></i> Post with Image
+                                <i class="bi bi-send me-1"></i> @(attachBlueSkyImage ? "Post with Image" : "Post Link Only")
                             </button>
                             <a href="@BlueSkyIntentUrl" target="_blank" rel="noopener noreferrer" class="btn btn-outline-info" title="Open Bluesky compose with this text pre-filled">
                                 <i class="bi bi-box-arrow-up-right me-1"></i> Web Intent
@@ -198,6 +202,10 @@
                     </div>
                     <div class="mb-2">
                         <textarea class="form-control small" rows="3" @bind="blueSkyText" @bind:event="oninput"></textarea>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input id="bluesky-attach-image" type="checkbox" class="form-check-input" @bind="attachBlueSkyImage" />
+                        <label class="form-check-label" for="bluesky-attach-image">Attach social card image</label>
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
                         <small class="text-muted">Character count: @(blueSkyText?.Length ?? 0) / 300. The web intent can't attach the image; download the PNG and add it manually.</small>
@@ -220,10 +228,12 @@
     private string meetupTitle = string.Empty;
     private string? meetupMarkdownDescription;
     private string? linkedInText;
+    private bool attachLinkedInImage = true;
     private string? linkedInIntentUrl;
     private string? twitterText;
     private string? twitterIntentUrl;
     private string? blueSkyText;
+    private bool attachBlueSkyImage = true;
     private string BlueSkyIntentUrl => $"https://bsky.app/intent/compose?text={Uri.EscapeDataString(blueSkyText ?? string.Empty)}";
 
     private bool isGeneratingImage;
@@ -398,7 +408,7 @@
         try
         {
             isPublishingLinkedIn = true;
-            byte[]? imageBytes = previewImageBase64 != null ? Convert.FromBase64String(previewImageBase64) : null;
+            byte[]? imageBytes = attachLinkedInImage && previewImageBase64 != null ? Convert.FromBase64String(previewImageBase64) : null;
             var result = await SocialMediaService.PostToLinkedInAsync(linkedInText ?? string.Empty, imageBytes);
             statusMessage = result.Success
                 ? "Successfully published to LinkedIn!"
@@ -437,13 +447,15 @@
         {
             isPublishingBlueSky = true;
             byte[]? imageBytes = null;
-            if (previewImageBase64 != null)
+            if (attachBlueSkyImage && previewImageBase64 != null)
             {
                 imageBytes = Convert.FromBase64String(previewImageBase64);
             }
-            var result = await SocialMediaService.PostToBlueSkyAsync(blueSkyText ?? string.Empty, imageBytes, "social-card.png");
+            var result = await SocialMediaService.PostToBlueSkyAsync(blueSkyText ?? string.Empty, imageBytes, "image/png");
             statusMessage = result.Success
-                ? "Successfully posted to BlueSky with attached social image!"
+                ? attachBlueSkyImage
+                    ? "Successfully posted to BlueSky with attached social image!"
+                    : "Successfully posted to BlueSky!"
                 : $"BlueSky note: {result.ErrorMessage}";
             isError = !result.Success;
         }
