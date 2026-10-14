@@ -177,12 +177,17 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var today = DateTime.UtcNow.Date;
         totalEvents = await DbContext.MeetupEvents.CountAsync();
-        upcomingEventsCount = await DbContext.MeetupEvents.CountAsync(e => e.EventDateTimeUtc >= DateTime.UtcNow);
+        upcomingEventsCount = await DbContext.MeetupEvents.CountAsync(e => e.EventDateTimeUtc >= today);
         totalSpeakers = await DbContext.Speakers.CountAsync();
         totalGroups = await DbContext.MeetupGroups.CountAsync();
 
         upcomingEvents = await DbContext.MeetupEvents
+            .Where(e => e.EventDateTimeUtc >= today &&
+                        (e.Status == EventStatus.Draft ||
+                         e.Status == EventStatus.Scheduled ||
+                         e.Status == EventStatus.Published))
             .Include(e => e.MeetupGroup).ThenInclude(g => g!.Sponsors)
             .Include(e => e.Sessions)
                 .ThenInclude(s => s.Speaker)
