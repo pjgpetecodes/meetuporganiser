@@ -124,7 +124,7 @@
                                     <div class="badge bg-light text-secondary border mt-1">@evt.DurationMinutes min</div>
                                 </td>
                                 <td>
-                                    <div class="fw-bold fs-6">@evt.Title</div>
+                                    <div class="fw-bold fs-6"><a href="/events/edit/@evt.Id" class="text-decoration-none text-reset" title="Edit event">@evt.Title</a></div>
                                     <div class="small text-secondary">
                                         <i class="bi bi-geo-alt me-1"></i>@(evt.LocationOrPlatform ?? "Zoom")
                                     </div>
@@ -176,7 +176,7 @@
                                 </td>
                                 <td class="text-end">
                                     <div class="btn-group btn-group-sm">
-                                        <a href="/assets?eventId=@evt.Id" class="btn btn-outline-primary" title="Slide Deck & Social Images">
+                                        <a href="/events/edit/@evt.Id?tab=assets" class="btn btn-outline-primary" title="Slide Deck & Social Images">
                                             <i class="bi bi-file-earmark-slides me-1"></i> Assets
                                         </a>
                                         <a href="/events/edit/@evt.Id" class="btn btn-outline-secondary" title="Edit Event">
