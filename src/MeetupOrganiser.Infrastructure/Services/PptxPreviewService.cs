@@ -249,7 +249,20 @@ public class PptxPreviewService : IPptxPreviewService
     {
         if (Bounds(pic.ShapeProperties?.Transform2D) is not { } rect || pic.BlipFill == null) return;
 
-        WithRotation(ctx, pic.ShapeProperties!.Transform2D!, rect, () => DrawBlip(ctx, owner, pic.BlipFill, rect));
+        WithRotation(ctx, pic.ShapeProperties!.Transform2D!, rect, () =>
+        {
+            var ellipse = pic.ShapeProperties.GetFirstChild<D.PresetGeometry>()?.Preset?.Value == D.ShapeTypeValues.Ellipse;
+            if (ellipse)
+            {
+                ctx.Canvas.Save();
+                using var path = new SKPath();
+                path.AddOval(rect);
+                ctx.Canvas.ClipPath(path, antialias: true);
+            }
+
+            DrawBlip(ctx, owner, pic.BlipFill, rect);
+            if (ellipse) ctx.Canvas.Restore();
+        });
     }
 
     private static void WithRotation(RenderContext ctx, D.Transform2D xfrm, SKRect rect, Action draw)
@@ -367,6 +380,10 @@ public class PptxPreviewService : IPptxPreviewService
                 colour = colour.Value.WithAlpha((byte)(a * 255 / 100000));
             }
         }
+        else if (holder.GetFirstChild<D.PresetColor>() is { Val.Value: { } preset })
+        {
+            colour = preset == D.PresetColorValues.White ? SKColors.White : preset == D.PresetColorValues.Black ? SKColors.Black : null;
+        }
 
         return colour;
     }
@@ -400,31 +417,57 @@ public class PptxPreviewService : IPptxPreviewService
         var area = new SKRect(rect.Left + left, rect.Top + top, rect.Right - right, rect.Bottom - bottom);
         if (area.Width <= 0 || area.Height <= 0) return;
 
+        var defaults = body.GetFirstChild<D.ListStyle>()?.GetFirstChild<D.Level1ParagraphProperties>()?.GetFirstChild<D.DefaultRunProperties>();
+        var fallbackAlign = body.GetFirstChild<D.ListStyle>()?.GetFirstChild<D.Level1ParagraphProperties>()?.Alignment?.Value;
+        var scale = 1f;
+        List<(List<(string Word, SKFont Font, SKPaint Paint)> Words, float Height, D.TextAlignmentTypeValues Align)> lines;
+        for (var attempt = 0; ; attempt++)
+        {
+            lines = BuildLines(ctx, body, defaults, fallbackAlign, area.Width, scale);
+            if (attempt >= 4 || lines.Sum(l => l.Height) <= area.Height) break;
+            scale *= 0.8f;
+        }
+
+        DrawLines(ctx, lines, area, props?.Anchor?.Value);
+    }
+
+    private static List<(List<(string Word, SKFont Font, SKPaint Paint)> Words, float Height, D.TextAlignmentTypeValues Align)> BuildLines(
+        RenderContext ctx, TextBody body, D.DefaultRunProperties? defaults, D.TextAlignmentTypeValues? fallbackAlign, float width, float scale)
+    {
         var lines = new List<(List<(string Word, SKFont Font, SKPaint Paint)> Words, float Height, D.TextAlignmentTypeValues Align)>();
         foreach (var paragraph in body.Elements<D.Paragraph>())
         {
-            var align = paragraph.ParagraphProperties?.Alignment?.Value ?? D.TextAlignmentTypeValues.Left;
+            var align = paragraph.ParagraphProperties?.Alignment?.Value ?? fallbackAlign ?? D.TextAlignmentTypeValues.Left;
             var words = new List<(string, SKFont, SKPaint)>();
             float maxSize = 0;
             foreach (var run in paragraph.Elements<D.Run>())
             {
                 var rp = run.RunProperties;
-                var size = (rp?.FontSize?.Value ?? 1800) / 100f * (float)EmuPerPoint;
+                var size = (rp?.FontSize?.Value ?? defaults?.FontSize?.Value ?? 1800) / 100f * (float)EmuPerPoint * scale;
                 maxSize = Math.Max(maxSize, size);
-                var style = new SKFontStyle(rp?.Bold?.Value == true ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal,
+                var bold = rp?.Bold?.Value ?? defaults?.Bold?.Value ?? false;
+                var style = new SKFontStyle(bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal,
                     SKFontStyleWidth.Normal, rp?.Italic?.Value == true ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);
-                var typeface = SKTypeface.FromFamilyName(rp?.GetFirstChild<D.LatinFont>()?.Typeface?.Value is { Length: > 0 } f && !f.StartsWith('+') ? f : "Segoe UI", style);
+                var typeface = (rp?.GetFirstChild<D.LatinFont>()?.Typeface?.Value is { Length: > 0 } f && !f.StartsWith('+') ? SKTypeface.FromFamilyName(f, style) : null)
+                    ?? SKTypeface.FromFamilyName("Segoe UI", style) ?? SKTypeface.Default;
                 var font = new SKFont(typeface, size);
-                var paint = new SKPaint { IsAntialias = true, Color = (rp != null ? ResolveColor(ctx, rp) : null) ?? SKColors.Black };
+                var colour = (rp != null ? ResolveColor(ctx, rp) : null) ?? (defaults != null ? ResolveColor(ctx, defaults) : null);
+                // Slides in these decks are typically white-on-colour, so unresolved colours default to white.
+                var paint = new SKPaint { IsAntialias = true, Color = colour ?? SKColors.White };
                 foreach (var word in (run.Text?.Text ?? string.Empty).Split(' ')) words.Add((word, font, paint));
             }
 
-            if (maxSize == 0) maxSize = (paragraph.GetFirstChild<D.EndParagraphRunProperties>()?.FontSize?.Value ?? 1800) / 100f * (float)EmuPerPoint;
-            lines.AddRange(Wrap(words, area.Width, align, maxSize));
+            if (maxSize == 0) maxSize = (paragraph.GetFirstChild<D.EndParagraphRunProperties>()?.FontSize?.Value ?? defaults?.FontSize?.Value ?? 1800) / 100f * (float)EmuPerPoint * scale;
+            lines.AddRange(Wrap(words, width, align, maxSize));
         }
 
+        return lines;
+    }
+
+    private static void DrawLines(RenderContext ctx,
+        List<(List<(string Word, SKFont Font, SKPaint Paint)> Words, float Height, D.TextAlignmentTypeValues Align)> lines, SKRect area, D.TextAnchoringTypeValues? anchor)
+    {
         var total = lines.Sum(l => l.Height);
-        var anchor = props?.Anchor?.Value;
         var y = area.Top;
         if (anchor == D.TextAnchoringTypeValues.Center) y = area.MidY - total / 2;
         else if (anchor == D.TextAnchoringTypeValues.Bottom) y = area.Bottom - total;
@@ -438,7 +481,16 @@ public class PptxPreviewService : IPptxPreviewService
             for (var i = 0; i < words.Count; i++)
             {
                 var text = words[i].Word + (i < words.Count - 1 ? " " : string.Empty);
-                ctx.Canvas.DrawText(text, x, baseline, SKTextAlign.Left, words[i].Font, words[i].Paint);
+                // Skia mishandles very large font sizes, so draw in point units with the canvas scaled up.
+                ctx.Canvas.Save();
+                ctx.Canvas.Translate(x, baseline);
+                ctx.Canvas.Scale((float)EmuPerPoint);
+                using (var ptFont = new SKFont(words[i].Font.Typeface, words[i].Font.Size / (float)EmuPerPoint))
+                {
+                    ctx.Canvas.DrawText(text, 0, 0, SKTextAlign.Left, ptFont, words[i].Paint);
+                }
+
+                ctx.Canvas.Restore();
                 x += words[i].Font.MeasureText(text);
             }
 
