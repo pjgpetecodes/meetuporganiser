@@ -183,7 +183,7 @@
         totalGroups = await DbContext.MeetupGroups.CountAsync();
 
         upcomingEvents = await DbContext.MeetupEvents
-            .Include(e => e.MeetupGroup)
+            .Include(e => e.MeetupGroup).ThenInclude(g => g!.Sponsors)
             .Include(e => e.Sessions)
                 .ThenInclude(s => s.Speaker)
             .OrderBy(e => e.EventDateTimeUtc)

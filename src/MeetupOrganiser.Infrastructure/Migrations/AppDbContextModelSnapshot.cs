@@ -49,7 +49,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasKey("Key");
 
-                    b.ToTable("AppSettings", (string)null);
+                    b.ToTable("AppSettings");
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.EventSpeakerSession", b =>
@@ -82,7 +82,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasIndex("SpeakerId");
 
-                    b.ToTable("EventSpeakerSessions", (string)null);
+                    b.ToTable("EventSpeakerSessions");
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.GeneratedAsset", b =>
@@ -116,7 +116,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasIndex("MeetupEventId");
 
-                    b.ToTable("GeneratedAssets", (string)null);
+                    b.ToTable("GeneratedAssets");
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.MagicLinkToken", b =>
@@ -157,7 +157,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
-                    b.ToTable("MagicLinkTokens", (string)null);
+                    b.ToTable("MagicLinkTokens");
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.MeetupEvent", b =>
@@ -238,7 +238,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasIndex("MeetupGroupId");
 
-                    b.ToTable("MeetupEvents", (string)null);
+                    b.ToTable("MeetupEvents");
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.MeetupGroup", b =>
@@ -246,6 +246,10 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BioPreference")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -269,6 +273,10 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.Property<string>("MeetupApiKeyOverride")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("MeetupDescriptionTemplate")
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("MeetupUrlName")
                         .HasMaxLength(100)
@@ -310,7 +318,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MeetupGroups", (string)null);
+                    b.ToTable("MeetupGroups");
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.SocialPostTemplate", b =>
@@ -342,7 +350,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("SocialPostTemplates", (string)null);
+                    b.ToTable("SocialPostTemplates");
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.Speaker", b =>
@@ -410,7 +418,51 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasIndex("Email");
 
-                    b.ToTable("Speakers", (string)null);
+                    b.ToTable("Speakers");
+                });
+
+            modelBuilder.Entity("MeetupOrganiser.Core.Entities.Sponsor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BlueSkyHandle")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("LinkedInUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("LogoBlobUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("MeetupGroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TwitterHandle")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("WebsiteUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MeetupGroupId");
+
+                    b.ToTable("Sponsor");
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.EventSpeakerSession", b =>
@@ -473,6 +525,15 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.Navigation("MeetupGroup");
                 });
 
+            modelBuilder.Entity("MeetupOrganiser.Core.Entities.Sponsor", b =>
+                {
+                    b.HasOne("MeetupOrganiser.Core.Entities.MeetupGroup", null)
+                        .WithMany("Sponsors")
+                        .HasForeignKey("MeetupGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.EventSpeakerSession", b =>
                 {
                     b.Navigation("MagicLinkTokens");
@@ -488,6 +549,8 @@ namespace MeetupOrganiser.Infrastructure.Migrations
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.MeetupGroup", b =>
                 {
                     b.Navigation("Events");
+
+                    b.Navigation("Sponsors");
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.Speaker", b =>

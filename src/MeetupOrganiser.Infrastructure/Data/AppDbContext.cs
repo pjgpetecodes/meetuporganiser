@@ -33,6 +33,10 @@ public class AppDbContext : DbContext
                   .WithOne(e => e.MeetupGroup)
                   .HasForeignKey(e => e.MeetupGroupId)
                   .OnDelete(DeleteBehavior.Restrict);
+            entity.HasMany(g => g.Sponsors)
+                  .WithOne()
+                  .HasForeignKey(s => s.MeetupGroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Speaker

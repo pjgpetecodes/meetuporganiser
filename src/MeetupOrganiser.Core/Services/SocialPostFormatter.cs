@@ -41,6 +41,8 @@ public static class SocialPostFormatter
         ("Format", "In Person, Hybrid or Online"),
         ("ShortUrl", "Short link, falling back to the Meetup event link"),
         ("Hashtags", "Group default hashtags"),
+        ("Sponsors", "Sponsor @handles for X / Bluesky (falls back to the name; LinkedIn uses the name), joined with \"and\"; blank if none"),
+        ("SponsorNames", "Sponsor names, joined with \"and\""),
     ];
 
     public static string Render(MeetupEvent meetupEvent, string platform, string? template)
@@ -53,6 +55,7 @@ public static class SocialPostFormatter
             .DistinctBy(s => s.Id)
             .ToList();
         var uk = EventHeader.ToUkTime(meetupEvent.EventDateTimeUtc);
+        var sponsors = (group?.Sponsors ?? []).Where(s => !string.IsNullOrWhiteSpace(s.Name)).OrderBy(s => s.SortOrder).ToList();
         var venue = string.IsNullOrWhiteSpace(meetupEvent.VenueName) ? EventHeader.DefaultVenue : meetupEvent.VenueName.Trim();
 
         var where = meetupEvent.Format switch
@@ -75,21 +78,26 @@ public static class SocialPostFormatter
             ["Venue"] = venue,
             ["Format"] = EventHeader.FormatLabel(meetupEvent.Format),
             ["ShortUrl"] = FirstNonBlank(meetupEvent.ShortBitlyUrl, meetupEvent.MeetupEventUrl, group?.WebsiteUrl) ?? "https://meetup.com",
-            ["Hashtags"] = group?.DefaultHashtags ?? string.Empty
+            ["Hashtags"] = group?.DefaultHashtags ?? string.Empty,
+            ["Sponsors"] = Join(sponsors.Select(s => Mention(s.Name, s.TwitterHandle, s.BlueSkyHandle, platform))),
+            ["SponsorNames"] = Join(sponsors.Select(s => s.Name))
         };
 
         return MeetupDescriptionTemplate.Render(string.IsNullOrWhiteSpace(template) ? Default : template, values).TrimEnd();
     }
 
-    private static string Mention(Speaker speaker, string platform)
+    private static string Mention(Speaker speaker, string platform) =>
+        Mention(speaker.Name, speaker.TwitterHandle, speaker.BlueSkyHandle, platform);
+
+    private static string Mention(string name, string? twitter, string? blueSky, string platform)
     {
         var handle = platform.ToLowerInvariant() switch
         {
-            "twitter" or "x" => SocialLinks.XHandle(speaker.TwitterHandle),
-            "bluesky" => SocialLinks.BlueSkyHandle(speaker.BlueSkyHandle) is { } bsky ? "@" + bsky : null,
+            "twitter" or "x" => SocialLinks.XHandle(twitter),
+            "bluesky" => SocialLinks.BlueSkyHandle(blueSky) is { } bsky ? "@" + bsky : null,
             _ => null
         };
-        return handle ?? speaker.Name;
+        return handle ?? name;
     }
 
     private static string Join(IEnumerable<string> items)

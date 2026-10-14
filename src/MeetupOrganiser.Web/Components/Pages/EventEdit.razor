@@ -472,8 +472,10 @@
             });
         }
 
-        var preference = await SettingsService.GetSettingAsync(SpeakerBio.SettingKey);
-        var template = await SettingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey) ?? MeetupDescriptionTemplate.Default;
+        var group = preview.MeetupGroup;
+        var preference = !string.IsNullOrWhiteSpace(group?.BioPreference) ? group.BioPreference : await SettingsService.GetSettingAsync(SpeakerBio.SettingKey);
+        var template = (!string.IsNullOrWhiteSpace(group?.MeetupDescriptionTemplate) ? group.MeetupDescriptionTemplate : null)
+            ?? await SettingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey) ?? MeetupDescriptionTemplate.Default;
         evt.Description = MeetupService.GenerateMeetupDescription(preview, preference, template);
     }
 

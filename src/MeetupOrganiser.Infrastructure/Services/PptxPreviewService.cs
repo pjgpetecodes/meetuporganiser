@@ -19,7 +19,10 @@ public interface IPptxPreviewService
     Task<byte[]?> RenderSlideAsync(string fileName, int slideNumber, int width, CancellationToken cancellationToken = default);
 
     Task<byte[]?> RenderFilledSlideAsync(string fileName, int slideNumber, int speakerCount, int width, CancellationToken cancellationToken = default);
-}
+
+        // Renders the deck's social slide (the one showing the event date) filled with the real event; null if the deck has none.
+        Task<byte[]?> RenderEventSocialSlideAsync(string fileName, MeetupEvent meetupEvent, MeetupEvent? nextEvent, int width, CancellationToken cancellationToken = default);
+    }
 
 // Approximate renderer: backgrounds, pictures, filled shapes and text boxes. Anything else is skipped.
 public class PptxPreviewService : IPptxPreviewService
@@ -65,7 +68,7 @@ public class PptxPreviewService : IPptxPreviewService
         if (_cache.TryGetValue(key, out byte[]? cached)) return cached;
 
         var deck = await GetDeckAsync(fileName, cancellationToken);
-        var png = deck == null ? null : await RenderAsync(deck, slideNumber, width, null, cancellationToken);
+        var png = deck == null ? null : await RenderAsync(deck, slideNumber, width, null, null, cancellationToken);
         if (png != null) _cache.Set(key, png, TimeSpan.FromMinutes(30));
         return png;
     }
@@ -73,7 +76,17 @@ public class PptxPreviewService : IPptxPreviewService
     public async Task<byte[]?> RenderFilledSlideAsync(string fileName, int slideNumber, int speakerCount, int width, CancellationToken cancellationToken = default)
     {
         var deck = await GetDeckAsync(fileName, cancellationToken);
-        return deck == null ? null : await RenderAsync(deck, slideNumber, width, SampleEvent(speakerCount), cancellationToken);
+        return deck == null ? null : await RenderAsync(deck, slideNumber, width, SampleEvent(speakerCount), SampleNextEvent(), cancellationToken);
+    }
+
+    public async Task<byte[]?> RenderEventSocialSlideAsync(string fileName, MeetupEvent meetupEvent, MeetupEvent? nextEvent, int width, CancellationToken cancellationToken = default)
+    {
+        var slides = await GetSlidesAsync(fileName, cancellationToken);
+        var number = PptxTokens.FindSocialSlide(slides.Select(s => (s.Number, s.Tokens)).ToList(), meetupEvent.Sessions.Count);
+        if (number == null) return null;
+
+        var deck = await GetDeckAsync(fileName, cancellationToken);
+        return deck == null ? null : await RenderAsync(deck, number.Value, width, meetupEvent, nextEvent, cancellationToken);
     }
 
     public static MeetupEvent SampleEvent(int speakerCount)
@@ -127,7 +140,7 @@ public class PptxPreviewService : IPptxPreviewService
         }
     }
 
-    private async Task<byte[]?> RenderAsync(byte[] deck, int slideNumber, int width, MeetupEvent? sample, CancellationToken cancellationToken)
+    private async Task<byte[]?> RenderAsync(byte[] deck, int slideNumber, int width, MeetupEvent? sample, MeetupEvent? nextEvent, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
@@ -142,7 +155,7 @@ public class PptxPreviewService : IPptxPreviewService
             var part = parts[slideNumber - 1];
             if (sample != null && part.Slide != null)
             {
-                PptxTokens.ApplyToSlide(part.Slide, PptxTokens.BuildReplacements(sample, includeSampleLiterals: false, SampleNextEvent()));
+                PptxTokens.ApplyToSlide(part.Slide, PptxTokens.BuildReplacements(sample, includeSampleLiterals: false, nextEvent));
             }
 
             var size = doc.PresentationPart!.Presentation.SlideSize;
@@ -157,6 +170,15 @@ public class PptxPreviewService : IPptxPreviewService
             var theme = doc.PresentationPart.ThemePart?.Theme;
             var ctx = new RenderContext(canvas, theme, cx, cy);
             DrawBackground(ctx, part);
+            // Master shapes (logos etc.) sit beneath layout and slide shapes unless hidden via showMasterSp.
+            var layout = part.SlideLayoutPart?.SlideLayout;
+            var showMaster = part.Slide?.ShowMasterShapes?.Value != false && layout?.ShowMasterShapes?.Value != false;
+            if (showMaster && part.SlideLayoutPart?.SlideMasterPart is { } masterPart
+                && masterPart.SlideMaster?.CommonSlideData?.ShapeTree is { } masterTree)
+            {
+                DrawTree(ctx, masterTree, masterPart, skipPlaceholders: true);
+            }
+
             if (part.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree is { } layoutTree)
             {
                 DrawTree(ctx, layoutTree, part.SlideLayoutPart, skipPlaceholders: true);

@@ -94,8 +94,11 @@ public class MeetupService : IMeetupService
                 title = meetupEvent.Title,
                 description = GenerateMeetupDescription(
                     meetupEvent,
-                    _settingsService != null ? await _settingsService.GetSettingAsync(SpeakerBio.SettingKey, cancellationToken) : null,
-                    (_settingsService != null ? await _settingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey, cancellationToken) : null)
+                    !string.IsNullOrWhiteSpace(group?.BioPreference)
+                        ? group.BioPreference
+                        : _settingsService != null ? await _settingsService.GetSettingAsync(SpeakerBio.SettingKey, cancellationToken) : null,
+                    (!string.IsNullOrWhiteSpace(group?.MeetupDescriptionTemplate) ? group.MeetupDescriptionTemplate : null)
+                        ?? (_settingsService != null ? await _settingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey, cancellationToken) : null)
                         ?? MeetupDescriptionTemplate.Default),
                 startDateTime = DateTime.SpecifyKind(meetupEvent.EventDateTimeUtc, DateTimeKind.Utc).ToString("O"),
                 duration = XmlConvert.ToString(TimeSpan.FromMinutes(meetupEvent.DurationMinutes)),

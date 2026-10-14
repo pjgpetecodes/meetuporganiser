@@ -229,7 +229,7 @@
         {
             await using var dbContext = await DbContextFactory.CreateDbContextAsync();
             selectedEvent = await dbContext.MeetupEvents
-                .Include(e => e.MeetupGroup)
+                .Include(e => e.MeetupGroup).ThenInclude(g => g!.Sponsors)
                 .Include(e => e.Sessions).ThenInclude(s => s.Speaker)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(e => e.Id == EventId);
@@ -257,8 +257,10 @@
         {
             if (selectedEvent == null) return;
 
-            var bioPreference = await SettingsService.GetSettingAsync("Integrations:Bio:Preference");
-            var template = await SettingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey) ?? MeetupDescriptionTemplate.Default;
+            var eventGroup = selectedEvent.MeetupGroup;
+            var bioPreference = !string.IsNullOrWhiteSpace(eventGroup?.BioPreference) ? eventGroup.BioPreference : await SettingsService.GetSettingAsync(SpeakerBio.SettingKey);
+            var template = (!string.IsNullOrWhiteSpace(eventGroup?.MeetupDescriptionTemplate) ? eventGroup.MeetupDescriptionTemplate : null)
+                ?? await SettingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey) ?? MeetupDescriptionTemplate.Default;
             meetupMarkdownDescription = MeetupService.GenerateMeetupDescription(selectedEvent, bioPreference, template);
             linkedInText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "LinkedIn");
             twitterText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "Twitter");
