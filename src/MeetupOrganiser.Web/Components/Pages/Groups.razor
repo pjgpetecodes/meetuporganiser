@@ -206,7 +206,14 @@
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Custom PPTX Template (Optional)</label>
-                            <InputFile OnChange="HandleTemplateUploadAsync" class="form-control" accept=".pptx" />
+                            <InputFile OnChange="HandleTemplateUploadAsync" class="form-control" accept=".pptx" disabled="@(templateUploading || slidesLoading)" />
+                            @if (templateUploading || slidesLoading)
+                            {
+                                <div class="d-flex align-items-center gap-2 text-secondary small mt-2" role="status">
+                                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                    <span>@(templateUploading ? "Uploading and processing your deck... please wait." : "Rendering slide previews... please wait.")</span>
+                                </div>
+                            }
                             @if (!string.IsNullOrEmpty(templateError))
                             {
                                 <div class="text-danger small">@templateError</div>
@@ -217,6 +224,9 @@
                                 @if (slidesLoading)
                                 {
                                     <div class="text-secondary small mt-2">Reading slides...</div>
+                                }
+                                else if (templateUploading)
+                                {
                                 }
                                 else if (slides.Count == 0)
                                 {
@@ -422,6 +432,9 @@
         var file = e.File;
         if (file == null) return;
 
+        templateUploading = true;
+        StateHasChanged();
+        await Task.Yield();
         try
         {
             using var stream = file.OpenReadStream(100 * 1024 * 1024);
@@ -436,7 +449,13 @@
                 ? "That file is larger than 100 MB."
                 : "Template upload failed: " + ex.Message;
         }
+        finally
+        {
+            templateUploading = false;
+        }
     }
+
+    private bool templateUploading;
 
     private async Task SaveGroupAsync()
     {
