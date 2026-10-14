@@ -1,0 +1,79 @@
+@page "/privacy"
+
+<PageTitle>Privacy Policy - Meetup Organiser</PageTitle>
+
+<div class="container py-5" style="max-width: 800px;">
+    <h1 class="fw-bold mb-1">Privacy Policy</h1>
+    <p class="text-muted">Last updated: 14 October 2026</p>
+
+    <p>
+        Meetup Organiser ("the application") is a tool for community organisers to plan meetups,
+        generate slide decks and social images, collect speaker submissions and publish event
+        announcements. This policy explains what information the application handles and how it is used.
+    </p>
+
+    <h2 class="h4 mt-4">Information we collect</h2>
+    <ul>
+        <li><strong>Organiser account details:</strong> name and email address provided by Microsoft Entra ID when you sign in.</li>
+        <li><strong>Speaker details:</strong> name, biography, photo, job title, talk title and abstract, and public social profile links (for example LinkedIn, X, Bluesky) that speakers submit through a speaker link or that organisers enter.</li>
+        <li><strong>Event and group content:</strong> meetup titles, dates, venues, sponsors, logos and generated slide decks and images.</li>
+        <li><strong>Integration credentials:</strong> access tokens and keys for services you connect (Meetup.com, LinkedIn, X, Bluesky), stored securely and used only to post on your behalf.</li>
+    </ul>
+
+    <h2 class="h4 mt-4">How we use information</h2>
+    <ul>
+        <li>To create and manage events, speaker lineups, slides and social cards.</li>
+        <li>To publish announcements to the social networks you connect, only when you choose to post.</li>
+        <li>To authenticate organisers and protect the application.</li>
+    </ul>
+
+    <h2 class="h4 mt-4">LinkedIn data</h2>
+    <p>
+        If you connect a LinkedIn account, the application uses LinkedIn's Share on LinkedIn permission
+        (<code>w_member_social</code>) and basic profile information (name and member identifier) solely to publish
+        posts that you create and approve in the application. We do not read your connections, messages or feed,
+        do not sell or share LinkedIn data with third parties, and do not use it for advertising.
+        You can revoke access at any time from your LinkedIn account under Settings &rarr; Data privacy &rarr; Permitted services,
+        and remove the stored token from the application's settings.
+    </p>
+
+    <h2 class="h4 mt-4">Speaker links</h2>
+    <p>
+        Speaker submission links are unique, single-use and time-limited. Links are stored only as one-way hashes,
+        and cannot be reused after a submission is made.
+    </p>
+
+    <h2 class="h4 mt-4">Storage and security</h2>
+    <p>
+        Data is stored in Microsoft Azure (Azure SQL Database and Blob Storage). Secrets are held in Azure Key Vault.
+        Data is encrypted in transit and at rest. Access is limited to authenticated organisers.
+    </p>
+
+    <h2 class="h4 mt-4">Sharing</h2>
+    <p>
+        We do not sell personal information. Content is shared only with the services you explicitly publish to
+        (such as LinkedIn, X, Bluesky or Meetup.com) and with Microsoft Azure as our hosting provider.
+    </p>
+
+    <h2 class="h4 mt-4">Retention and deletion</h2>
+    <p>
+        Data is kept while it is needed to run your events. Speakers and organisers may ask for their data to be
+        corrected or deleted at any time by contacting us at the address below.
+    </p>
+
+    <h2 class="h4 mt-4">Cookies</h2>
+    <p>The application uses only essential cookies required for sign-in and session security. No advertising or tracking cookies are used.</p>
+
+    <h2 class="h4 mt-4">Contact</h2>
+    <p>
+        Questions or requests about this policy can be sent to
+        <a href="mailto:@ContactEmail">@ContactEmail</a>.
+    </p>
+
+    <p class="mt-4"><a href="/">&larr; Back to home</a></p>
+</div>
+
+@code {
+    // Replace with your real contact address before publishing
+    private const string ContactEmail = "privacy@example.com";
+}
