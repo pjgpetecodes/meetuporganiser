@@ -365,37 +365,5 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         return null;
     }
 
-    // SkiaSharp ignores EXIF orientation on decode, so apply it manually.
-    private static SKBitmap? DecodeOriented(byte[] data)
-    {
-        using var codec = SKCodec.Create(new MemoryStream(data));
-        var bitmap = SKBitmap.Decode(data);
-        if (codec == null || bitmap == null) return bitmap;
-
-        var origin = codec.EncodedOrigin;
-        if (origin is SKEncodedOrigin.TopLeft or SKEncodedOrigin.Default) return bitmap;
-
-        var swap = origin is SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop
-            or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom;
-        var w = swap ? bitmap.Height : bitmap.Width;
-        var h = swap ? bitmap.Width : bitmap.Height;
-        var result = new SKBitmap(w, h);
-        using (var canvas = new SKCanvas(result))
-        {
-            canvas.Clear();
-            switch (origin)
-            {
-                case SKEncodedOrigin.TopRight: canvas.Translate(w, 0); canvas.Scale(-1, 1); break;
-                case SKEncodedOrigin.BottomRight: canvas.Translate(w, h); canvas.RotateDegrees(180); break;
-                case SKEncodedOrigin.BottomLeft: canvas.Translate(0, h); canvas.Scale(1, -1); break;
-                case SKEncodedOrigin.LeftTop: canvas.SetMatrix(new SKMatrix(0, 1, 0, 1, 0, 0, 0, 0, 1)); break;
-                case SKEncodedOrigin.RightTop: canvas.SetMatrix(new SKMatrix(0, -1, bitmap.Height, 1, 0, 0, 0, 0, 1)); break;
-                case SKEncodedOrigin.RightBottom: canvas.SetMatrix(new SKMatrix(0, -1, bitmap.Height, -1, 0, bitmap.Width, 0, 0, 1)); break;
-                case SKEncodedOrigin.LeftBottom: canvas.SetMatrix(new SKMatrix(0, 1, 0, -1, 0, bitmap.Width, 0, 0, 1)); break;
-            }
-            canvas.DrawBitmap(bitmap, 0, 0);
-        }
-        bitmap.Dispose();
-        return result;
-    }
+    private static SKBitmap? DecodeOriented(byte[] data) => ImageOrientation.Decode(data);
 }
