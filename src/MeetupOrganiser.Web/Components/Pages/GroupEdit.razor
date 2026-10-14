@@ -54,8 +54,26 @@
     }
     else
     {
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <button type="button" class="nav-link @(activeTab == "details" ? "active" : "")" @onclick='() => activeTab = "details"'><i class="bi bi-people me-1"></i> Group Details</button>
+            </li>
+            <li class="nav-item">
+                <button type="button" class="nav-link @(activeTab == "meetup" ? "active" : "")" @onclick='() => activeTab = "meetup"'><i class="bi bi-calendar-check me-1"></i> Meetup</button>
+            </li>
+            <li class="nav-item">
+                <button type="button" class="nav-link @(activeTab == "social" ? "active" : "")" @onclick='() => activeTab = "social"'><i class="bi bi-share me-1"></i> Social</button>
+            </li>
+            <li class="nav-item">
+                <button type="button" class="nav-link @(activeTab == "sponsors" ? "active" : "")" @onclick='() => activeTab = "sponsors"'><i class="bi bi-award me-1"></i> Sponsors <span class="badge bg-secondary">@group.Sponsors.Count</span></button>
+            </li>
+            <li class="nav-item">
+                <button type="button" class="nav-link @(activeTab == "pptx" ? "active" : "")" @onclick='() => activeTab = "pptx"'><i class="bi bi-file-earmark-slides me-1"></i> Custom PPTX Template</button>
+            </li>
+        </ul>
+
         <div class="row g-4">
-            <div class="col-lg-6">
+            <div class="col-12 @(activeTab == "details" ? "" : "d-none")">
                 <div class="card border-0 shadow-sm p-4 h-100">
                     <h5 class="fw-bold mb-3"><i class="bi bi-people me-2 text-primary"></i>Group Details</h5>
                     <div class="row g-3">
@@ -113,9 +131,9 @@
                 </div>
             </div>
 
-            <div class="col-lg-6">
+            <div class="col-12 @(activeTab == "meetup" ? "" : "d-none")">
                 <div class="card border-0 shadow-sm p-4 h-100">
-                    <h5 class="fw-bold mb-3"><i class="bi bi-share me-2 text-primary"></i>Meetup &amp; Social</h5>
+                    <h5 class="fw-bold mb-3"><i class="bi bi-calendar-check me-2 text-danger"></i>Meetup</h5>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Meetup Group Slug (urlname)</label>
@@ -123,14 +141,43 @@
                             <small class="text-secondary">Used in meetup.com/{urlname}/events</small>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Short URL Stem (Bitly)</label>
-                            <input @bind="group.ShortUrlStem" class="form-control" placeholder="https://bit.ly/dotnetnotts" />
-                            <small class="text-secondary">Month and year are added per event, e.g. https://bit.ly/dotnetnottsoctober2026</small>
-                        </div>
-                        <div class="col-12">
                             <label class="form-label fw-semibold">Meetup API Key Override (Optional)</label>
                             <input type="password" @bind="group.MeetupApiKeyOverride" class="form-control" placeholder="Leave blank to use global API key" />
                             <small class="text-secondary">Only needed if this group is under a different Meetup account.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Speaker Bios</label>
+                            <select class="form-select" @bind="group.BioPreference">
+                                <option value="">Use global setting</option>
+                                <option value="@SpeakerBio.ThirdPerson">Third person (recommended)</option>
+                                <option value="@SpeakerBio.Original">Original, as written by the speaker</option>
+                            </select>
+                            <small class="text-secondary">Overrides the Settings page for this group's descriptions.</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Meetup Description Template</label>
+                            <textarea class="form-control font-monospace small mb-2" rows="14" @bind="group.MeetupDescriptionTemplate" placeholder="Leave blank to use the global template from Settings"></textarea>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var (name, description) in MeetupDescriptionTemplate.Placeholders)
+                                {
+                                    <code title="@description" class="small">{{@name}}</code>
+                                }
+                            </div>
+                            <small class="text-secondary">Hover a placeholder for what it does.</small>
+                            <div><button type="button" class="btn btn-sm btn-link p-0" @onclick="() => group.MeetupDescriptionTemplate = MeetupDescriptionTemplate.Default">Start from the built-in default</button></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 @(activeTab == "social" ? "" : "d-none")">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-share me-2 text-primary"></i>Social</h5>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Short URL Stem (Bitly)</label>
+                            <input @bind="group.ShortUrlStem" class="form-control" placeholder="https://bit.ly/dotnetnotts" />
+                            <small class="text-secondary">Month and year are added per event, e.g. https://bit.ly/dotnetnottsoctober2026</small>
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Social Post Template</label>
@@ -148,7 +195,70 @@
                 </div>
             </div>
 
-            <div class="col-12">
+            <div class="col-12 @(activeTab == "sponsors" ? "" : "d-none")">
+                <div class="card border-0 shadow-sm p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0"><i class="bi bi-award me-2 text-warning"></i>Sponsors</h5>
+                        <button type="button" class="btn btn-sm btn-primary" @onclick="AddSponsor"><i class="bi bi-plus-lg me-1"></i> Add Sponsor</button>
+                    </div>
+                    <p class="text-secondary small">Use <code>{{Sponsors}}</code> (mentions, e.g. @@handle) or <code>{{SponsorNames}}</code> in the Social Post Template to include them. Click Save Group to keep changes.</p>
+                    @if (group.Sponsors.Count == 0)
+                    {
+                        <div class="text-secondary">No sponsors yet.</div>
+                    }
+                    <div class="d-flex flex-column gap-3">
+                        @foreach (var sponsor in group.Sponsors)
+                        {
+                            <div class="border rounded p-3" @key="sponsor.Id">
+                                <div class="row g-3 align-items-start">
+                                    <div class="col-md-2 text-center">
+                                        @if (!string.IsNullOrWhiteSpace(sponsor.LogoBlobUrl))
+                                        {
+                                            <img src="@sponsor.LogoBlobUrl" alt="@sponsor.Name logo" class="rounded border bg-light mb-2" style="max-width: 100%; max-height: 80px; object-fit: contain;" />
+                                            <button type="button" class="btn btn-sm btn-outline-danger w-100 mb-2" @onclick="() => sponsor.LogoBlobUrl = null">Remove logo</button>
+                                        }
+                                        <InputFile OnChange="e => HandleSponsorLogoAsync(sponsor, e)" class="form-control form-control-sm" accept=".png,.jpg,.jpeg,.webp" />
+                                    </div>
+                                    <div class="col-md-10">
+                                        <div class="row g-2">
+                                            <div class="col-md-6">
+                                                <label class="form-label small fw-semibold mb-0">Name *</label>
+                                                <input @bind="sponsor.Name" class="form-control form-control-sm" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small fw-semibold mb-0">Website</label>
+                                                <input @bind="sponsor.WebsiteUrl" class="form-control form-control-sm" placeholder="https://..." />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small fw-semibold mb-0"><i class="bi bi-twitter-x me-1"></i>X handle</label>
+                                                <input @bind="sponsor.TwitterHandle" class="form-control form-control-sm" placeholder="@@handle" />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small fw-semibold mb-0"><i class="bi bi-cloud-sun me-1"></i>BlueSky handle</label>
+                                                <input @bind="sponsor.BlueSkyHandle" class="form-control form-control-sm" placeholder="name.bsky.social" />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small fw-semibold mb-0"><i class="bi bi-linkedin me-1"></i>LinkedIn URL</label>
+                                                <input @bind="sponsor.LinkedInUrl" class="form-control form-control-sm" placeholder="https://linkedin.com/company/..." />
+                                            </div>
+                                        </div>
+                                        <div class="d-flex gap-2 mt-2">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => CopySponsor(sponsor)"><i class="bi bi-files me-1"></i> Copy</button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => group.Sponsors.Remove(sponsor)"><i class="bi bi-trash me-1"></i> Delete</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(sponsorError))
+                    {
+                        <div class="text-danger small mt-2">@sponsorError</div>
+                    }
+                </div>
+            </div>
+
+            <div class="col-12 @(activeTab == "pptx" ? "" : "d-none")">
                 <div class="card border-0 shadow-sm p-4">
                     <h5 class="fw-bold mb-3"><i class="bi bi-file-earmark-slides me-2 text-primary"></i>Custom PPTX Template (Optional)</h5>
                     <InputFile OnChange="HandleTemplateUploadAsync" class="form-control" accept=".pptx" disabled="@(templateUploading || slidesLoading)" />
@@ -235,6 +345,7 @@
     private string? statusMessage;
     private bool isError;
     private bool saving;
+    private string activeTab = "details";
     private bool IsNew => Id == null;
 
     protected override async Task OnParametersSetAsync()
@@ -260,7 +371,8 @@
         try
         {
             await using var db = await DbContextFactory.CreateDbContextAsync();
-            group = await db.MeetupGroups.AsNoTracking().FirstOrDefaultAsync(g => g.Id == Id);
+            group = await db.MeetupGroups.AsNoTracking().Include(g => g.Sponsors).FirstOrDefaultAsync(g => g.Id == Id);
+            group?.Sponsors.Sort((a, b) => a.SortOrder.CompareTo(b.SortOrder));
             if (group == null)
             {
                 statusMessage = "That meetup group was not found.";
@@ -319,6 +431,52 @@
             : s.Kind == PptxTokens.SlideKind.TwoSpeakers;
 
     private string? logoError;
+    private string? sponsorError;
+
+    private void AddSponsor() =>
+        group!.Sponsors.Add(new Sponsor { Name = "New Sponsor", SortOrder = group.Sponsors.Count });
+
+    private void CopySponsor(Sponsor source)
+    {
+        var index = group!.Sponsors.IndexOf(source);
+        group.Sponsors.Insert(index + 1, new Sponsor
+        {
+            Name = source.Name + " (copy)",
+            LogoBlobUrl = source.LogoBlobUrl,
+            WebsiteUrl = source.WebsiteUrl,
+            TwitterHandle = source.TwitterHandle,
+            BlueSkyHandle = source.BlueSkyHandle,
+            LinkedInUrl = source.LinkedInUrl
+        });
+    }
+
+    private async Task HandleSponsorLogoAsync(Sponsor sponsor, InputFileChangeEventArgs e)
+    {
+        sponsorError = null;
+        var file = e.File;
+        if (file == null) return;
+
+        if (!LogoTypes.TryGetValue(Path.GetExtension(file.Name), out var contentType))
+        {
+            sponsorError = "Please choose a PNG, JPG or WebP image.";
+            return;
+        }
+
+        try
+        {
+            using var stream = file.OpenReadStream(2 * 1024 * 1024);
+            sponsor.LogoBlobUrl = await BlobStorageService.UploadAsync("logos", file.Name, stream, contentType);
+        }
+        catch (IOException)
+        {
+            sponsorError = "That file is larger than 2 MB.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to upload sponsor logo.");
+            sponsorError = "Logo upload failed. Please try again.";
+        }
+    }
 
     private static readonly Dictionary<string, string> LogoTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -402,18 +560,21 @@
         {
             await using var db = await DbContextFactory.CreateDbContextAsync();
             var social = string.IsNullOrWhiteSpace(group.SocialPostTemplate) ? null : group.SocialPostTemplate;
+            var descriptionTemplate = string.IsNullOrWhiteSpace(group.MeetupDescriptionTemplate) ? null : group.MeetupDescriptionTemplate;
+            group.BioPreference = string.IsNullOrWhiteSpace(group.BioPreference) ? null : group.BioPreference;
 
             if (IsNew)
             {
                 group.Id = Guid.NewGuid();
                 group.SocialPostTemplate = social;
+                group.MeetupDescriptionTemplate = descriptionTemplate;
                 group.CreatedAtUtc = DateTime.UtcNow;
                 group.UpdatedAtUtc = DateTime.UtcNow;
                 db.MeetupGroups.Add(group);
             }
             else
             {
-                var existing = await db.MeetupGroups.FindAsync(group.Id);
+                var existing = await db.MeetupGroups.Include(g => g.Sponsors).FirstOrDefaultAsync(g => g.Id == group.Id);
                 if (existing == null)
                 {
                     statusMessage = "That meetup group no longer exists.";
@@ -431,9 +592,32 @@
                 existing.MeetupUrlName = group.MeetupUrlName;
                 existing.ShortUrlStem = group.ShortUrlStem;
                 existing.SocialPostTemplate = social;
+                existing.BioPreference = group.BioPreference;
+                existing.MeetupDescriptionTemplate = descriptionTemplate;
                 existing.LogoBlobUrl = group.LogoBlobUrl;
                 existing.MeetupApiKeyOverride = group.MeetupApiKeyOverride;
                 existing.PptxTemplateBlobUrl = group.PptxTemplateBlobUrl;
+                foreach (var removed in existing.Sponsors.Where(s => group.Sponsors.All(g => g.Id != s.Id)).ToList())
+                {
+                    existing.Sponsors.Remove(removed);
+                    db.Remove(removed);
+                }
+                foreach (var edited in group.Sponsors)
+                {
+                    var target = existing.Sponsors.FirstOrDefault(s => s.Id == edited.Id);
+                    if (target == null)
+                    {
+                        target = new Sponsor { Id = edited.Id, MeetupGroupId = existing.Id };
+                        db.Add(target);
+                    }
+                    target.Name = edited.Name;
+                    target.LogoBlobUrl = edited.LogoBlobUrl;
+                    target.WebsiteUrl = edited.WebsiteUrl;
+                    target.TwitterHandle = edited.TwitterHandle;
+                    target.BlueSkyHandle = edited.BlueSkyHandle;
+                    target.LinkedInUrl = edited.LinkedInUrl;
+                    target.SortOrder = group.Sponsors.IndexOf(edited);
+                }
                 existing.UpdatedAtUtc = DateTime.UtcNow;
             }
 

@@ -10,15 +10,32 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
 {
     private readonly ILogger<SocialImageGeneratorService> _logger;
 
-    public SocialImageGeneratorService(ILogger<SocialImageGeneratorService> logger)
+    private readonly IPptxPreviewService? _preview;
+
+    public SocialImageGeneratorService(ILogger<SocialImageGeneratorService> logger, IPptxPreviewService? preview = null)
     {
         _logger = logger;
+        _preview = preview;
     }
 
     public async Task<byte[]> GenerateSocialCardAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default)
     {
         const int width = 1280;
         const int height = 720;
+
+        // Keep the card consistent with the group's own deck when it has a slide showing the date.
+        if (_preview != null && PptxTemplateStore.TryParseFileName(meetupEvent.MeetupGroup?.PptxTemplateBlobUrl, out var templateFile))
+        {
+            try
+            {
+                var fromDeck = await _preview.RenderEventSocialSlideAsync(templateFile, meetupEvent, null, width, cancellationToken);
+                if (fromDeck != null) return fromDeck;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not render the social card from the group template; using the built-in card.");
+            }
+        }
 
         using var bitmap = new SKBitmap(width, height);
         using var canvas = new SKCanvas(bitmap);

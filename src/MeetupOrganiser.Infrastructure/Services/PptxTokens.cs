@@ -129,6 +129,22 @@ public static partial class PptxTokens
         return tokens.Any(t => FirstSpeakerTokens.Contains(Normalise(t), StringComparer.OrdinalIgnoreCase)) ? SlideKind.OneSpeaker : SlideKind.Always;
     }
 
+    private static readonly string[] DateTokens = ["{{EventDate}}", "{{EventDateLine}}"];
+
+    // The social slide is the one showing this event's date; prefer the one matching the speaker count and carrying speaker details.
+    public static int? FindSocialSlide(IReadOnlyList<(int Number, IReadOnlyList<string> Tokens)> slides, int speakerCount)
+    {
+        var wanted = speakerCount > 1 ? SlideKind.TwoSpeakers : SlideKind.OneSpeaker;
+        var candidates = slides
+            .Where(s => s.Tokens.Any(t => DateTokens.Contains(Normalise(t), StringComparer.OrdinalIgnoreCase)))
+            .Select(s => (s.Number, Kind: Classify(s.Tokens)))
+            .ToList();
+
+        return candidates.Where(c => c.Kind == wanted).Select(c => (int?)c.Number).FirstOrDefault()
+            ?? candidates.Where(c => c.Kind != (wanted == SlideKind.OneSpeaker ? SlideKind.TwoSpeakers : SlideKind.OneSpeaker)).Select(c => (int?)c.Number).FirstOrDefault()
+            ?? candidates.Select(c => (int?)c.Number).FirstOrDefault();
+    }
+
     private static string Normalise(string token) => "{{" + token.Trim('{', '}').Trim() + "}}";
 
     public static IReadOnlyList<string> DetectTokens(Slide slide)

@@ -48,8 +48,16 @@ public class MeetupGroup
     [MaxLength(500)]
     public string? MeetupApiKeyOverride { get; set; }
 
+    // null/blank = use the global setting
+    [MaxLength(20)]
+    public string? BioPreference { get; set; }
+
+    [MaxLength(8000)]
+    public string? MeetupDescriptionTemplate { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public List<MeetupEvent> Events { get; set; } = [];
+    public List<Sponsor> Sponsors { get; set; } = [];
 }

@@ -236,7 +236,7 @@ app.MapGet("/logout", async (HttpContext context) =>
 app.MapGet("/api/events/{id:guid}/pptx", async (Guid id, AppDbContext db, IPptxGeneratorService pptx) =>
 {
     var evt = await db.MeetupEvents
-        .Include(e => e.MeetupGroup)
+        .Include(e => e.MeetupGroup).ThenInclude(g => g!.Sponsors)
         .Include(e => e.Sessions).ThenInclude(s => s.Speaker)
         .FirstOrDefaultAsync(e => e.Id == id);
     if (evt == null) return Results.NotFound();
@@ -256,7 +256,7 @@ app.MapGet("/api/events/{id:guid}/pptx", async (Guid id, AppDbContext db, IPptxG
 app.MapGet("/api/events/{id:guid}/social-image", async (Guid id, AppDbContext db, ISocialImageGeneratorService socialImg) =>
 {
     var evt = await db.MeetupEvents
-        .Include(e => e.MeetupGroup)
+        .Include(e => e.MeetupGroup).ThenInclude(g => g!.Sponsors)
         .Include(e => e.Sessions).ThenInclude(s => s.Speaker)
         .FirstOrDefaultAsync(e => e.Id == id);
     if (evt == null) return Results.NotFound();
