@@ -10,7 +10,7 @@ using SkiaSharp;
 
 namespace MeetupOrganiser.Infrastructure.Services;
 
-public record PptxSlideInfo(int Number, string Caption, IReadOnlyList<string> Tokens);
+public record PptxSlideInfo(int Number, string Caption, IReadOnlyList<string> Tokens, PptxTokens.SlideKind Kind);
 
 public interface IPptxPreviewService
 {
@@ -52,8 +52,8 @@ public class PptxPreviewService : IPptxPreviewService
             var caption = part.Slide?.Descendants<D.Paragraph>()
                 .Select(p => string.Concat(p.Descendants<D.Text>().Select(t => t.Text)).Trim())
                 .FirstOrDefault(t => t.Length > 0) ?? "(no text)";
-            result.Add(new PptxSlideInfo(number, caption.Length > 60 ? caption[..60] + "..." : caption,
-                part.Slide == null ? [] : PptxTokens.DetectTokens(part.Slide)));
+            var tokens = part.Slide == null ? [] : PptxTokens.DetectTokens(part.Slide);
+            result.Add(new PptxSlideInfo(number, caption.Length > 60 ? caption[..60] + "..." : caption, tokens, PptxTokens.Classify(tokens)));
         }
 
         return result;

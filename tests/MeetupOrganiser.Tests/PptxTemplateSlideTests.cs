@@ -37,7 +37,7 @@ public class PptxTemplateSlideTests
                 new SlideSize { Cx = 12192000, Cy = 6858000 });
 
             var ids = presentationPart.Presentation.SlideIdList!;
-            string[][] slideRuns = [["Intro {{SpeakerName}}"], ["Talk by {{Speak", "erName}} on {{TalkTitle}}"], ["Thanks {{SpeakerName}}"]];
+            string[][] slideRuns = [["Intro slide"], ["Talk by {{Speak", "erName}} on {{TalkTitle}}"], ["Duo {{Speaker1Name}} and {{Speaker2Name}}"], ["Tonight {{EventSubtitle}}!"]];
             uint id = 256;
             foreach (var runs in slideRuns)
             {
@@ -72,15 +72,23 @@ public class PptxTemplateSlideTests
             .ToList();
     }
 
-    private static MeetupEvent CreateEvent(int speakers, int? one, int? two)
+    private static List<bool> SlideHidden(byte[] deck)
+    {
+        using var stream = new MemoryStream(deck);
+        using var doc = PresentationDocument.Open(stream, false);
+        var part = doc.PresentationPart!;
+        return part.Presentation.SlideIdList!.Elements<SlideId>()
+            .Select(s => ((SlidePart)part.GetPartById(s.RelationshipId!)).Slide!.Show?.Value == false)
+            .ToList();
+    }
+
+    private static MeetupEvent CreateEvent(int speakers)
     {
         var group = new MeetupGroup
         {
             Id = Guid.NewGuid(),
             Name = "Group",
-            PptxTemplateBlobUrl = "/storage/templates/" + FileName,
-            TemplateSlideOneSpeaker = one,
-            TemplateSlideTwoSpeakers = two
+            PptxTemplateBlobUrl = "/storage/templates/" + FileName
         };
         var evt = new MeetupEvent
         {
@@ -100,51 +108,62 @@ public class PptxTemplateSlideTests
         new(NullLogger<PptxGeneratorService>.Instance, new MemoryBlobStorage(deck));
 
     [Fact]
-    public async Task ChosenSlide_IsTheOnlySlideReplaced()
+    public async Task SingleSpeaker_FillsTokenSlidesAndHidesTwoSpeakerSlide()
     {
-        var deck = BuildDeck();
-
-        var output = await Generator(deck).GenerateEventDeckAsync(CreateEvent(1, one: 2, two: 3));
+        var output = await Generator(BuildDeck()).GenerateEventDeckAsync(CreateEvent(1));
         var texts = SlideTexts(output);
 
-        Assert.Equal(3, texts.Count);
-        Assert.Equal("Intro {{SpeakerName}}", texts[0]);
+        Assert.Equal(4, texts.Count);
+        Assert.Equal("Intro slide", texts[0]);
         Assert.Equal("Talk by Speaker 1 on Talk 1", texts[1]);
-        Assert.Equal("Thanks {{SpeakerName}}", texts[2]);
+        Assert.DoesNotContain("{{", texts[2]);
+        Assert.StartsWith("Tonight ", texts[3]);
+        Assert.DoesNotContain("{{", texts[3]);
+        Assert.Equal([false, false, true, false], SlideHidden(output));
     }
 
     [Fact]
-    public async Task TwoSpeakers_UsesTheTwoSpeakerSlide()
+    public async Task TwoSpeakers_HidesSingleSpeakerSlide()
     {
-        var output = await Generator(BuildDeck()).GenerateEventDeckAsync(CreateEvent(2, one: 2, two: 3));
+        var output = await Generator(BuildDeck()).GenerateEventDeckAsync(CreateEvent(2));
         var texts = SlideTexts(output);
 
-        Assert.Equal("Thanks Speaker 1", texts[2]);
-        Assert.Equal("Talk by {{Speak" + "erName}} on {{TalkTitle}}", texts[1]);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData(99)]
-    public async Task MissingOrOutOfRangeSelection_FallsBackToBuiltInDeck(int? slide)
-    {
-        var output = await Generator(BuildDeck()).GenerateEventDeckAsync(CreateEvent(1, one: slide, two: slide));
-
-        // The built-in deck is 13 slides; the 3-slide fixture must not be returned.
-        Assert.NotEqual(3, SlideTexts(output).Count);
+        Assert.Equal("Duo Speaker 1 and Speaker 2", texts[2]);
+        Assert.Equal([false, true, false, false], SlideHidden(output));
     }
 
     [Fact]
-    public async Task Preview_ListsSlidesWithCaptionAndTokens()
+    public async Task DeckWithoutPlaceholders_FallsBackToBuiltInDeck()
+    {
+        using var stream = new MemoryStream();
+        using (var doc = PresentationDocument.Create(stream, PresentationDocumentType.Presentation))
+        {
+            var presentationPart = doc.AddPresentationPart();
+            presentationPart.Presentation = new Presentation(new SlideIdList());
+            presentationPart.Presentation.Save();
+        }
+
+        var output = await Generator(stream.ToArray()).GenerateEventDeckAsync(CreateEvent(1));
+
+        Assert.NotEmpty(SlideTexts(output));
+    }
+
+    [Fact]
+    public async Task Preview_ListsSlidesWithCaptionTokensAndKind()
     {
         var preview = new PptxPreviewService(new MemoryBlobStorage(BuildDeck()), new MemoryCache(new MemoryCacheOptions()), NullLogger<PptxPreviewService>.Instance);
 
         var slides = await preview.GetSlidesAsync(FileName);
 
-        Assert.Equal(3, slides.Count);
-        Assert.Equal("Intro {{SpeakerName}}", slides[0].Caption);
+        Assert.Equal(4, slides.Count);
+        Assert.Equal("Intro slide", slides[0].Caption);
+        Assert.Empty(slides[0].Tokens);
+        Assert.Equal(PptxTokens.SlideKind.Always, slides[0].Kind);
         Assert.Contains("{{TalkTitle}}", slides[1].Tokens);
         Assert.Contains("{{SpeakerName}}", slides[1].Tokens);
+        Assert.Equal(PptxTokens.SlideKind.OneSpeaker, slides[1].Kind);
+        Assert.Equal(PptxTokens.SlideKind.TwoSpeakers, slides[2].Kind);
+        Assert.Equal(PptxTokens.SlideKind.Always, slides[3].Kind);
     }
 
     [Fact]

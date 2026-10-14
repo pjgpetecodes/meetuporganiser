@@ -22,11 +22,6 @@ public class MeetupGroup
     [MaxLength(1000)]
     public string? PptxTemplateBlobUrl { get; set; }
 
-    // 1-based slide positions in the uploaded deck whose {{tokens}} are replaced
-    public int? TemplateSlideOneSpeaker { get; set; }
-
-    public int? TemplateSlideTwoSpeakers { get; set; }
-
     [MaxLength(20)]
     public string PrimaryColorHex { get; set; } = "#512BD4"; // .NET Purple default
 
