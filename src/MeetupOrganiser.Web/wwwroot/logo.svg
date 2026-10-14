@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e3a8a"/>
+      <stop offset="0.5" stop-color="#4338ca"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- calendar -->
+  <rect x="96" y="120" width="320" height="296" rx="40" fill="#ffffff"/>
+  <path d="M96 160a40 40 0 0 1 40-40h240a40 40 0 0 1 40 40v40H96z" fill="#c7d2fe"/>
+  <rect x="168" y="88" width="28" height="64" rx="14" fill="#ffffff" stroke="#4338ca" stroke-width="10"/>
+  <rect x="316" y="88" width="28" height="64" rx="14" fill="#ffffff" stroke="#4338ca" stroke-width="10"/>
+  <!-- people -->
+  <circle cx="256" cy="272" r="30" fill="#4338ca"/>
+  <path d="M200 388v-12a56 56 0 0 1 112 0v12z" fill="#4338ca"/>
+  <circle cx="176" cy="292" r="20" fill="#818cf8"/>
+  <path d="M138 388v-8a38 38 0 0 1 56-33 70 70 0 0 0-14 41v0z" fill="#818cf8"/>
+  <circle cx="336" cy="292" r="20" fill="#818cf8"/>
+  <path d="M374 388v-8a38 38 0 0 0-56-33 70 70 0 0 1 14 41v0z" fill="#818cf8"/>
+</svg>
