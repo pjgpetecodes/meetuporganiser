@@ -3,8 +3,10 @@
 @using MeetupOrganiser.Core.Entities
 @using MeetupOrganiser.Core.Interfaces
 @using MeetupOrganiser.Infrastructure.Data
+@using MeetupOrganiser.Infrastructure.Services
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext DbContext
+@inject IPptxPreviewService PreviewService
 @inject IBlobStorageService BlobStorageService
 @inject ILogger<Groups> Logger
 
@@ -205,7 +207,67 @@
                         <div class="col-12">
                             <label class="form-label fw-semibold">Custom PPTX Template (Optional)</label>
                             <InputFile OnChange="HandleTemplateUploadAsync" class="form-control" accept=".pptx" />
-                            <small class="text-secondary">Defaults to built-in 1 Speaker / 2 Speakers template if not specified.</small>
+                            <small class="text-secondary">Upload your full deck, then choose which slide is templated for 1-speaker and 2-speaker events. Only that slide's {{tokens}} are replaced. Without a chosen slide the built-in deck is used.</small>
+
+                            @if (TemplateFileName is { } templateFile)
+                            {
+                                @if (slidesLoading)
+                                {
+                                    <div class="text-secondary small mt-2">Reading slides...</div>
+                                }
+                                else if (slides.Count == 0)
+                                {
+                                    <div class="text-warning small mt-2">Could not read any slides from this deck.</div>
+                                }
+                                else
+                                {
+                                    @if (editingGroup.TemplateSlideOneSpeaker is null || editingGroup.TemplateSlideTwoSpeakers is null)
+                                    {
+                                        <div class="alert alert-warning py-2 small mt-2 mb-2">
+                                            Choose a slide for @(editingGroup.TemplateSlideOneSpeaker is null ? "1-speaker" : "")@(editingGroup.TemplateSlideOneSpeaker is null && editingGroup.TemplateSlideTwoSpeakers is null ? " and " : "")@(editingGroup.TemplateSlideTwoSpeakers is null ? "2-speaker" : "") events. Until then the built-in deck is used for those.
+                                        </div>
+                                    }
+
+                                    <div class="d-flex gap-2 overflow-auto py-2">
+                                        @foreach (var s in slides)
+                                        {
+                                            <div class="card flex-shrink-0 @(editingGroup.TemplateSlideOneSpeaker == s.Number || editingGroup.TemplateSlideTwoSpeakers == s.Number ? "border-primary" : "")" style="width: 220px;">
+                                                <img src="/api/templates/@Uri.EscapeDataString(templateFile)/slides/@(s.Number).png" class="card-img-top" loading="lazy" alt="Slide @s.Number" />
+                                                <div class="card-body p-2">
+                                                    <div class="small fw-semibold text-truncate" title="@s.Caption">@s.Number. @s.Caption</div>
+                                                    @if (s.Tokens.Count > 0)
+                                                    {
+                                                        <div class="text-secondary" style="font-size: .7rem;">@s.Tokens.Count token(s)</div>
+                                                    }
+                                                    <div class="d-flex gap-1 mt-1">
+                                                        <button type="button" class="btn btn-sm @(editingGroup.TemplateSlideOneSpeaker == s.Number ? "btn-primary" : "btn-outline-primary") flex-fill" @onclick="() => SelectSlide(s.Number, 1)">1 speaker</button>
+                                                        <button type="button" class="btn btn-sm @(editingGroup.TemplateSlideTwoSpeakers == s.Number ? "btn-primary" : "btn-outline-primary") flex-fill" @onclick="() => SelectSlide(s.Number, 2)">2 speakers</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <div class="row g-3 mt-1">
+                                        @foreach (var count in new[] { 1, 2 })
+                                        {
+                                            var chosen = count == 1 ? editingGroup.TemplateSlideOneSpeaker : editingGroup.TemplateSlideTwoSpeakers;
+                                            <div class="col-md-6">
+                                                <div class="fw-semibold small mb-1">@(count == 1 ? "1 speaker" : "2 speakers") preview</div>
+                                                @if (chosen is { } slideNumber)
+                                                {
+                                                    <img src="/api/templates/@Uri.EscapeDataString(templateFile)/slides/@slideNumber/filled.png?speakers=@count" class="img-fluid border rounded" alt="Filled preview" />
+                                                    <div class="text-secondary" style="font-size: .7rem;">Slide @slideNumber with sample data. Approximate preview.</div>
+                                                }
+                                                else
+                                                {
+                                                    <div class="border rounded text-center text-secondary small py-5">No slide selected</div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
                         </div>
                     </div>
                 </div>
@@ -267,9 +329,44 @@
             SocialPostTemplate = group.SocialPostTemplate,
             MeetupApiKeyOverride = group.MeetupApiKeyOverride,
             PptxTemplateBlobUrl = group.PptxTemplateBlobUrl,
+            TemplateSlideOneSpeaker = group.TemplateSlideOneSpeaker,
+            TemplateSlideTwoSpeakers = group.TemplateSlideTwoSpeakers,
             LogoBlobUrl = group.LogoBlobUrl
         };
         showModal = true;
+        slides = [];
+        _ = LoadSlidesAsync();
+    }
+
+    private IReadOnlyList<PptxSlideInfo> slides = [];
+    private bool slidesLoading;
+
+    private string? TemplateFileName =>
+        PptxTemplateStore.TryParseFileName(editingGroup.PptxTemplateBlobUrl, out var name) ? name : null;
+
+    private async Task LoadSlidesAsync()
+    {
+        if (TemplateFileName is not { } name) { slides = []; return; }
+
+        slidesLoading = true;
+        try
+        {
+            slides = await PreviewService.GetSlidesAsync(name);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not read template slides.");
+            slides = [];
+        }
+
+        slidesLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void SelectSlide(int number, int speakers)
+    {
+        if (speakers == 1) editingGroup.TemplateSlideOneSpeaker = number;
+        else editingGroup.TemplateSlideTwoSpeakers = number;
     }
 
     private void CloseModal()
@@ -325,6 +422,9 @@
             using var stream = file.OpenReadStream(20 * 1024 * 1024);
             var url = await BlobStorageService.UploadAsync("templates", file.Name, stream, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
             editingGroup.PptxTemplateBlobUrl = url;
+            editingGroup.TemplateSlideOneSpeaker = null;
+            editingGroup.TemplateSlideTwoSpeakers = null;
+            await LoadSlidesAsync();
         }
         catch (Exception ex)
         {
@@ -361,6 +461,8 @@
                 existing.LogoBlobUrl = editingGroup.LogoBlobUrl;
                 existing.MeetupApiKeyOverride = editingGroup.MeetupApiKeyOverride;
                 existing.PptxTemplateBlobUrl = editingGroup.PptxTemplateBlobUrl;
+                existing.TemplateSlideOneSpeaker = editingGroup.TemplateSlideOneSpeaker;
+                existing.TemplateSlideTwoSpeakers = editingGroup.TemplateSlideTwoSpeakers;
                 existing.UpdatedAtUtc = DateTime.UtcNow;
             }
         }

@@ -24,33 +24,58 @@ public class PptxGeneratorService : IPptxGeneratorService
         _blobStorage = blobStorage;
     }
 
-    // The group's uploaded template wins; any failure falls back to the built-in decks.
-    private async Task<byte[]?> TryLoadGroupTemplateAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken)
+    // The group's uploaded deck is used only when a slide is chosen for this speaker count; otherwise the built-in decks apply.
+    private async Task<(byte[] Bytes, int Slide)?> TryLoadGroupTemplateAsync(MeetupEvent meetupEvent, int speakerCount, CancellationToken cancellationToken)
     {
-        var url = meetupEvent.MeetupGroup?.PptxTemplateBlobUrl;
-        if (_blobStorage == null || string.IsNullOrWhiteSpace(url)) return null;
+        var group = meetupEvent.MeetupGroup;
+        if (_blobStorage == null || !PptxTemplateStore.TryParseFileName(group?.PptxTemplateBlobUrl, out var fileName)) return null;
 
-        try
+        var slide = speakerCount > 1 ? group!.TemplateSlideTwoSpeakers : group!.TemplateSlideOneSpeaker;
+        if (slide is null or < 1)
         {
-            var segments = url.Split('?')[0].TrimEnd('/').Split('/');
-            if (segments.Length < 2) return null;
-
-            await using var stream = await _blobStorage.DownloadAsync(
-                Uri.UnescapeDataString(segments[^2]), Uri.UnescapeDataString(segments[^1]), cancellationToken);
-            using var buffer = new MemoryStream();
-            await stream.CopyToAsync(buffer, cancellationToken);
-            return buffer.Length > 0 ? buffer.ToArray() : null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not load the group's PPTX template from {Url}; using the built-in deck.", url);
+            _logger.LogWarning("Group {Group} has a PPTX template but no slide chosen for {Count} speaker(s); using the built-in deck.", group.Name, speakerCount);
             return null;
         }
+
+        var bytes = await PptxTemplateStore.LoadAsync(_blobStorage, fileName, _logger, cancellationToken);
+        return bytes == null ? null : (bytes, slide.Value);
+    }
+
+    // Only the chosen slide's tokens are replaced; every other slide is left exactly as uploaded.
+    private byte[]? GenerateFromGroupTemplate(MeetupEvent meetupEvent, byte[] templateBytes, int slideNumber)
+    {
+        using var memoryStream = new MemoryStream();
+        memoryStream.Write(templateBytes);
+        memoryStream.Position = 0;
+
+        using (var presentationDoc = PresentationDocument.Open(memoryStream, true))
+        {
+            var presentationPart = presentationDoc.PresentationPart;
+            var slideIds = presentationPart?.Presentation.SlideIdList?.Elements<SlideId>().ToList() ?? [];
+            if (presentationPart == null || slideNumber > slideIds.Count)
+            {
+                _logger.LogWarning("Chosen template slide {Slide} does not exist (deck has {Count} slides); using the built-in deck.", slideNumber, slideIds.Count);
+                return null;
+            }
+
+            var slidePart = (SlidePart)presentationPart.GetPartById(slideIds[slideNumber - 1].RelationshipId!);
+            PptxTokens.ApplyToSlide(slidePart.Slide!, PptxTokens.BuildReplacements(meetupEvent, includeSampleLiterals: false));
+            slidePart.Slide!.Save();
+        }
+
+        return memoryStream.ToArray();
     }
 
     public async Task<byte[]> GenerateEventDeckAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default)
     {
         var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
+
+        if (await TryLoadGroupTemplateAsync(meetupEvent, sessions.Count, cancellationToken) is { } custom)
+        {
+            var deck = GenerateFromGroupTemplate(meetupEvent, custom.Bytes, custom.Slide);
+            if (deck != null) return deck;
+        }
+
         var templateFileName = sessions.Count > 1 ? "2 Speakers.pptx" : "1 Speaker.pptx";
         var templatePath = Path.Combine(Directory.GetCurrentDirectory(), "pptx", templateFileName);
 
@@ -65,8 +90,8 @@ public class PptxGeneratorService : IPptxGeneratorService
             }
         }
 
-        var templateBytes = await TryLoadGroupTemplateAsync(meetupEvent, cancellationToken);
-        if (templateBytes == null && File.Exists(templatePath))
+        byte[]? templateBytes = null;
+        if (File.Exists(templatePath))
         {
             templateBytes = await File.ReadAllBytesAsync(templatePath, cancellationToken);
         }
@@ -87,52 +112,8 @@ public class PptxGeneratorService : IPptxGeneratorService
             if (presentationPart != null)
             {
                 var speaker1 = sessions.FirstOrDefault()?.Speaker;
-                var session1 = sessions.FirstOrDefault();
                 var speaker2 = sessions.Skip(1).FirstOrDefault()?.Speaker;
-                var session2 = sessions.Skip(1).FirstOrDefault();
-
-                var dateFormatted = meetupEvent.EventDateTimeUtc.ToString("dddd d'th' MMMM yyyy");
-                var dayFormatted = meetupEvent.EventDateTimeUtc.ToString("dddd");
-                var monthYearFormatted = meetupEvent.EventDateTimeUtc.ToString("MMMM yyyy");
-                var shortUrl = meetupEvent.ShortBitlyUrl ?? meetupEvent.MeetupEventUrl ?? "https://meetup.com";
-                var shortUrlNoScheme = shortUrl.Replace("https://", "").Replace("http://", "");
-
-                var replacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    // Placeholder tokens
-                    { "{{SpeakerName}}", speaker1?.Name ?? "Speaker Name" },
-                    { "{{Speaker1Name}}", speaker1?.Name ?? "Speaker 1" },
-                    { "{{Speaker2Name}}", speaker2?.Name ?? "Speaker 2" },
-                    { "{{TalkTitle}}", session1?.TalkTitle ?? meetupEvent.Title },
-                    { "{{Talk1Title}}", session1?.TalkTitle ?? meetupEvent.Title },
-                    { "{{Talk2Title}}", session2?.TalkTitle ?? "Talk 2" },
-                    { "{{ShortUrl}}", shortUrl },
-                    { "{{EventDate}}", dateFormatted },
-                    { "{{EventTime}}", EventHeader.ToUkTime(meetupEvent.EventDateTimeUtc).ToString("HH:mm") + " UK time" },
-                    { "{{Venue}}", meetupEvent.LocationOrPlatform ?? "Online" },
-                    { "{{EventDateLine}}", EventHeader.DateLine(meetupEvent) },
-                    { "{{EventVenueLine}}", EventHeader.VenueLine(meetupEvent) },
-                    { "{{EventFormat}}", EventHeader.FormatLabel(meetupEvent.Format) },
-                    { "{{EventSubtitle}}", EventHeader.Subtitle(meetupEvent) ?? string.Empty },
-
-                    // Sample template literal replacements
-                    { "Luce Carter", speaker1?.Name ?? "Speaker Name" },
-                    { "SQL to MongoDB API with C#", session1?.TalkTitle ?? meetupEvent.Title },
-                    { "https://bit.ly/dotnetnottsapril2026", shortUrl },
-                    { "bit.ly/dotnetnottsapril2026", shortUrlNoScheme },
-                    { "Monday 27th April 2026", dateFormatted },
-                    { "Monday", dayFormatted },
-                    { "April 2026", monthYearFormatted }
-                };
-
-                if (speaker2 != null && session2 != null)
-                {
-                    replacements["Pete Gallagher"] = speaker2.Name;
-                    replacements["Detecting Pollinating Insects with a Raspberry Pi and the Hailo AI Kit"] = session2.TalkTitle;
-                    replacements["Christophe Crémon"] = speaker1?.Name ?? "Speaker 1";
-                    replacements["Christophe Cr\u00e9mon"] = speaker1?.Name ?? "Speaker 1";
-                    replacements["Agents of Change: How Agentic AI is Revolutionizing Every Industry"] = session1?.TalkTitle ?? "Talk 1";
-                }
+                var replacements = PptxTokens.BuildReplacements(meetupEvent, includeSampleLiterals: true);
 
                 // Iterate through all slide parts and replace text occurrences
                 foreach (var slideId in presentationPart.Presentation.SlideIdList?.Elements<SlideId>() ?? [])
@@ -141,21 +122,7 @@ public class PptxGeneratorService : IPptxGeneratorService
                     var slidePart = (SlidePart)presentationPart.GetPartById(slideId.RelationshipId!);
                     if (slidePart?.Slide == null) continue;
 
-                    foreach (var textElem in slidePart.Slide.Descendants<D.Text>())
-                    {
-                        var text = textElem.Text;
-                        if (string.IsNullOrEmpty(text)) continue;
-
-                        foreach (var kvp in replacements)
-                        {
-                            if (text.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase))
-                            {
-                                text = text.Replace(kvp.Key, kvp.Value, StringComparison.OrdinalIgnoreCase);
-                            }
-                        }
-                        textElem.Text = text;
-                    }
-
+                    PptxTokens.ApplyToSlide(slidePart.Slide, replacements);
                     slidePart.Slide.Save();
                 }
 
