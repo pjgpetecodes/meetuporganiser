@@ -281,7 +281,7 @@ public class PptxPreviewService : IPptxPreviewService
         try
         {
             using var imageStream = owner.GetPartById(embed).GetStream();
-            using var bitmap = SKBitmap.Decode(imageStream);
+            using var bitmap = ImageOrientation.Decode(ReadAll(imageStream));
             if (bitmap == null) return;
 
             var src = new SKRect(0, 0, bitmap.Width, bitmap.Height);
@@ -299,6 +299,13 @@ public class PptxPreviewService : IPptxPreviewService
         {
             // Unsupported image formats (e.g. EMF) are skipped.
         }
+    }
+
+    private static byte[] ReadAll(Stream stream)
+    {
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        return ms.ToArray();
     }
 
     private static void DrawShape(RenderContext ctx, Shape shape, OpenXmlPart owner)

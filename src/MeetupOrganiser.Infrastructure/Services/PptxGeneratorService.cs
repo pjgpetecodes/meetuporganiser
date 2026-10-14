@@ -63,8 +63,14 @@ public class PptxGeneratorService : IPptxGeneratorService
                 var hide = speakerCount > 1
                     ? kind == PptxTokens.SlideKind.OneSpeaker && hasTwoSpeakerSlides
                     : kind == PptxTokens.SlideKind.TwoSpeakers;
-                part.Slide!.Show = hide ? false : null;
-                part.Slide.Save();
+                // Keep slides the template author already hid; only add hiding for the other speaker count.
+                if (hide) part.Slide!.Show = false;
+                part.Slide!.Save();
+
+                foreach (var imagePart in part.ImageParts.Where(i => i.ContentType is "image/jpeg" or "image/png").Distinct())
+                {
+                    NormalizeImagePart(imagePart);
+                }
             }
 
             presentationPart!.Presentation.Save();
@@ -163,6 +169,8 @@ public class PptxGeneratorService : IPptxGeneratorService
         {
             byte[]? photo1Bytes = LoadSpeakerBytes(speaker1?.PhotoBlobUrl) ?? await RemotePhotoLoader.LoadAsync(speaker1?.PhotoBlobUrl);
             byte[]? photo2Bytes = LoadSpeakerBytes(speaker2?.PhotoBlobUrl) ?? await RemotePhotoLoader.LoadAsync(speaker2?.PhotoBlobUrl);
+            if (photo1Bytes != null) photo1Bytes = ImageOrientation.Normalize(photo1Bytes);
+            if (photo2Bytes != null) photo2Bytes = ImageOrientation.Normalize(photo2Bytes);
 
             foreach (var slidePart in presentationPart.SlideParts)
             {
@@ -191,6 +199,30 @@ public class PptxGeneratorService : IPptxGeneratorService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to swap speaker headshot images in presentation deck.");
+        }
+    }
+
+    private static void NormalizeImagePart(ImagePart imagePart)
+    {
+        try
+        {
+            byte[] original;
+            using (var read = imagePart.GetStream(FileMode.Open, FileAccess.Read))
+            using (var ms = new MemoryStream())
+            {
+                read.CopyTo(ms);
+                original = ms.ToArray();
+            }
+
+            var upright = ImageOrientation.Normalize(original);
+            if (ReferenceEquals(upright, original)) return;
+
+            using var write = imagePart.GetStream(FileMode.Create, FileAccess.Write);
+            write.Write(upright, 0, upright.Length);
+        }
+        catch
+        {
+            // Leave images we cannot decode untouched.
         }
     }
 
