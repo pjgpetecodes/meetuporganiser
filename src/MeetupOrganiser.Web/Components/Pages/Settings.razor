@@ -51,20 +51,6 @@
         </div>
     }
 
-    <!-- Storage explanation banner -->
-    <div class="card border-0 shadow-sm bg-light mb-4">
-        <div class="card-body p-3 d-flex align-items-start gap-3">
-            <i class="bi bi-shield-lock-fill text-primary fs-3"></i>
-            <div>
-                <h6 class="fw-bold mb-1">Persistent &amp; Secure Configuration</h6>
-                <p class="small text-muted mb-0">
-                    Keys and credentials saved here are stored in your SQL Database. When left blank, services seamlessly fall back to values defined in <code>appsettings.json</code>, Azure App Service environment variables, or Azure Key Vault.
-                    When credentials are not supplied, the app automatically operates in <strong>Fallback Mode</strong> (allowing one-click web intent sharing and pre-filled copy-paste templates).
-                </p>
-            </div>
-        </div>
-    </div>
-
     @if (isLoading)
     {
         <div class="text-center py-5">
@@ -74,209 +60,21 @@
     }
     else
     {
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <button type="button" class="nav-link @(activeTab == "general" ? "active" : "")" @onclick='() => activeTab = "general"'>
+                    <i class="bi bi-gear me-1"></i> General
+                </button>
+            </li>
+            <li class="nav-item">
+                <button type="button" class="nav-link @(activeTab == "api" ? "active" : "")" @onclick='() => activeTab = "api"'>
+                    <i class="bi bi-plug me-1"></i> API Integrations
+                </button>
+            </li>
+        </ul>
+
+        <div class="@(activeTab == "general" ? "" : "d-none")">
         <div class="row g-4">
-            <!-- BlueSky Integration Card -->
-            <div class="col-lg-6">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-cloud-sun text-info fs-4"></i>
-                            <h5 class="fw-bold mb-0">BlueSky</h5>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(model.BlueSkyHandle) && !string.IsNullOrWhiteSpace(model.BlueSkyAppPassword))
-                        {
-                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
-                                <i class="bi bi-check-circle me-1"></i> Connected
-                            </span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1">
-                                <i class="bi bi-arrow-up-right me-1"></i> Web Intent Fallback
-                            </span>
-                        }
-                    </div>
-                    <div class="card-body p-4">
-                        <p class="small text-muted mb-3">Posts announcement updates and uploads 1280x720 social card blobs via the AT Protocol.</p>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">Handle</label>
-                            <input type="text" class="form-control" placeholder="e.g. dotnetnotts.bsky.social"
-                                   @bind="model.BlueSkyHandle" />
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label fw-semibold small">App Password</label>
-                            <div class="input-group">
-                                <input type="@(showPasswords.Contains("BlueSky") ? "text" : "password")"
-                                       class="form-control" placeholder="xxxx-xxxx-xxxx-xxxx"
-                                       @bind="model.BlueSkyAppPassword" />
-                                <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("BlueSky")'>
-                                    <i class="bi @(showPasswords.Contains("BlueSky") ? "bi-eye-slash" : "bi-eye")"></i>
-                                </button>
-                            </div>
-                            <div class="form-text">Generate in BlueSky Settings &rarr; Privacy &amp; Security &rarr; App Passwords.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Zoom Integration Card -->
-            <div class="col-lg-6">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-camera-video text-primary fs-4"></i>
-                            <h5 class="fw-bold mb-0">Zoom Meetings</h5>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(model.ZoomAccountId) && !string.IsNullOrWhiteSpace(model.ZoomClientId) && !string.IsNullOrWhiteSpace(model.ZoomClientSecret))
-                        {
-                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
-                                <i class="bi bi-check-circle me-1"></i> Connected
-                            </span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1">
-                                <i class="bi bi-link me-1"></i> Safe Demo Link Mode
-                            </span>
-                        }
-                    </div>
-                    <div class="card-body p-4">
-                        <p class="small text-muted mb-3">Creates Zoom meetings with Passcodes and Join URLs using Zoom Server-to-Server OAuth. On a free account, set a fixed meeting URL instead.</p>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">Default Meeting URL (no API needed)</label>
-                            <input type="text" class="form-control" placeholder="https://us05web.zoom.us/j/..."
-                                   @bind="model.ZoomDefaultMeetingUrl" />
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">Default Passcode</label>
-                            <input type="text" class="form-control" placeholder="Optional"
-                                   @bind="model.ZoomDefaultPasscode" />
-                            <div class="form-text">Used when the API credentials below are blank.</div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">Account ID</label>
-                            <input type="text" class="form-control" placeholder="Zoom Account ID"
-                                   @bind="model.ZoomAccountId" />
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">OAuth Client ID</label>
-                            <input type="text" class="form-control" placeholder="Client ID"
-                                   @bind="model.ZoomClientId" />
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label fw-semibold small">OAuth Client Secret</label>
-                            <div class="input-group">
-                                <input type="@(showPasswords.Contains("Zoom") ? "text" : "password")"
-                                       class="form-control" placeholder="Client Secret"
-                                       @bind="model.ZoomClientSecret" />
-                                <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("Zoom")'>
-                                    <i class="bi @(showPasswords.Contains("Zoom") ? "bi-eye-slash" : "bi-eye")"></i>
-                                </button>
-                            </div>
-                            <div class="form-text">Created in Zoom App Marketplace &rarr; Server-to-Server OAuth App.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Meetup.com Integration Card -->
-            <div class="col-lg-6">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-calendar-check text-danger fs-4"></i>
-                            <h5 class="fw-bold mb-0">Meetup.com</h5>
-                        </div>
-                        @if (model.MeetupOAuthConnected || !string.IsNullOrWhiteSpace(model.MeetupApiKey))
-                        {
-                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
-                                <i class="bi bi-check-circle me-1"></i> API Mode
-                            </span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1">
-                                <i class="bi bi-clipboard me-1"></i> Markdown Export Mode
-                            </span>
-                        }
-                    </div>
-                    <div class="card-body p-4">
-                        <p class="small text-muted mb-3">Connect with Meetup OAuth to publish events and import past events for your group. Each Meetup Group under <em>Meetup Groups</em> can also specify its own URL slug and optional access-token override.</p>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">Default Group URL Name (Fallback)</label>
-                            <input type="text" class="form-control" placeholder="e.g. dotnetnotts"
-                                   @bind="model.MeetupUrlname" />
-                            <div class="form-text">Default slug used when a group doesn't have an explicit slug defined.</div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">OAuth Client ID</label>
-                            <input type="text" class="form-control" placeholder="Meetup OAuth client ID"
-                                   @bind="model.MeetupClientId" />
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">OAuth Client Secret</label>
-                            <div class="input-group">
-                                <input type="@(showPasswords.Contains("MeetupClientSecret") ? "text" : "password")"
-                                       class="form-control" placeholder="Meetup OAuth client secret"
-                                       @bind="model.MeetupClientSecret" />
-                                <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("MeetupClientSecret")'>
-                                    <i class="bi @(showPasswords.Contains("MeetupClientSecret") ? "bi-eye-slash" : "bi-eye")"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">OAuth Redirect URL</label>
-                            <input type="url" class="form-control"
-                                   @bind="model.MeetupRedirectUri" />
-                            <div class="form-text">Register this exact URL in your Meetup OAuth client. For F5, use <code>http://localhost:5107/integrations/meetup/callback</code>.</div>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(model.MeetupClientId) && !string.IsNullOrWhiteSpace(model.MeetupClientSecret))
-                        {
-                            <a class="btn btn-outline-danger mb-3" href="/integrations/meetup/connect">
-                                <i class="bi bi-link-45deg me-1"></i> @(model.MeetupOAuthConnected ? "Reconnect Meetup" : "Connect Meetup")
-                            </a>
-                            <div class="form-text mb-3">Save your OAuth client ID, secret, and redirect URL before connecting.</div>
-                        }
-                        <div class="mb-2">
-                            <label class="form-label fw-semibold small">Legacy Access Token (Optional)</label>
-                            <div class="input-group">
-                                <input type="@(showPasswords.Contains("Meetup") ? "text" : "password")"
-                                       class="form-control" placeholder="Meetup OAuth Access Token"
-                                       @bind="model.MeetupApiKey" />
-                                <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("Meetup")'>
-                                    <i class="bi @(showPasswords.Contains("Meetup") ? "bi-eye-slash" : "bi-eye")"></i>
-                                </button>
-                            </div>
-                            <div class="form-text">Optional fallback for manually supplied access tokens. OAuth connection above is preferred.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Sessionize Integration Card -->
-            <div class="col-lg-6">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-mic text-warning fs-4"></i>
-                            <h5 class="fw-bold mb-0">Sessionize</h5>
-                        </div>
-                        <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
-                            <i class="bi bi-globe me-1"></i> Public REST API
-                        </span>
-                    </div>
-                    <div class="card-body p-4">
-                        <p class="small text-muted mb-3">Pulls speakers, bios, headshot photos, and talk descriptions directly into event sessions without authentication.</p>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">Default Event ID / Endpoint</label>
-                            <input type="text" class="form-control" placeholder="e.g. 7q8z9x1y or full view endpoint URL"
-                                   @bind="model.SessionizeDefaultEventId" />
-                            <div class="form-text">Found in Sessionize &rarr; API / Embed &rarr; View Speakers / Sessions.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Speaker Bios Card -->
             <div class="col-lg-6">
                 <div class="card border-0 shadow-sm h-100">
@@ -316,124 +114,367 @@
                 </div>
             </div>
 
-            <!-- LinkedIn Integration Card -->
-            <div class="col-lg-6">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-linkedin text-primary fs-4"></i>
-                            <h5 class="fw-bold mb-0">LinkedIn</h5>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(model.LinkedInAccessToken))
+        </div>
+        </div>
+
+        <div class="@(activeTab == "api" ? "" : "d-none")">
+    <!-- Storage explanation banner -->
+    <div class="card border-0 shadow-sm bg-light mb-4">
+        <div class="card-body p-3 d-flex align-items-start gap-3">
+            <i class="bi bi-shield-lock-fill text-primary fs-3"></i>
+            <div>
+                <h6 class="fw-bold mb-1">Persistent &amp; Secure Configuration</h6>
+                <p class="small text-muted mb-0">
+                    Keys and credentials saved here are stored in your SQL Database. When left blank, services seamlessly fall back to values defined in <code>appsettings.json</code>, Azure App Service environment variables, or Azure Key Vault.
+                    When credentials are not supplied, the app automatically operates in <strong>Fallback Mode</strong> (allowing one-click web intent sharing and pre-filled copy-paste templates).
+                </p>
+            </div>
+        </div>
+    </div>
+
+            <div class="tab-pane-content">
+                <div class="accordion shadow-sm" id="integrationsAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button @(openIntegration == "bluesky" ? "" : "collapsed")" type="button" @onclick='() => ToggleIntegration("bluesky")'>
+                                <i class="bi bi-bluesky text-info fs-4 me-3"></i>
+                                <span class="fw-bold me-auto">BlueSky</span>
+                                <span class="me-3">
+            @if (!string.IsNullOrWhiteSpace(model.BlueSkyHandle) && !string.IsNullOrWhiteSpace(model.BlueSkyAppPassword))
+            {
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                    <i class="bi bi-check-circle me-1"></i> Connected
+                </span>
+            }
+            else
+            {
+                <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1">
+                    <i class="bi bi-arrow-up-right me-1"></i> Web Intent Fallback
+                </span>
+            }
+                                </span>
+                            </button>
+                        </h2>
+                        @if (openIntegration == "bluesky")
                         {
-                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
-                                <i class="bi bi-check-circle me-1"></i> API Mode
-                            </span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1">
-                                <i class="bi bi-share me-1"></i> Web Share Fallback
-                            </span>
+                            <div class="accordion-collapse show">
+                                <div class="accordion-body">
+            <p class="small text-muted mb-3">Posts announcement updates and uploads 1280x720 social card blobs via the AT Protocol.</p>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Handle</label>
+                <input type="text" class="form-control" placeholder="e.g. dotnetnotts.bsky.social"
+                       @bind="model.BlueSkyHandle" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label fw-semibold small">App Password</label>
+                <div class="input-group">
+                    <input type="@(showPasswords.Contains("BlueSky") ? "text" : "password")"
+                           class="form-control" placeholder="xxxx-xxxx-xxxx-xxxx"
+                           @bind="model.BlueSkyAppPassword" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("BlueSky")'>
+                        <i class="bi @(showPasswords.Contains("BlueSky") ? "bi-eye-slash" : "bi-eye")"></i>
+                    </button>
+                </div>
+                <div class="form-text">Generate in BlueSky Settings &rarr; Privacy &amp; Security &rarr; App Passwords.</div>
+            </div>
+                                </div>
+                            </div>
                         }
                     </div>
-                    <div class="card-body p-4">
-                        <p class="small text-muted mb-3">Shares formatted event announcements to LinkedIn profiles or organizational pages.</p>
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold small">Client ID</label>
-                                <input type="text" class="form-control" placeholder="Client ID"
-                                       @bind="model.LinkedInClientId" />
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button @(openIntegration == "zoom" ? "" : "collapsed")" type="button" @onclick='() => ToggleIntegration("zoom")'>
+                                <i class="bi bi-camera-video text-primary fs-4 me-3"></i>
+                                <span class="fw-bold me-auto">Zoom Meetings</span>
+                                <span class="me-3">
+            @if (!string.IsNullOrWhiteSpace(model.ZoomAccountId) && !string.IsNullOrWhiteSpace(model.ZoomClientId) && !string.IsNullOrWhiteSpace(model.ZoomClientSecret))
+            {
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                    <i class="bi bi-check-circle me-1"></i> Connected
+                </span>
+            }
+            else
+            {
+                <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1">
+                    <i class="bi bi-link me-1"></i> Safe Demo Link Mode
+                </span>
+            }
+                                </span>
+                            </button>
+                        </h2>
+                        @if (openIntegration == "zoom")
+                        {
+                            <div class="accordion-collapse show">
+                                <div class="accordion-body">
+            <p class="small text-muted mb-3">Creates Zoom meetings with Passcodes and Join URLs using Zoom Server-to-Server OAuth. On a free account, set a fixed meeting URL instead.</p>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Default Meeting URL (no API needed)</label>
+                <input type="text" class="form-control" placeholder="https://us05web.zoom.us/j/..."
+                       @bind="model.ZoomDefaultMeetingUrl" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Default Passcode</label>
+                <input type="text" class="form-control" placeholder="Optional"
+                       @bind="model.ZoomDefaultPasscode" />
+                <div class="form-text">Used when the API credentials below are blank.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Account ID</label>
+                <input type="text" class="form-control" placeholder="Zoom Account ID"
+                       @bind="model.ZoomAccountId" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">OAuth Client ID</label>
+                <input type="text" class="form-control" placeholder="Client ID"
+                       @bind="model.ZoomClientId" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label fw-semibold small">OAuth Client Secret</label>
+                <div class="input-group">
+                    <input type="@(showPasswords.Contains("Zoom") ? "text" : "password")"
+                           class="form-control" placeholder="Client Secret"
+                           @bind="model.ZoomClientSecret" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("Zoom")'>
+                        <i class="bi @(showPasswords.Contains("Zoom") ? "bi-eye-slash" : "bi-eye")"></i>
+                    </button>
+                </div>
+                <div class="form-text">Created in Zoom App Marketplace &rarr; Server-to-Server OAuth App.</div>
+            </div>
+                                </div>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold small">Author URN</label>
-                                <input type="text" class="form-control" placeholder="urn:li:organization:... or person:..."
-                                       @bind="model.LinkedInAuthorUrn" />
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">Client Secret</label>
-                            <div class="input-group">
-                                <input type="@(showPasswords.Contains("LinkedInSecret") ? "text" : "password")"
-                                       class="form-control" placeholder="Client Secret"
-                                       @bind="model.LinkedInClientSecret" />
-                                <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("LinkedInSecret")'>
-                                    <i class="bi @(showPasswords.Contains("LinkedInSecret") ? "bi-eye-slash" : "bi-eye")"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label fw-semibold small">Access Token</label>
-                            <div class="input-group">
-                                <input type="@(showPasswords.Contains("LinkedInToken") ? "text" : "password")"
-                                       class="form-control" placeholder="OAuth Access Token"
-                                       @bind="model.LinkedInAccessToken" />
-                                <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("LinkedInToken")'>
-                                    <i class="bi @(showPasswords.Contains("LinkedInToken") ? "bi-eye-slash" : "bi-eye")"></i>
-                                </button>
-                            </div>
-                        </div>
+                        }
                     </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button @(openIntegration == "meetup" ? "" : "collapsed")" type="button" @onclick='() => ToggleIntegration("meetup")'>
+                                <i class="bi bi-calendar-check text-danger fs-4 me-3"></i>
+                                <span class="fw-bold me-auto">Meetup.com</span>
+                                <span class="me-3">
+            @if (model.MeetupOAuthConnected || !string.IsNullOrWhiteSpace(model.MeetupApiKey))
+            {
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                    <i class="bi bi-check-circle me-1"></i> API Mode
+                </span>
+            }
+            else
+            {
+                <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1">
+                    <i class="bi bi-clipboard me-1"></i> Markdown Export Mode
+                </span>
+            }
+                                </span>
+                            </button>
+                        </h2>
+                        @if (openIntegration == "meetup")
+                        {
+                            <div class="accordion-collapse show">
+                                <div class="accordion-body">
+            <p class="small text-muted mb-3">Connect with Meetup OAuth to publish events and import past events for your group. Each Meetup Group under <em>Meetup Groups</em> can also specify its own URL slug and optional access-token override.</p>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Default Group URL Name (Fallback)</label>
+                <input type="text" class="form-control" placeholder="e.g. dotnetnotts"
+                       @bind="model.MeetupUrlname" />
+                <div class="form-text">Default slug used when a group doesn't have an explicit slug defined.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">OAuth Client ID</label>
+                <input type="text" class="form-control" placeholder="Meetup OAuth client ID"
+                       @bind="model.MeetupClientId" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">OAuth Client Secret</label>
+                <div class="input-group">
+                    <input type="@(showPasswords.Contains("MeetupClientSecret") ? "text" : "password")"
+                           class="form-control" placeholder="Meetup OAuth client secret"
+                           @bind="model.MeetupClientSecret" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("MeetupClientSecret")'>
+                        <i class="bi @(showPasswords.Contains("MeetupClientSecret") ? "bi-eye-slash" : "bi-eye")"></i>
+                    </button>
                 </div>
             </div>
-
-            <!-- X / Twitter Integration Card -->
-            <div class="col-lg-6">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-twitter-x fs-4"></i>
-                            <h5 class="fw-bold mb-0">X (Twitter)</h5>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(model.TwitterApiKey) && !string.IsNullOrWhiteSpace(model.TwitterAccessToken))
-                        {
-                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
-                                <i class="bi bi-check-circle me-1"></i> API Mode
-                            </span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1">
-                                <i class="bi bi-box-arrow-up-right me-1"></i> Tweet Intent Fallback
-                            </span>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">OAuth Redirect URL</label>
+                <input type="url" class="form-control"
+                       @bind="model.MeetupRedirectUri" />
+                <div class="form-text">Register this exact URL in your Meetup OAuth client. For F5, use <code>http://localhost:5107/integrations/meetup/callback</code>.</div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(model.MeetupClientId) && !string.IsNullOrWhiteSpace(model.MeetupClientSecret))
+            {
+                <a class="btn btn-outline-danger mb-3" href="/integrations/meetup/connect">
+                    <i class="bi bi-link-45deg me-1"></i> @(model.MeetupOAuthConnected ? "Reconnect Meetup" : "Connect Meetup")
+                </a>
+                <div class="form-text mb-3">Save your OAuth client ID, secret, and redirect URL before connecting.</div>
+            }
+            <div class="mb-2">
+                <label class="form-label fw-semibold small">Legacy Access Token (Optional)</label>
+                <div class="input-group">
+                    <input type="@(showPasswords.Contains("Meetup") ? "text" : "password")"
+                           class="form-control" placeholder="Meetup OAuth Access Token"
+                           @bind="model.MeetupApiKey" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("Meetup")'>
+                        <i class="bi @(showPasswords.Contains("Meetup") ? "bi-eye-slash" : "bi-eye")"></i>
+                    </button>
+                </div>
+                <div class="form-text">Optional fallback for manually supplied access tokens. OAuth connection above is preferred.</div>
+            </div>
+                                </div>
+                            </div>
                         }
                     </div>
-                    <div class="card-body p-4">
-                        <p class="small text-muted mb-3">Posts event teasers with speaker handles and hashtags, or opens pre-filled compose intents.</p>
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold small">API / Consumer Key</label>
-                                <input type="text" class="form-control" placeholder="API Key"
-                                       @bind="model.TwitterApiKey" />
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button @(openIntegration == "sessionize" ? "" : "collapsed")" type="button" @onclick='() => ToggleIntegration("sessionize")'>
+                                <i class="bi bi-mic text-warning fs-4 me-3"></i>
+                                <span class="fw-bold me-auto">Sessionize</span>
+                                <span class="me-3">
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                <i class="bi bi-globe me-1"></i> Public REST API
+            </span>
+                                </span>
+                            </button>
+                        </h2>
+                        @if (openIntegration == "sessionize")
+                        {
+                            <div class="accordion-collapse show">
+                                <div class="accordion-body">
+            <p class="small text-muted mb-3">Pulls speakers, bios, headshot photos, and talk descriptions directly into event sessions without authentication.</p>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Default Event ID / Endpoint</label>
+                <input type="text" class="form-control" placeholder="e.g. 7q8z9x1y or full view endpoint URL"
+                       @bind="model.SessionizeDefaultEventId" />
+                <div class="form-text">Found in Sessionize &rarr; API / Embed &rarr; View Speakers / Sessions.</div>
+            </div>
+                                </div>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold small">Access Token</label>
-                                <input type="text" class="form-control" placeholder="Access Token"
-                                       @bind="model.TwitterAccessToken" />
+                        }
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button @(openIntegration == "linkedin" ? "" : "collapsed")" type="button" @onclick='() => ToggleIntegration("linkedin")'>
+                                <i class="bi bi-linkedin text-primary fs-4 me-3"></i>
+                                <span class="fw-bold me-auto">LinkedIn</span>
+                                <span class="me-3">
+            @if (!string.IsNullOrWhiteSpace(model.LinkedInAccessToken))
+            {
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                    <i class="bi bi-check-circle me-1"></i> API Mode
+                </span>
+            }
+            else
+            {
+                <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1">
+                    <i class="bi bi-share me-1"></i> Web Share Fallback
+                </span>
+            }
+                                </span>
+                            </button>
+                        </h2>
+                        @if (openIntegration == "linkedin")
+                        {
+                            <div class="accordion-collapse show">
+                                <div class="accordion-body">
+            <p class="small text-muted mb-3">Shares formatted event announcements to LinkedIn profiles or organizational pages.</p>
+            <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small">Client ID</label>
+                    <input type="text" class="form-control" placeholder="Client ID"
+                           @bind="model.LinkedInClientId" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small">Author URN</label>
+                    <input type="text" class="form-control" placeholder="urn:li:organization:... or person:..."
+                           @bind="model.LinkedInAuthorUrn" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Client Secret</label>
+                <div class="input-group">
+                    <input type="@(showPasswords.Contains("LinkedInSecret") ? "text" : "password")"
+                           class="form-control" placeholder="Client Secret"
+                           @bind="model.LinkedInClientSecret" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("LinkedInSecret")'>
+                        <i class="bi @(showPasswords.Contains("LinkedInSecret") ? "bi-eye-slash" : "bi-eye")"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="mb-2">
+                <label class="form-label fw-semibold small">Access Token</label>
+                <div class="input-group">
+                    <input type="@(showPasswords.Contains("LinkedInToken") ? "text" : "password")"
+                           class="form-control" placeholder="OAuth Access Token"
+                           @bind="model.LinkedInAccessToken" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("LinkedInToken")'>
+                        <i class="bi @(showPasswords.Contains("LinkedInToken") ? "bi-eye-slash" : "bi-eye")"></i>
+                    </button>
+                </div>
+            </div>
+                                </div>
                             </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">API Secret</label>
-                            <div class="input-group">
-                                <input type="@(showPasswords.Contains("TwitterSecret") ? "text" : "password")"
-                                       class="form-control" placeholder="API Secret"
-                                       @bind="model.TwitterApiSecret" />
-                                <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("TwitterSecret")'>
-                                    <i class="bi @(showPasswords.Contains("TwitterSecret") ? "bi-eye-slash" : "bi-eye")"></i>
-                                </button>
+                        }
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button @(openIntegration == "x" ? "" : "collapsed")" type="button" @onclick='() => ToggleIntegration("x")'>
+                                <i class="bi bi-twitter-x  fs-4 me-3"></i>
+                                <span class="fw-bold me-auto">X (Twitter)</span>
+                                <span class="me-3">
+            @if (!string.IsNullOrWhiteSpace(model.TwitterApiKey) && !string.IsNullOrWhiteSpace(model.TwitterAccessToken))
+            {
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                    <i class="bi bi-check-circle me-1"></i> API Mode
+                </span>
+            }
+            else
+            {
+                <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1">
+                    <i class="bi bi-box-arrow-up-right me-1"></i> Tweet Intent Fallback
+                </span>
+            }
+                                </span>
+                            </button>
+                        </h2>
+                        @if (openIntegration == "x")
+                        {
+                            <div class="accordion-collapse show">
+                                <div class="accordion-body">
+            <p class="small text-muted mb-3">Posts event teasers with speaker handles and hashtags, or opens pre-filled compose intents.</p>
+            <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small">API / Consumer Key</label>
+                    <input type="text" class="form-control" placeholder="API Key"
+                           @bind="model.TwitterApiKey" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small">Access Token</label>
+                    <input type="text" class="form-control" placeholder="Access Token"
+                           @bind="model.TwitterAccessToken" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">API Secret</label>
+                <div class="input-group">
+                    <input type="@(showPasswords.Contains("TwitterSecret") ? "text" : "password")"
+                           class="form-control" placeholder="API Secret"
+                           @bind="model.TwitterApiSecret" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("TwitterSecret")'>
+                        <i class="bi @(showPasswords.Contains("TwitterSecret") ? "bi-eye-slash" : "bi-eye")"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="mb-2">
+                <label class="form-label fw-semibold small">Access Token Secret</label>
+                <div class="input-group">
+                    <input type="@(showPasswords.Contains("TwitterTokenSecret") ? "text" : "password")"
+                           class="form-control" placeholder="Access Token Secret"
+                           @bind="model.TwitterAccessTokenSecret" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("TwitterTokenSecret")'>
+                        <i class="bi @(showPasswords.Contains("TwitterTokenSecret") ? "bi-eye-slash" : "bi-eye")"></i>
+                    </button>
+                </div>
+            </div>
+                                </div>
                             </div>
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label fw-semibold small">Access Token Secret</label>
-                            <div class="input-group">
-                                <input type="@(showPasswords.Contains("TwitterTokenSecret") ? "text" : "password")"
-                                       class="form-control" placeholder="Access Token Secret"
-                                       @bind="model.TwitterAccessTokenSecret" />
-                                <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("TwitterTokenSecret")'>
-                                    <i class="bi @(showPasswords.Contains("TwitterTokenSecret") ? "bi-eye-slash" : "bi-eye")"></i>
-                                </button>
-                            </div>
-                        </div>
+                        }
                     </div>
                 </div>
             </div>
@@ -459,6 +500,9 @@
 @code {
     private IntegrationSettingsModel model = new();
     private HashSet<string> showPasswords = new(StringComparer.OrdinalIgnoreCase);
+    private string activeTab = "general";
+    private string? openIntegration;
+    private void ToggleIntegration(string key) => openIntegration = openIntegration == key ? null : key;
     private bool isLoading = true;
     private bool isSaving = false;
     private string? successMessage;
