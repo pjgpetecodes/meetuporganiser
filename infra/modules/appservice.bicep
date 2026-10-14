@@ -20,9 +20,8 @@ param appInsightsConnectionString string
 @secure()
 param sqlConnectionString string
 
-@description('Storage connection string.')
-@secure()
-param storageConnectionString string
+@description('Blob service endpoint of the storage account (accessed via managed identity).')
+param storageAccountUrl string
 
 @description('Entra ID Client ID.')
 param entraClientId string = ''
@@ -75,8 +74,8 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
           value: sqlConnectionString
         }
         {
-          name: 'Storage__ConnectionString'
-          value: storageConnectionString
+          name: 'Storage__AccountUrl'
+          value: storageAccountUrl
         }
         {
           name: 'Storage__ContainerName'

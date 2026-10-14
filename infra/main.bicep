@@ -70,7 +70,6 @@ module keyVault 'modules/keyvault.bicep' = {
     keyVaultName: keyVaultName
     secrets: {
       SqlConnectionString: sql.outputs.connectionString
-      StorageConnectionString: storage.outputs.connectionString
       AppInsightsConnectionString: appInsights.outputs.appInsightsConnectionString
     }
   }
@@ -85,9 +84,18 @@ module appService 'modules/appservice.bicep' = {
     webAppName: webAppName
     appInsightsConnectionString: appInsights.outputs.appInsightsConnectionString
     sqlConnectionString: sql.outputs.connectionString
-    storageConnectionString: storage.outputs.connectionString
+    storageAccountUrl: storage.outputs.blobEndpoint
     entraClientId: entraClientId
     entraClientSecret: entraClientSecret
+  }
+}
+
+// 6. Grant the web app's managed identity access to blob data (no account keys)
+module storageRbac 'modules/storage-rbac.bicep' = {
+  name: 'storageRbacDeployment'
+  params: {
+    storageAccountName: storage.outputs.storageAccountName
+    principalId: appService.outputs.principalId
   }
 }
 

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "17944741009023380814"
+      "templateHash": "8514293830338086300"
     }
   },
   "parameters": {
@@ -206,7 +206,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "12491301236529208111"
+              "templateHash": "5760235709211539804"
             }
           },
           "parameters": {
@@ -227,6 +227,7 @@
               "defaultValue": [
                 "templates",
                 "speaker-photos",
+                "logos",
                 "generated-assets"
               ],
               "metadata": {
@@ -247,6 +248,8 @@
               "properties": {
                 "accessTier": "Hot",
                 "allowBlobPublicAccess": true,
+                "allowSharedKeyAccess": false,
+                "defaultToOAuthAuthentication": true,
                 "minimumTlsVersion": "TLS1_2",
                 "supportsHttpsTrafficOnly": true,
                 "encryption": {
@@ -301,10 +304,6 @@
             "blobEndpoint": {
               "type": "string",
               "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-05-01').primaryEndpoints.blob]"
-            },
-            "connectionString": {
-              "type": "string",
-              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix={2}', parameters('storageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-05-01').keys[0].value, environment().suffixes.storage)]"
             }
           }
         }
@@ -469,7 +468,6 @@
           "secrets": {
             "value": {
               "SqlConnectionString": "[reference(resourceId('Microsoft.Resources/deployments', 'sqlDeployment'), '2025-04-01').outputs.connectionString.value]",
-              "StorageConnectionString": "[reference(resourceId('Microsoft.Resources/deployments', 'storageDeployment'), '2025-04-01').outputs.connectionString.value]",
               "AppInsightsConnectionString": "[reference(resourceId('Microsoft.Resources/deployments', 'appInsightsDeployment'), '2025-04-01').outputs.appInsightsConnectionString.value]"
             }
           }
@@ -567,8 +565,7 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'appInsightsDeployment')]",
-        "[resourceId('Microsoft.Resources/deployments', 'sqlDeployment')]",
-        "[resourceId('Microsoft.Resources/deployments', 'storageDeployment')]"
+        "[resourceId('Microsoft.Resources/deployments', 'sqlDeployment')]"
       ]
     },
     {
@@ -596,8 +593,8 @@
           "sqlConnectionString": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sqlDeployment'), '2025-04-01').outputs.connectionString.value]"
           },
-          "storageConnectionString": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storageDeployment'), '2025-04-01').outputs.connectionString.value]"
+          "storageAccountUrl": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storageDeployment'), '2025-04-01').outputs.blobEndpoint.value]"
           },
           "entraClientId": {
             "value": "[parameters('entraClientId')]"
@@ -613,7 +610,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "5295847097411560174"
+              "templateHash": "16231016291137225105"
             }
           },
           "parameters": {
@@ -661,10 +658,10 @@
                 "description": "SQL Server connection string."
               }
             },
-            "storageConnectionString": {
-              "type": "securestring",
+            "storageAccountUrl": {
+              "type": "string",
               "metadata": {
-                "description": "Storage connection string."
+                "description": "Blob service endpoint of the storage account (accessed via managed identity)."
               }
             },
             "entraClientId": {
@@ -734,8 +731,8 @@
                       "value": "[parameters('sqlConnectionString')]"
                     },
                     {
-                      "name": "Storage__ConnectionString",
-                      "value": "[parameters('storageConnectionString')]"
+                      "name": "Storage__AccountUrl",
+                      "value": "[parameters('storageAccountUrl')]"
                     },
                     {
                       "name": "Storage__ContainerName",
@@ -751,7 +748,7 @@
                     },
                     {
                       "name": "AzureAd__Instance",
-                      "value": "https://login.microsoftonline.com/"
+                      "value": "[environment().authentication.loginEndpoint]"
                     },
                     {
                       "name": "AzureAd__TenantId",
@@ -808,6 +805,70 @@
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'appInsightsDeployment')]",
         "[resourceId('Microsoft.Resources/deployments', 'sqlDeployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'storageDeployment')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "storageRbacDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "storageAccountName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storageDeployment'), '2025-04-01').outputs.storageAccountName.value]"
+          },
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appServiceDeployment'), '2025-04-01').outputs.principalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "1219133707603267710"
+            }
+          },
+          "parameters": {
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account name."
+              }
+            },
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the identity that needs blob access."
+              }
+            }
+          },
+          "variables": {
+            "blobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]",
+              "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('principalId'), variables('blobDataContributorRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('blobDataContributorRoleId'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'appServiceDeployment')]",
         "[resourceId('Microsoft.Resources/deployments', 'storageDeployment')]"
       ]
     }

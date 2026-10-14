@@ -19,9 +19,20 @@ public static class RemotePhotoLoader
     public static bool IsRemote(string? url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
 
+    private static readonly ConcurrentDictionary<string, bool> TrustedEndpoints = new();
+
+    // The app's own blob endpoint (including Azurite on loopback) is configuration, not imported data.
+    public static void TrustEndpoint(Uri endpoint) => TrustedEndpoints[endpoint.GetLeftPart(UriPartial.Authority)] = true;
+
+    private static bool IsTrusted(Uri uri) => TrustedEndpoints.ContainsKey(uri.GetLeftPart(UriPartial.Authority));
+
     public static async Task<byte[]?> LoadAsync(string? url, CancellationToken cancellationToken = default)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return null;
+
+        var trusted = IsTrusted(uri);
+        if (!trusted && uri.Scheme != Uri.UriSchemeHttps)
             return null;
 
         if (Cache.TryGetValue(uri.AbsoluteUri, out var cached))
@@ -29,7 +40,7 @@ public static class RemotePhotoLoader
 
         try
         {
-            if (!await IsPublicHostAsync(uri.Host, cancellationToken))
+            if (!trusted && !await IsPublicHostAsync(uri.Host, cancellationToken))
                 return null;
 
             using var response = await Http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);

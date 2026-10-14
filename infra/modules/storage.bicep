@@ -8,6 +8,7 @@ param storageAccountName string
 param containerNames array = [
   'templates'
   'speaker-photos'
+  'logos'
   'generated-assets'
 ]
 
@@ -21,6 +22,8 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   properties: {
     accessTier: 'Hot'
     allowBlobPublicAccess: true
+    allowSharedKeyAccess: false
+    defaultToOAuthAuthentication: true
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
     encryption: {
@@ -53,10 +56,6 @@ resource blobContainers 'Microsoft.Storage/storageAccounts/blobServices/containe
   }
 }]
 
-var storageAccountKeys = storageAccount.listKeys().keys
-var primaryKey = storageAccountKeys[0].value
-
 output storageAccountId string = storageAccount.id
 output storageAccountName string = storageAccount.name
 output blobEndpoint string = storageAccount.properties.primaryEndpoints.blob
-output connectionString string = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${primaryKey};EndpointSuffix=${environment().suffixes.storage}'
