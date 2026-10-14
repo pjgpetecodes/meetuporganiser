@@ -66,7 +66,7 @@ public class MeetupServiceImportTests
 
         var result = await service.ImportPastEventsAsync("dotnetnotts");
 
-        Assert.True(result.Success);
+        Assert.True(result.Success, result.ErrorMessage);
         Assert.Equal(2, result.Events.Count);
         Assert.Equal("event-1", result.Events[0].MeetupEventId);
         Assert.Equal(DateTimeKind.Utc, result.Events[0].EventDateTimeUtc.Kind);
@@ -102,7 +102,8 @@ public class MeetupServiceImportTests
     {
         var handler = new QueueHttpMessageHandler(
         [
-            """{"errors":[{"message":"Not authorized"}],"data":null}"""
+            """{"errors":[{"message":"Not authorized"}],"data":null}""",
+            "<html><body>No public past event links</body></html>"
         ]);
         var service = CreateService(handler);
 
@@ -111,6 +112,116 @@ public class MeetupServiceImportTests
         Assert.False(result.Success);
         Assert.Empty(result.Events);
         Assert.Contains("Not authorized", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ImportPastEventsAsync_UsesHtmlFallbackWithoutApiCredentialsAndReadsMeetupSpeakerDetails()
+    {
+        var handler = new QueueHttpMessageHandler(
+        [
+            """
+            <html><body>
+              <a href="/example-group/events/event-123/">Past meetup</a>
+            </body></html>
+            """,
+            "<html><body>No upcoming event links</body></html>",
+            """
+            <html><body>
+              <script type="application/ld+json">
+                {
+                  "@context":"https://schema.org",
+                  "@type":"Event",
+                  "name":"Useful software",
+                  "startDate":"2024-05-10T18:30:00+01:00",
+                  "duration":"PT1H30M",
+                  "description":"Our Speakers:\n\nAda Lovelace:\nA computing pioneer.\n\nHow to find us:\nNottingham",
+                  "performer":{"@type":"Person","name":"Ada Lovelace","description":"A computing pioneer."},
+                  "location":{"@type":"Place","name":"Nottingham"}
+                }
+              </script>
+            </body></html>
+            """
+        ]);
+        var service = CreateService(handler, configureToken: false);
+
+        var result = await service.ImportPastEventsAsync("example-group");
+
+        Assert.True(result.Success, result.ErrorMessage);
+        var importedEvent = Assert.Single(result.Events);
+        Assert.Equal("event-123", importedEvent.MeetupEventId);
+        Assert.Equal("Useful software", importedEvent.Title);
+        Assert.Equal(DateTimeKind.Utc, importedEvent.EventDateTimeUtc.Kind);
+        Assert.Equal(90, importedEvent.DurationMinutes);
+        Assert.Equal("Nottingham", importedEvent.Location);
+        var speaker = Assert.Single(importedEvent.Speakers);
+        Assert.Equal("Ada Lovelace", speaker.Name);
+        Assert.Equal("A computing pioneer.", speaker.Bio);
+        Assert.Equal(3, handler.Requests.Count);
+        Assert.All(handler.Requests, request => Assert.Equal(HttpMethod.Get, request.Method));
+    }
+
+    [Fact]
+    public async Task ImportPastEventsAsync_ReadsMeetupApolloDataFromPastAndUpcomingListingsButImportsOnlyPastEvents()
+    {
+        var handler = new QueueHttpMessageHandler(
+        [
+            """
+            <html><body><script id="__NEXT_DATA__" type="application/json">
+            {"props":{"pageProps":{"__APOLLO_STATE__":{
+              "Event:100":{"__typename":"Event","id":"100","title":"Past meetup","eventUrl":"https://www.meetup.com/example-group/events/100/","description":"**Our Speaker:**\n\n**Ada Lovelace:**\n\nA computing pioneer.\n\n**How to find Ada:**\nhttps://example.com","dateTime":"2024-05-10T18:30:00+01:00","endTime":"2024-05-10T20:00:00+01:00","status":"PAST","venue":{"__ref":"Venue:1"}},
+              "Venue:1":{"__typename":"Venue","name":"Nottingham"}
+            }}}}
+            </script></body></html>
+            """,
+            """
+            <html><body><script id="__NEXT_DATA__" type="application/json">
+            {"props":{"pageProps":{"__APOLLO_STATE__":{
+              "Event:200":{"__typename":"Event","id":"200","title":"Upcoming meetup","eventUrl":"https://www.meetup.com/example-group/events/200/","description":"Future event","dateTime":"2099-05-10T18:30:00Z","endTime":"2099-05-10T20:00:00Z","status":"ACTIVE"}
+            }}}}
+            </script></body></html>
+            """
+        ]);
+        var service = CreateService(handler, configureToken: false);
+
+        var result = await service.ImportPastEventsAsync("example-group");
+
+        Assert.True(result.Success, result.ErrorMessage);
+        var importedEvent = Assert.Single(result.Events);
+        Assert.Equal("100", importedEvent.MeetupEventId);
+        Assert.Equal("Nottingham", importedEvent.Location);
+        Assert.Equal(90, importedEvent.DurationMinutes);
+        var speaker = Assert.Single(importedEvent.Speakers);
+        Assert.Equal("Ada Lovelace", speaker.Name);
+        Assert.Contains("A computing pioneer.", speaker.Bio);
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.All(handler.Requests, request => Assert.Equal(HttpMethod.Get, request.Method));
+    }
+
+    [Fact]
+    public async Task ImportPastEventsAsync_FallsBackToHtmlWhenApiFails()
+    {
+        var handler = new QueueHttpMessageHandler(
+        [
+            """{"errors":[{"message":"Not authorized"}],"data":null}""",
+            """<html><body><a href="/example-group/events/event-456/">Past event</a></body></html>""",
+            "<html><body>No upcoming event links</body></html>",
+            """
+            <html><body>
+              <h1>Community evening</h1>
+              <time datetime="2023-06-01T18:00:00Z"></time>
+              <meta property="og:description" content="Our Speaker: Ada Lovelace" />
+            </body></html>
+            """
+        ]);
+        var service = CreateService(handler);
+
+        var result = await service.ImportPastEventsAsync("example-group");
+
+        Assert.True(result.Success, result.ErrorMessage);
+        Assert.Equal("event-456", Assert.Single(result.Events).MeetupEventId);
+        Assert.Equal(4, handler.Requests.Count);
+        Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
+        Assert.All(handler.Requests.Skip(1), request => Assert.Equal(HttpMethod.Get, request.Method));
     }
 
     [Fact]
@@ -165,14 +276,14 @@ public class MeetupServiceImportTests
         Assert.Null(entity.WebsiteUrl);
     }
 
-    private static MeetupService CreateService(HttpMessageHandler handler)
+    private static MeetupService CreateService(HttpMessageHandler handler, bool configureToken = true)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Integrations:Meetup:ApiKey"] = "test-token"
-            })
-            .Build();
+        var settings = new Dictionary<string, string?>();
+        if (configureToken)
+        {
+            settings["Integrations:Meetup:ApiKey"] = "test-token";
+        }
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
         return new MeetupService(
             new HttpClient(handler),
             configuration,

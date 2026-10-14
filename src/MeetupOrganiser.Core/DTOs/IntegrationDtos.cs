@@ -53,7 +53,8 @@ public record MeetupEventImportDto(
     int DurationMinutes,
     string? EventUrl,
     string? Location,
-    List<MeetupEventImportSpeaker> Speakers
+    List<MeetupEventImportSpeaker> Speakers,
+    string? ImageUrl = null
 );
 
 public record MeetupEventImportResult(
