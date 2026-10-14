@@ -86,7 +86,15 @@ public class PptxPreviewService : IPptxPreviewService
         if (number == null) return null;
 
         var deck = await GetDeckAsync(fileName, cancellationToken);
-        return deck == null ? null : await RenderAsync(deck, number.Value, width, meetupEvent, nextEvent, cancellationToken);
+        if (deck == null) return null;
+
+        var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
+        var photos = new[]
+        {
+            await PptxSpeakerPhotos.LoadAsync(sessions.ElementAtOrDefault(0)?.Speaker, cancellationToken),
+            await PptxSpeakerPhotos.LoadAsync(sessions.ElementAtOrDefault(1)?.Speaker, cancellationToken)
+        };
+        return await RenderAsync(deck, number.Value, width, meetupEvent, nextEvent, cancellationToken, photos);
     }
 
     public static MeetupEvent SampleEvent(int speakerCount)
@@ -100,10 +108,10 @@ public class PptxPreviewService : IPptxPreviewService
             Format = EventFormat.Hybrid,
             ShortBitlyUrl = "https://bit.ly/example",
         };
-        evt.Sessions.Add(new EventSpeakerSession { OrderIndex = 0, TalkTitle = "Sample Talk Title", Speaker = new Speaker { Name = "Luce Carter" } });
+        evt.Sessions.Add(new EventSpeakerSession { OrderIndex = 0, TalkTitle = "Sample Talk Title", Speaker = new Speaker { Name = "Speaker One" } });
         if (speakerCount > 1)
         {
-            evt.Sessions.Add(new EventSpeakerSession { OrderIndex = 1, TalkTitle = "Another Sample Talk", Speaker = new Speaker { Name = "Pete Gallagher" } });
+            evt.Sessions.Add(new EventSpeakerSession { OrderIndex = 1, TalkTitle = "Another Sample Talk", Speaker = new Speaker { Name = "Speaker Two" } });
         }
 
         return evt;
@@ -115,7 +123,7 @@ public class PptxPreviewService : IPptxPreviewService
         next.Title = "Next Sample Meetup";
         next.EventDateTimeUtc = next.EventDateTimeUtc.AddMonths(1);
         next.Sessions.Clear();
-        next.Sessions.Add(new EventSpeakerSession { OrderIndex = 0, TalkTitle = "Next Month's Talk", Speaker = new Speaker { Name = "Molly Next" } });
+        next.Sessions.Add(new EventSpeakerSession { OrderIndex = 0, TalkTitle = "Next Month's Talk", Speaker = new Speaker { Name = "Speaker One" } });
         return next;
     }
 
@@ -140,7 +148,7 @@ public class PptxPreviewService : IPptxPreviewService
         }
     }
 
-    private async Task<byte[]?> RenderAsync(byte[] deck, int slideNumber, int width, MeetupEvent? sample, MeetupEvent? nextEvent, CancellationToken cancellationToken)
+    private async Task<byte[]?> RenderAsync(byte[] deck, int slideNumber, int width, MeetupEvent? sample, MeetupEvent? nextEvent, CancellationToken cancellationToken, IReadOnlyList<byte[]>? photos = null)
     {
         await _gate.WaitAsync(cancellationToken);
         try
@@ -155,7 +163,9 @@ public class PptxPreviewService : IPptxPreviewService
             var part = parts[slideNumber - 1];
             if (sample != null && part.Slide != null)
             {
+                var kind = PptxTokens.Classify(PptxTokens.DetectTokens(part.Slide));
                 PptxTokens.ApplyToSlide(part.Slide, PptxTokens.BuildReplacements(sample, includeSampleLiterals: false, nextEvent));
+                if (photos != null) PptxSpeakerPhotos.Apply(part, kind, photos);
             }
 
             var size = doc.PresentationPart!.Presentation.SlideSize;
@@ -475,11 +485,9 @@ public class PptxPreviewService : IPptxPreviewService
                 var size = (rp?.FontSize?.Value ?? defaults?.FontSize?.Value ?? 1800) / 100f * (float)EmuPerPoint * scale;
                 maxSize = Math.Max(maxSize, size);
                 var bold = rp?.Bold?.Value ?? defaults?.Bold?.Value ?? false;
-                var style = new SKFontStyle(bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal,
-                    SKFontStyleWidth.Normal, rp?.Italic?.Value == true ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);
-                var typeface = (rp?.GetFirstChild<D.LatinFont>()?.Typeface?.Value is { Length: > 0 } f && !f.StartsWith('+') ? SKTypeface.FromFamilyName(f, style) : null)
-                    ?? SKTypeface.FromFamilyName("Segoe UI", style) ?? SKTypeface.Default;
-                var font = new SKFont(typeface, size);
+                var italic = rp?.Italic?.Value == true;
+                var (typeface, embolden) = PptxFonts.Resolve(ResolveFontFamily(ctx, rp, defaults), bold, italic);
+                var font = new SKFont(typeface, size) { Embolden = embolden };
                 var colour = (rp != null ? ResolveColor(ctx, rp) : null) ?? (defaults != null ? ResolveColor(ctx, defaults) : null);
                 // Slides in these decks are typically white-on-colour, so unresolved colours default to white.
                 var paint = new SKPaint { IsAntialias = true, Color = colour ?? SKColors.White };
@@ -491,6 +499,15 @@ public class PptxPreviewService : IPptxPreviewService
         }
 
         return lines;
+    }
+
+    private static string? ResolveFontFamily(RenderContext ctx, D.RunProperties? rp, D.DefaultRunProperties? defaults)
+    {
+        var typeface = rp?.GetFirstChild<D.LatinFont>()?.Typeface?.Value
+            ?? defaults?.GetFirstChild<D.LatinFont>()?.Typeface?.Value;
+        var fonts = ctx.Theme?.ThemeElements?.FontScheme;
+        if (string.IsNullOrEmpty(typeface) || typeface.StartsWith("+mn", StringComparison.Ordinal)) return fonts?.MinorFont?.LatinFont?.Typeface?.Value;
+        return typeface.StartsWith("+mj", StringComparison.Ordinal) ? fonts?.MajorFont?.LatinFont?.Typeface?.Value : typeface;
     }
 
     private static void DrawLines(RenderContext ctx,
@@ -514,7 +531,7 @@ public class PptxPreviewService : IPptxPreviewService
                 ctx.Canvas.Save();
                 ctx.Canvas.Translate(x, baseline);
                 ctx.Canvas.Scale((float)EmuPerPoint);
-                using (var ptFont = new SKFont(words[i].Font.Typeface, words[i].Font.Size / (float)EmuPerPoint))
+                using (var ptFont = new SKFont(words[i].Font.Typeface, words[i].Font.Size / (float)EmuPerPoint) { Embolden = words[i].Font.Embolden })
                 {
                     ctx.Canvas.DrawText(text, 0, 0, SKTextAlign.Left, ptFont, words[i].Paint);
                 }

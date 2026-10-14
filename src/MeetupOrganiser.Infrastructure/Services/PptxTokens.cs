@@ -22,9 +22,9 @@ public static partial class PptxTokens
 
         var replacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            { "{{SpeakerName}}", speaker1?.Name ?? "Speaker Name" },
-            { "{{Speaker1Name}}", speaker1?.Name ?? "Speaker 1" },
-            { "{{Speaker2Name}}", speaker2?.Name ?? "Speaker 2" },
+            { "{{SpeakerName}}", speaker1?.Name ?? "Speaker One" },
+            { "{{Speaker1Name}}", speaker1?.Name ?? "Speaker One" },
+            { "{{Speaker2Name}}", speaker2?.Name ?? "Speaker Two" },
             { "{{TalkTitle}}", session1?.TalkTitle ?? meetupEvent.Title },
             { "{{Talk1Title}}", session1?.TalkTitle ?? meetupEvent.Title },
             { "{{Talk2Title}}", session2?.TalkTitle ?? "Talk 2" },
@@ -44,7 +44,7 @@ public static partial class PptxTokens
 
         // The built-in decks still carry sample text from the original slides.
         var shortUrlNoScheme = shortUrl.Replace("https://", "").Replace("http://", "");
-        replacements["Luce Carter"] = speaker1?.Name ?? "Speaker Name";
+        replacements["Luce Carter"] = speaker1?.Name ?? "Speaker One";
         replacements["SQL to MongoDB API with C#"] = session1?.TalkTitle ?? meetupEvent.Title;
         replacements["https://bit.ly/dotnetnottsapril2026"] = shortUrl;
         replacements["bit.ly/dotnetnottsapril2026"] = shortUrlNoScheme;
@@ -56,7 +56,7 @@ public static partial class PptxTokens
         {
             replacements["Pete Gallagher"] = speaker2.Name;
             replacements["Detecting Pollinating Insects with a Raspberry Pi and the Hailo AI Kit"] = session2.TalkTitle;
-            replacements["Christophe Cr\u00e9mon"] = speaker1?.Name ?? "Speaker 1";
+            replacements["Christophe Cr\u00e9mon"] = speaker1?.Name ?? "Speaker One";
             replacements["Agents of Change: How Agentic AI is Revolutionizing Every Industry"] = session1?.TalkTitle ?? "Talk 1";
         }
 

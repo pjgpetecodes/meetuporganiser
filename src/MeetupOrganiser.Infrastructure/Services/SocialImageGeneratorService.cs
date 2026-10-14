@@ -101,7 +101,7 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
     private static void RenderSingleSpeakerLayout(SKCanvas canvas, MeetupEvent meetupEvent, EventSpeakerSession? session)
     {
         var speaker = session?.Speaker;
-        var speakerName = speaker?.Name ?? "Luce Carter";
+        var speakerName = speaker?.Name ?? "Speaker One";
         var talkTitle = session?.TalkTitle ?? "SQL to MongoDB API with C#";
 
         // Header lines: date, format-dependent venue line, and an optional subtitle (only drawn when set)
@@ -208,7 +208,7 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         // Speaker 1 (Left circle, centered details)
         // Center: (195, 435), Radius: 120
         var sp1 = session1.Speaker;
-        var name1 = sp1?.Name ?? "Speaker 1";
+        var name1 = sp1?.Name ?? "Speaker One";
         var talk1 = session1.TalkTitle;
 
         // Shadow 1
@@ -235,7 +235,7 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         // Speaker 2 (Right circle, details on left of avatar or center)
         // Center: (1085, 595), Radius: 120
         var sp2 = session2.Speaker;
-        var name2 = sp2?.Name ?? "Speaker 2";
+        var name2 = sp2?.Name ?? "Speaker Two";
         var talk2 = session2.TalkTitle;
 
         // Details 2
@@ -332,17 +332,6 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         {
             if (string.IsNullOrWhiteSpace(photoUrl))
             {
-                var candidates = new[]
-                {
-                    Path.Combine(Directory.GetCurrentDirectory(), "images", "speakers", "Luce Carter.jpg"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "src", "MeetupOrganiser.Web", "wwwroot", "images", "speakers", "Luce Carter.jpg"),
-                    Path.Combine(AppContext.BaseDirectory, "wwwroot", "images", "speakers", "Luce Carter.jpg")
-                };
-                var found = candidates.FirstOrDefault(File.Exists);
-                if (found != null)
-                {
-                    return DecodeOriented(File.ReadAllBytes(found));
-                }
                 return null;
             }
 

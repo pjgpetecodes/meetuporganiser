@@ -43,7 +43,7 @@
                         <h5 class="fw-bold mb-0">
                             <i class="bi bi-image me-2 text-primary"></i>1280x720 Social Card Preview
                         </h5>
-                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="GenerateImagePreviewAsync" disabled="@isGeneratingImage">
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="RefreshImagePreviewAsync" disabled="@isGeneratingImage">
                             @if (isGeneratingImage)
                             {
                                 <span class="spinner-border spinner-border-sm me-1"></span>
@@ -291,6 +291,36 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to render social image card.");
+            statusMessage = $"Error rendering social card: {ex.Message}";
+            isError = true;
+        }
+        finally
+        {
+            isGeneratingImage = false;
+        }
+    }
+
+    private async Task RefreshImagePreviewAsync()
+    {
+        if (selectedEvent == null) return;
+
+        try
+        {
+            isGeneratingImage = true;
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var latest = await dbContext.MeetupEvents
+                .Include(e => e.MeetupGroup).ThenInclude(g => g!.Sponsors)
+                .Include(e => e.Sessions).ThenInclude(s => s.Speaker)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(e => e.Id == EventId);
+            if (latest != null) selectedEvent = latest;
+
+            var imageBytes = await SocialImageService.GenerateSocialCardAsync(selectedEvent);
+            previewImageBase64 = Convert.ToBase64String(imageBytes);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to refresh social image card.");
             statusMessage = $"Error rendering social card: {ex.Message}";
             isError = true;
         }
