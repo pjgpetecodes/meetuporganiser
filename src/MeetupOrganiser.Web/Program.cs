@@ -72,6 +72,7 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        _ = scope.ServiceProvider.GetRequiredService<IBlobStorageService>();
         if (db.Database.IsSqlServer())
         {
             try
@@ -103,17 +104,6 @@ if (!app.Environment.IsDevelopment())
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
-// Serve local storage files if wwwroot/storage exists
-var localStorageDir = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "storage");
-if (Directory.Exists(localStorageDir))
-{
-    app.UseStaticFiles(new StaticFileOptions
-    {
-        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(localStorageDir),
-        RequestPath = "/storage"
-    });
-}
 
 app.UseRouting();
 

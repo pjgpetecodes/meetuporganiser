@@ -1,3 +1,4 @@
+using Azure.Identity;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using MeetupOrganiser.Core.Interfaces;
@@ -8,60 +9,39 @@ namespace MeetupOrganiser.Infrastructure.Services;
 
 public class BlobStorageService : IBlobStorageService
 {
-    private readonly BlobServiceClient? _blobServiceClient;
-    private readonly string _localStoragePath;
-    private readonly ILogger<BlobStorageService> _logger;
-    private readonly bool _useLocalStorage;
+    private readonly BlobServiceClient _blobServiceClient;
 
+    // Storage:AccountUrl uses the app's managed identity (Azure); Storage:ConnectionString is for Azurite in development.
     public BlobStorageService(IConfiguration configuration, ILogger<BlobStorageService> logger)
     {
-        _logger = logger;
+        var accountUrl = configuration["Storage:AccountUrl"];
         var connectionString = configuration.GetConnectionString("Storage")
             ?? configuration["Storage:ConnectionString"];
 
-        if (string.IsNullOrWhiteSpace(connectionString) || connectionString.Contains("UseDevelopmentStorage=true"))
+        if (!string.IsNullOrWhiteSpace(accountUrl))
         {
-            _useLocalStorage = true;
-            _localStoragePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "storage");
-            Directory.CreateDirectory(_localStoragePath);
-            _logger.LogInformation("Using local file storage at {Path}", _localStoragePath);
+            _blobServiceClient = new BlobServiceClient(new Uri(accountUrl), new DefaultAzureCredential());
+            logger.LogInformation("Using Azure Blob Storage at {AccountUrl} with managed identity.", accountUrl);
+        }
+        else if (!string.IsNullOrWhiteSpace(connectionString))
+        {
+            _blobServiceClient = new BlobServiceClient(connectionString);
+            logger.LogInformation("Using Blob Storage from connection string (Azurite/development).");
         }
         else
         {
-            try
-            {
-                _blobServiceClient = new BlobServiceClient(connectionString);
-                _useLocalStorage = false;
-                _localStoragePath = string.Empty;
-                _logger.LogInformation("Using Azure Blob Storage.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to connect to Azure Blob Storage; falling back to local file storage.");
-                _useLocalStorage = true;
-                _localStoragePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "storage");
-                Directory.CreateDirectory(_localStoragePath);
-            }
+            throw new InvalidOperationException("Blob storage is not configured. Set Storage:AccountUrl, or Storage:ConnectionString (e.g. UseDevelopmentStorage=true for Azurite).");
         }
-    }
 
+        RemotePhotoLoader.TrustEndpoint(_blobServiceClient.Uri);
+    }
     public async Task<string> UploadAsync(string containerName, string fileName, Stream content, string contentType, CancellationToken cancellationToken = default)
     {
         var safeFileName = $"{Guid.NewGuid()}_{Path.GetFileName(fileName)}";
 
-        if (_useLocalStorage || _blobServiceClient == null)
-        {
-            var containerDir = Path.Combine(_localStoragePath, containerName);
-            Directory.CreateDirectory(containerDir);
-            var filePath = Path.Combine(containerDir, safeFileName);
-
-            using var fileStream = File.Create(filePath);
-            await content.CopyToAsync(fileStream, cancellationToken);
-            return $"/storage/{containerName}/{safeFileName}";
-        }
-
         var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
-        await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob, cancellationToken: cancellationToken);
+        var publicAccess = containerName == "templates" ? PublicAccessType.None : PublicAccessType.Blob;
+        await containerClient.CreateIfNotExistsAsync(publicAccess, cancellationToken: cancellationToken);
 
         var blobClient = containerClient.GetBlobClient(safeFileName);
         var options = new BlobUploadOptions
@@ -75,55 +55,18 @@ public class BlobStorageService : IBlobStorageService
 
     public async Task<Stream> DownloadAsync(string containerName, string fileName, CancellationToken cancellationToken = default)
     {
-        if (_useLocalStorage || _blobServiceClient == null)
-        {
-            var filePath = Path.Combine(_localStoragePath, containerName, Path.GetFileName(fileName));
-            if (!File.Exists(filePath))
-            {
-                throw new FileNotFoundException($"File not found in local storage: {filePath}");
-            }
-            var memoryStream = new MemoryStream();
-            using (var fileStream = File.OpenRead(filePath))
-            {
-                await fileStream.CopyToAsync(memoryStream, cancellationToken);
-            }
-            memoryStream.Position = 0;
-            return memoryStream;
-        }
-
-        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
-        var blobClient = containerClient.GetBlobClient(Path.GetFileName(fileName));
+        var blobClient = _blobServiceClient.GetBlobContainerClient(containerName).GetBlobClient(Path.GetFileName(fileName));
         var downloadResult = await blobClient.DownloadContentAsync(cancellationToken);
         return downloadResult.Value.Content.ToStream();
     }
 
     public async Task<bool> DeleteAsync(string containerName, string fileName, CancellationToken cancellationToken = default)
     {
-        if (_useLocalStorage || _blobServiceClient == null)
-        {
-            var filePath = Path.Combine(_localStoragePath, containerName, Path.GetFileName(fileName));
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-                return true;
-            }
-            return false;
-        }
-
-        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
-        var blobClient = containerClient.GetBlobClient(Path.GetFileName(fileName));
+        var blobClient = _blobServiceClient.GetBlobContainerClient(containerName).GetBlobClient(Path.GetFileName(fileName));
         var result = await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
         return result.Value;
     }
 
-    public string GetBlobUrl(string containerName, string fileName)
-    {
-        if (_useLocalStorage || _blobServiceClient == null)
-        {
-            return $"/storage/{containerName}/{Path.GetFileName(fileName)}";
-        }
-        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
-        var blobClient = containerClient.GetBlobClient(Path.GetFileName(fileName));
-        return blobClient.Uri.ToString();
-    }
+    public string GetBlobUrl(string containerName, string fileName) =>
+        _blobServiceClient.GetBlobContainerClient(containerName).GetBlobClient(Path.GetFileName(fileName)).Uri.ToString();
 }
