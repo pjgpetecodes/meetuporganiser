@@ -13,6 +13,7 @@ namespace MeetupOrganiser.Infrastructure.Services;
 
 public class SocialMediaService : ISocialMediaService
 {
+    private const string LinkedInApiVersion = "202610";
     private readonly HttpClient _httpClient;
     private readonly ISettingsService? _settingsService;
     private readonly IConfiguration _configuration;
@@ -142,10 +143,165 @@ public class SocialMediaService : ISocialMediaService
         return Task.FromResult(new SocialPostResult("Twitter", true, null, null, intentUrl, text, null));
     }
 
-    public Task<SocialPostResult> PostToLinkedInAsync(string text, byte[]? imageBytes, CancellationToken cancellationToken = default)
+    public async Task<SocialPostResult> PostToLinkedInAsync(string text, byte[]? imageBytes, CancellationToken cancellationToken = default)
     {
         var intentUrl = $"https://www.linkedin.com/sharing/share-offsite/?text={Uri.EscapeDataString(text)}";
-        return Task.FromResult(new SocialPostResult("LinkedIn", true, null, null, intentUrl, text, null));
+        var accessToken = (_settingsService != null
+                ? await _settingsService.GetSettingAsync("Integrations:LinkedIn:AccessToken", cancellationToken)
+                : null)
+            ?? _configuration["Integrations:LinkedIn:AccessToken"];
+        var authorUrn = (_settingsService != null
+                ? await _settingsService.GetSettingAsync("Integrations:LinkedIn:AuthorUrn", cancellationToken)
+                : null)
+            ?? _configuration["Integrations:LinkedIn:AuthorUrn"];
+
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(authorUrn))
+        {
+            return new SocialPostResult(
+                "LinkedIn",
+                false,
+                null,
+                null,
+                intentUrl,
+                text,
+                "LinkedIn API posting requires an access token with w_member_social and your personal author URN (urn:li:person:...).");
+        }
+
+        authorUrn = authorUrn.Trim();
+        if (!authorUrn.StartsWith("urn:li:person:", StringComparison.Ordinal))
+        {
+            return new SocialPostResult(
+                "LinkedIn",
+                false,
+                null,
+                null,
+                intentUrl,
+                text,
+                "For personal profile posts, the LinkedIn Author URN must start with urn:li:person:.");
+        }
+
+        try
+        {
+            string? imageUrn = null;
+            if (imageBytes is { Length: > 0 })
+            {
+                imageUrn = await UploadLinkedInImageAsync(accessToken, authorUrn, imageBytes, cancellationToken);
+            }
+
+            var post = new Dictionary<string, object>
+            {
+                ["author"] = authorUrn,
+                ["commentary"] = text,
+                ["visibility"] = "PUBLIC",
+                ["distribution"] = new
+                {
+                    feedDistribution = "MAIN_FEED",
+                    targetEntities = Array.Empty<string>(),
+                    thirdPartyDistributionChannels = Array.Empty<string>()
+                },
+                ["lifecycleState"] = "PUBLISHED",
+                ["isReshareDisabledByAuthor"] = false
+            };
+
+            if (imageUrn != null)
+            {
+                post["content"] = new
+                {
+                    media = new { id = imageUrn }
+                };
+            }
+
+            using var request = CreateLinkedInRequest(HttpMethod.Post, "https://api.linkedin.com/rest/posts", accessToken);
+            request.Content = JsonContent.Create(post);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                return new SocialPostResult(
+                    "LinkedIn",
+                    false,
+                    null,
+                    null,
+                    intentUrl,
+                    text,
+                    $"LinkedIn post failed ({(int)response.StatusCode}): {error}");
+            }
+
+            response.Headers.TryGetValues("x-restli-id", out var postIds);
+            var postId = postIds?.FirstOrDefault();
+            var postUrl = string.IsNullOrWhiteSpace(postId)
+                ? null
+                : $"https://www.linkedin.com/feed/update/{Uri.EscapeDataString(postId)}/";
+            return new SocialPostResult("LinkedIn", true, postId, postUrl, intentUrl, text, null);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "LinkedIn API request failed.");
+            return new SocialPostResult("LinkedIn", false, null, null, intentUrl, text, $"LinkedIn API request failed: {ex.Message}");
+        }
+    }
+
+    private async Task<string> UploadLinkedInImageAsync(
+        string accessToken,
+        string authorUrn,
+        byte[] imageBytes,
+        CancellationToken cancellationToken)
+    {
+        using var initializeRequest = CreateLinkedInRequest(
+            HttpMethod.Post,
+            "https://api.linkedin.com/rest/images?action=initializeUpload",
+            accessToken);
+        initializeRequest.Content = JsonContent.Create(new
+        {
+            initializeUploadRequest = new { owner = authorUrn }
+        });
+
+        using var initializeResponse = await _httpClient.SendAsync(initializeRequest, cancellationToken);
+        if (!initializeResponse.IsSuccessStatusCode)
+        {
+            var error = await initializeResponse.Content.ReadAsStringAsync(cancellationToken);
+            throw new HttpRequestException(
+                $"LinkedIn image upload initialization failed ({(int)initializeResponse.StatusCode}): {error}");
+        }
+
+        using var responseJson = await JsonDocument.ParseAsync(
+            await initializeResponse.Content.ReadAsStreamAsync(cancellationToken),
+            cancellationToken: cancellationToken);
+        var uploadValue = responseJson.RootElement.GetProperty("value");
+        var uploadUri = uploadValue.GetProperty("uploadUrl").GetString();
+        var imageUrn = uploadValue.GetProperty("image").GetString();
+
+        if (!Uri.TryCreate(uploadUri, UriKind.Absolute, out var parsedUploadUri)
+            || parsedUploadUri.Scheme != Uri.UriSchemeHttps
+            || !(parsedUploadUri.Host.EndsWith(".linkedin.com", StringComparison.OrdinalIgnoreCase)
+                || parsedUploadUri.Host.EndsWith(".licdn.com", StringComparison.OrdinalIgnoreCase))
+            || string.IsNullOrWhiteSpace(imageUrn))
+        {
+            throw new HttpRequestException("LinkedIn returned an invalid image upload URL or image URN.");
+        }
+
+        using var uploadRequest = new HttpRequestMessage(HttpMethod.Put, parsedUploadUri)
+        {
+            Content = new ByteArrayContent(imageBytes)
+        };
+        uploadRequest.Content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        using var uploadResponse = await _httpClient.SendAsync(uploadRequest, cancellationToken);
+        if (!uploadResponse.IsSuccessStatusCode)
+        {
+            var error = await uploadResponse.Content.ReadAsStringAsync(cancellationToken);
+            throw new HttpRequestException($"LinkedIn image upload failed ({(int)uploadResponse.StatusCode}): {error}");
+        }
+
+        return imageUrn;
+    }
+
+    private static HttpRequestMessage CreateLinkedInRequest(HttpMethod method, string uri, string accessToken)
+    {
+        var request = new HttpRequestMessage(method, uri);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("Linkedin-Version", LinkedInApiVersion);
+        request.Headers.Add("X-Restli-Protocol-Version", "2.0.0");
+        return request;
     }
 
     public string GeneratePlatformPostText(MeetupEvent meetupEvent, string platform) =>

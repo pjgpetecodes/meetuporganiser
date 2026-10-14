@@ -354,10 +354,10 @@
                                 <i class="bi bi-linkedin text-primary fs-4 me-3"></i>
                                 <span class="fw-bold me-auto">LinkedIn</span>
                                 <span class="me-3">
-            @if (!string.IsNullOrWhiteSpace(model.LinkedInAccessToken))
+            @if (!string.IsNullOrWhiteSpace(model.LinkedInAccessToken) && !string.IsNullOrWhiteSpace(model.LinkedInAuthorUrn))
             {
                 <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
-                    <i class="bi bi-check-circle me-1"></i> API Mode
+                    <i class="bi bi-check-circle me-1"></i> API Ready
                 </span>
             }
             else
@@ -373,7 +373,11 @@
                         {
                             <div class="accordion-collapse show">
                                 <div class="accordion-body">
-            <p class="small text-muted mb-3">Shares formatted event announcements to LinkedIn profiles or organizational pages.</p>
+            <p class="small text-muted mb-3">
+                Posts to your personal profile using LinkedIn's <code>w_member_social</code> permission.
+                Add <strong>Share on LinkedIn</strong> under your app's Products, then use the Member authorization (3-legged) token generator.
+                The generator manages its own redirect URL; this manual-token setup does not need an app callback URL.
+            </p>
             <div class="row g-2 mb-3">
                 <div class="col-md-6">
                     <label class="form-label fw-semibold small">Client ID</label>
@@ -381,11 +385,13 @@
                            @bind="model.LinkedInClientId" />
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label fw-semibold small">Author URN</label>
-                    <input type="text" class="form-control" placeholder="urn:li:organization:... or person:..."
+                    <label class="form-label fw-semibold small">Personal Author URN</label>
+                    <input type="text" class="form-control" placeholder="urn:li:person:..."
                            @bind="model.LinkedInAuthorUrn" />
+                    <div class="form-text">Use your member URN, starting with <code>urn:li:person:</code>, not an organization URN.</div>
                 </div>
             </div>
+            <div class="form-text mb-3">Client ID and Client Secret are not used for posts when you enter a token generated in LinkedIn's developer tools.</div>
             <div class="mb-3">
                 <label class="form-label fw-semibold small">Client Secret</label>
                 <div class="input-group">
@@ -407,6 +413,7 @@
                         <i class="bi @(showPasswords.Contains("LinkedInToken") ? "bi-eye-slash" : "bi-eye")"></i>
                     </button>
                 </div>
+                <div class="form-text">Paste the generated token with <code>w_member_social</code>. Replace it when it expires or is revoked.</div>
             </div>
                                 </div>
                             </div>
