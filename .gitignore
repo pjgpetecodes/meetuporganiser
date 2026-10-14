@@ -432,3 +432,6 @@ app.zip
 publish-app/
 publish/
 
+
+# Runtime uploads (logos, templates)
+src/MeetupOrganiser.Web/wwwroot/storage/
