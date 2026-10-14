@@ -49,7 +49,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasKey("Key");
 
-                    b.ToTable("AppSettings");
+                    b.ToTable("AppSettings", (string)null);
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.EventSpeakerSession", b =>
@@ -82,7 +82,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasIndex("SpeakerId");
 
-                    b.ToTable("EventSpeakerSessions");
+                    b.ToTable("EventSpeakerSessions", (string)null);
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.GeneratedAsset", b =>
@@ -116,7 +116,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasIndex("MeetupEventId");
 
-                    b.ToTable("GeneratedAssets");
+                    b.ToTable("GeneratedAssets", (string)null);
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.MagicLinkToken", b =>
@@ -157,7 +157,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
-                    b.ToTable("MagicLinkTokens");
+                    b.ToTable("MagicLinkTokens", (string)null);
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.MeetupEvent", b =>
@@ -238,7 +238,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasIndex("MeetupGroupId");
 
-                    b.ToTable("MeetupEvents");
+                    b.ToTable("MeetupEvents", (string)null);
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.MeetupGroup", b =>
@@ -301,12 +301,6 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
-                    b.Property<int?>("TemplateSlideOneSpeaker")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("TemplateSlideTwoSpeakers")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -316,7 +310,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MeetupGroups");
+                    b.ToTable("MeetupGroups", (string)null);
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.SocialPostTemplate", b =>
@@ -348,7 +342,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("SocialPostTemplates");
+                    b.ToTable("SocialPostTemplates", (string)null);
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.Speaker", b =>
@@ -416,7 +410,7 @@ namespace MeetupOrganiser.Infrastructure.Migrations
 
                     b.HasIndex("Email");
 
-                    b.ToTable("Speakers");
+                    b.ToTable("Speakers", (string)null);
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.EventSpeakerSession", b =>

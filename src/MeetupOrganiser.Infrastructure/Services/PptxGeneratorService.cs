@@ -24,25 +24,16 @@ public class PptxGeneratorService : IPptxGeneratorService
         _blobStorage = blobStorage;
     }
 
-    // The group's uploaded deck is used only when a slide is chosen for this speaker count; otherwise the built-in decks apply.
-    private async Task<(byte[] Bytes, int Slide)?> TryLoadGroupTemplateAsync(MeetupEvent meetupEvent, int speakerCount, CancellationToken cancellationToken)
+    // The group's uploaded deck is used when it exists; any failure falls back to the built-in decks.
+    private async Task<byte[]?> TryLoadGroupTemplateAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken)
     {
-        var group = meetupEvent.MeetupGroup;
-        if (_blobStorage == null || !PptxTemplateStore.TryParseFileName(group?.PptxTemplateBlobUrl, out var fileName)) return null;
+        if (_blobStorage == null || !PptxTemplateStore.TryParseFileName(meetupEvent.MeetupGroup?.PptxTemplateBlobUrl, out var fileName)) return null;
 
-        var slide = speakerCount > 1 ? group!.TemplateSlideTwoSpeakers : group!.TemplateSlideOneSpeaker;
-        if (slide is null or < 1)
-        {
-            _logger.LogWarning("Group {Group} has a PPTX template but no slide chosen for {Count} speaker(s); using the built-in deck.", group.Name, speakerCount);
-            return null;
-        }
-
-        var bytes = await PptxTemplateStore.LoadAsync(_blobStorage, fileName, _logger, cancellationToken);
-        return bytes == null ? null : (bytes, slide.Value);
+        return await PptxTemplateStore.LoadAsync(_blobStorage, fileName, _logger, cancellationToken);
     }
 
-    // Only the chosen slide's tokens are replaced; every other slide is left exactly as uploaded.
-    private byte[]? GenerateFromGroupTemplate(MeetupEvent meetupEvent, byte[] templateBytes, int slideNumber)
+    // Slides containing {{tokens}} are filled; slides for the other speaker count are hidden; the rest are untouched.
+    private byte[]? GenerateFromGroupTemplate(MeetupEvent meetupEvent, byte[] templateBytes, int speakerCount)
     {
         using var memoryStream = new MemoryStream();
         memoryStream.Write(templateBytes);
@@ -51,16 +42,32 @@ public class PptxGeneratorService : IPptxGeneratorService
         using (var presentationDoc = PresentationDocument.Open(memoryStream, true))
         {
             var presentationPart = presentationDoc.PresentationPart;
-            var slideIds = presentationPart?.Presentation.SlideIdList?.Elements<SlideId>().ToList() ?? [];
-            if (presentationPart == null || slideNumber > slideIds.Count)
+            var slideParts = (presentationPart?.Presentation.SlideIdList?.Elements<SlideId>() ?? [])
+                .Select(id => (SlidePart)presentationPart!.GetPartById(id.RelationshipId!))
+                .Where(p => p.Slide != null)
+                .Select(p => (Part: p, Kind: PptxTokens.Classify(PptxTokens.DetectTokens(p.Slide!)), HasTokens: PptxTokens.DetectTokens(p.Slide!).Count > 0))
+                .ToList();
+
+            if (!slideParts.Any(s => s.HasTokens))
             {
-                _logger.LogWarning("Chosen template slide {Slide} does not exist (deck has {Count} slides); using the built-in deck.", slideNumber, slideIds.Count);
+                _logger.LogWarning("The group's PPTX template has no {{tokens}} on any slide; using the built-in deck.");
                 return null;
             }
 
-            var slidePart = (SlidePart)presentationPart.GetPartById(slideIds[slideNumber - 1].RelationshipId!);
-            PptxTokens.ApplyToSlide(slidePart.Slide!, PptxTokens.BuildReplacements(meetupEvent, includeSampleLiterals: false));
-            slidePart.Slide!.Save();
+            var replacements = PptxTokens.BuildReplacements(meetupEvent, includeSampleLiterals: false);
+            var hasTwoSpeakerSlides = slideParts.Any(s => s.Kind == PptxTokens.SlideKind.TwoSpeakers);
+            foreach (var (part, kind, hasTokens) in slideParts)
+            {
+                if (hasTokens) PptxTokens.ApplyToSlide(part.Slide!, replacements);
+
+                var hide = speakerCount > 1
+                    ? kind == PptxTokens.SlideKind.OneSpeaker && hasTwoSpeakerSlides
+                    : kind == PptxTokens.SlideKind.TwoSpeakers;
+                part.Slide!.Show = hide ? false : null;
+                part.Slide.Save();
+            }
+
+            presentationPart!.Presentation.Save();
         }
 
         return memoryStream.ToArray();
@@ -70,9 +77,9 @@ public class PptxGeneratorService : IPptxGeneratorService
     {
         var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
 
-        if (await TryLoadGroupTemplateAsync(meetupEvent, sessions.Count, cancellationToken) is { } custom)
+        if (await TryLoadGroupTemplateAsync(meetupEvent, cancellationToken) is { } custom)
         {
-            var deck = GenerateFromGroupTemplate(meetupEvent, custom.Bytes, custom.Slide);
+            var deck = GenerateFromGroupTemplate(meetupEvent, custom, sessions.Count);
             if (deck != null) return deck;
         }
 

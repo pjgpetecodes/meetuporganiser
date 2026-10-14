@@ -87,6 +87,19 @@ public static partial class PptxTokens
         }
     }
 
+    public enum SlideKind { Always, OneSpeaker, TwoSpeakers }
+
+    private static readonly string[] SecondSpeakerTokens = ["{{Speaker2Name}}", "{{Talk2Title}}"];
+    private static readonly string[] FirstSpeakerTokens = ["{{SpeakerName}}", "{{Speaker1Name}}", "{{TalkTitle}}", "{{Talk1Title}}"];
+
+    public static SlideKind Classify(IReadOnlyList<string> tokens)
+    {
+        if (tokens.Any(t => SecondSpeakerTokens.Contains(Normalise(t), StringComparer.OrdinalIgnoreCase))) return SlideKind.TwoSpeakers;
+        return tokens.Any(t => FirstSpeakerTokens.Contains(Normalise(t), StringComparer.OrdinalIgnoreCase)) ? SlideKind.OneSpeaker : SlideKind.Always;
+    }
+
+    private static string Normalise(string token) => "{{" + token.Trim('{', '}').Trim() + "}}";
+
     public static IReadOnlyList<string> DetectTokens(Slide slide)
     {
         var tokens = new List<string>();
