@@ -301,6 +301,12 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<int?>("TemplateSlideOneSpeaker")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TemplateSlideTwoSpeakers")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 

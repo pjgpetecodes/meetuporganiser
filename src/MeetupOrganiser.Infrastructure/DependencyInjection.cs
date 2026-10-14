@@ -58,6 +58,8 @@ public static class DependencyInjection
         services.AddScoped<IBlobStorageService, BlobStorageService>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IPptxGeneratorService, PptxGeneratorService>();
+        services.AddMemoryCache();
+        services.AddScoped<IPptxPreviewService, PptxPreviewService>();
         services.AddScoped<ISocialImageGeneratorService, SocialImageGeneratorService>();
         services.AddScoped<IMagicLinkService, MagicLinkService>();
 

@@ -4,6 +4,7 @@ using System.Text;
 using MeetupOrganiser.Core.Interfaces;
 using MeetupOrganiser.Infrastructure;
 using MeetupOrganiser.Infrastructure.Data;
+using MeetupOrganiser.Infrastructure.Services;
 using MeetupOrganiser.Web.Components;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -259,6 +260,18 @@ app.MapGet("/api/events/{id:guid}/social-image", async (Guid id, AppDbContext db
     if (string.IsNullOrWhiteSpace(safeName)) safeName = "MeetupEvent";
     return Results.File(bytes, "image/png", $"{safeName}-social.png");
 });
+
+app.MapGet("/api/templates/{file}/slides/{n:int}.png", async (string file, int n, int? w, IPptxPreviewService preview, CancellationToken ct) =>
+{
+    var png = await preview.RenderSlideAsync(file, n, Math.Clamp(w ?? 480, 120, 1280), ct);
+    return png == null ? Results.NotFound() : Results.File(png, "image/png");
+}).RequireAuthorization("OrganizerOnly");
+
+app.MapGet("/api/templates/{file}/slides/{n:int}/filled.png", async (string file, int n, int? speakers, int? w, IPptxPreviewService preview, CancellationToken ct) =>
+{
+    var png = await preview.RenderFilledSlideAsync(file, n, speakers is > 1 ? 2 : 1, Math.Clamp(w ?? 960, 120, 1280), ct);
+    return png == null ? Results.NotFound() : Results.File(png, "image/png");
+}).RequireAuthorization("OrganizerOnly");
 
 app.MapControllers();
 
