@@ -4,7 +4,12 @@ namespace MeetupOrganiser.Core.Entities;
 
 public class Speaker
 {
+    public const string PlaceholderName = "Speaker TBC";
+
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>True for a blank speaker created by the organiser, awaiting the speaker to complete their profile via magic link.</summary>
+    public bool IsPlaceholder => Name == PlaceholderName;
 
     [Required]
     [MaxLength(200)]

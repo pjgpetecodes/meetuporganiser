@@ -111,8 +111,19 @@ public class SocialImageGeneratorService : ISocialImageGeneratorService
         using (var fontHeaderBold = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 44))
         using (var textPaintWhite = new SKPaint { Color = SKColors.White, IsAntialias = true })
         {
+            // Long venue names shrink to stay clear of the sponsor logos
+            const float headerMaxWidth = 800f;
+            var line2Width = fontHeaderBold.MeasureText(line2);
             canvas.DrawText(dateFormatted, 60, 65, SKTextAlign.Left, fontHeaderBold, textPaintWhite);
-            canvas.DrawText(line2, 60, 125, SKTextAlign.Left, fontHeaderBold, textPaintWhite);
+            if (line2Width > headerMaxWidth)
+            {
+                using var fontLine2 = new SKFont(fontHeaderBold.Typeface, Math.Max(22f, 44f * headerMaxWidth / line2Width));
+                canvas.DrawText(line2, 60, 125, SKTextAlign.Left, fontLine2, textPaintWhite);
+            }
+            else
+            {
+                canvas.DrawText(line2, 60, 125, SKTextAlign.Left, fontHeaderBold, textPaintWhite);
+            }
         }
 
         var subtitle = EventHeader.Subtitle(meetupEvent);

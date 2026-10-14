@@ -19,7 +19,7 @@
             <p class="mt-3 text-secondary">Validating your magic link...</p>
         </div>
     }
-    else if (tokenEntity == null || !tokenEntity.IsValid)
+    else if (tokenEntity == null || (!tokenEntity.IsValid && !showSuccess))
     {
         <div class="card border-0 shadow-sm p-5 text-center">
             <i class="bi bi-exclamation-triangle-fill text-warning display-3 mb-3"></i>
@@ -41,9 +41,9 @@
                     <span class="badge bg-primary-subtle text-primary border border-primary-subtle mb-2">
                         Speaker Self-Service Portal
                     </span>
-                    <h2 class="fw-bold mb-1">Welcome, @speaker.Name!</h2>
+                    <h2 class="fw-bold mb-1">@(isNewProfile ? "Welcome!" : $"Welcome, {speaker.Name}!")</h2>
                     <p class="text-secondary mb-0">
-                        Please confirm your talk details and speaker bio for 
+                        @(isNewProfile ? "Please create your speaker profile and enter your talk details for" : "Please confirm your talk details and speaker bio for")
                         <strong>@(meetupEvent?.Title ?? "the upcoming meetup")</strong>.
                     </p>
                 </div>
@@ -87,6 +87,8 @@
                 </div>
             }
 
+            @if (!showSuccess)
+            {
             <EditForm Model="this" OnValidSubmit="HandleSaveAsync">
                 <h5 class="fw-bold mb-3"><i class="bi bi-mic me-2 text-primary"></i> Talk &amp; Session Info</h5>
 
@@ -186,6 +188,7 @@
                     </button>
                 </div>
             </EditForm>
+            }
         </div>
     }
 </div>
@@ -196,6 +199,7 @@
 
     private bool isLoading = true;
     private bool isSaving = false;
+    private bool isNewProfile;
     private bool showSuccess = false;
     private string? errorMessage;
 
@@ -219,6 +223,8 @@
             if (tokenEntity != null && tokenEntity.Speaker != null)
             {
                 speaker = tokenEntity.Speaker;
+                isNewProfile = speaker.IsPlaceholder;
+                if (isNewProfile) speaker.Name = string.Empty;
                 originalBio = speaker.Bio;
                 originalPronouns = speaker.Pronouns;
                 previewPhotoUrl = speaker.PhotoBlobUrl;
@@ -277,6 +283,20 @@
             SpeakerBio.EnsureThirdPerson(speaker, force: bioChanged);
             session.TalkTitle = talkTitle;
             session.TalkDescription = talkDescription;
+            tokenEntity.UsedAtUtc = DateTime.UtcNow;
+
+            if (meetupEvent != null && EventTitles.IsPlaceholder(meetupEvent.Title))
+            {
+                var sessions = await DbContext.EventSpeakerSessions
+                    .Include(s => s.Speaker)
+                    .Where(s => s.MeetupEventId == meetupEvent.Id)
+                    .ToListAsync();
+                if (EventTitles.FromSessions(sessions) is { } title)
+                {
+                    meetupEvent.Title = title;
+                    meetupEvent.UpdatedAtUtc = DateTime.UtcNow;
+                }
+            }
 
             await DbContext.SaveChangesAsync();
             showSuccess = true;

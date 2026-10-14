@@ -110,6 +110,42 @@ public class PptxTemplateSlideTests
         new(NullLogger<PptxGeneratorService>.Instance, new MemoryBlobStorage(deck));
 
     [Fact]
+    public async Task LongVenueLine_ShrinksExplicitFontSize_ShortOneIsUntouched()
+    {
+        static byte[] Deck()
+        {
+            var deck = BuildDeckWithText("{{EventTime}} {{Venue}}");
+            using var stream = new MemoryStream();
+            stream.Write(deck);
+            using (var doc = PresentationDocument.Open(stream, true))
+            {
+                var part = doc.PresentationPart!;
+                var slide = ((SlidePart)part.GetPartById(part.Presentation.SlideIdList!.Elements<SlideId>().First().RelationshipId!)).Slide!;
+                slide.Descendants<D.Run>().First().RunProperties = new D.RunProperties { FontSize = 4400 };
+                slide.Save();
+            }
+            return stream.ToArray();
+        }
+
+        static int? Size(byte[] output)
+        {
+            using var stream = new MemoryStream(output);
+            using var doc = PresentationDocument.Open(stream, false);
+            var part = doc.PresentationPart!;
+            var slide = ((SlidePart)part.GetPartById(part.Presentation.SlideIdList!.Elements<SlideId>().First().RelationshipId!)).Slide!;
+            return slide.Descendants<D.RunProperties>().First().FontSize?.Value;
+        }
+
+        var shortEvent = CreateEvent(1);
+        shortEvent.LocationOrPlatform = "CGI";
+        var longEvent = CreateEvent(1);
+        longEvent.LocationOrPlatform = "CGI King Street Nottingham & Online";
+
+        Assert.Equal(4400, Size(await Generator(Deck()).GenerateEventDeckAsync(shortEvent)));
+        Assert.True(Size(await Generator(Deck()).GenerateEventDeckAsync(longEvent)) < 4400);
+    }
+
+    [Fact]
     public async Task SingleSpeaker_FillsTokenSlidesAndHidesTwoSpeakerSlide()
     {
         var output = await Generator(BuildDeck()).GenerateEventDeckAsync(CreateEvent(1));

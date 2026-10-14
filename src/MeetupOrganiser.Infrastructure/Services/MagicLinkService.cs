@@ -35,6 +35,11 @@ public class MagicLinkService : IMagicLinkService
             CreatedAtUtc = DateTime.UtcNow
         };
 
+        var outstanding = await _context.MagicLinkTokens
+            .Where(t => t.EventSpeakerSessionId == sessionId && !t.IsRevoked && t.UsedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var old in outstanding) old.IsRevoked = true;
+
         await _context.MagicLinkTokens.AddAsync(tokenEntity, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 

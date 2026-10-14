@@ -92,7 +92,52 @@ public static partial class PptxTokens
         replacements["{{NextEventTalk2Title}}"] = Or(second?.TalkTitle);
     }
 
+    private static readonly string[] VenueTokens =
+        ["{{Venue}}", "{{EventTime}}", "{{EventVenueLine}}", "{{NextEventVenue}}", "{{NextEventTime}}", "{{NextEventVenueLine}}"];
+
+    // Characters that fit on one line of the template's header box at its authored size.
+    private const int HeaderLineCapacity = 28;
+    private const float MinHeaderScale = 0.5f;
+
     public static void ApplyToSlide(Slide slide, IReadOnlyDictionary<string, string> replacements)
+    {
+        var venueParagraphs = slide.Descendants<D.Paragraph>()
+            .Where(p => string.Concat(p.Descendants<D.Text>().Select(t => t.Text)) is var t
+                && VenueTokens.Any(v => t.Contains(v, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        ReplaceTokens(slide, replacements);
+
+        foreach (var paragraph in venueParagraphs) FitParagraph(paragraph);
+    }
+
+    // Shrinks a header line that is longer than the box can hold, e.g. a long location.
+    private static void FitParagraph(D.Paragraph paragraph)
+    {
+        var length = string.Concat(paragraph.Descendants<D.Text>().Select(t => t.Text)).Trim().Length;
+        if (length <= HeaderLineCapacity) return;
+
+        var scale = Math.Max(MinHeaderScale, HeaderLineCapacity / (float)length);
+        var sized = false;
+        foreach (var rp in paragraph.Descendants<D.RunProperties>().Where(r => r.FontSize?.Value > 0))
+        {
+            rp.FontSize = (int)(rp.FontSize!.Value * scale);
+            sized = true;
+        }
+
+        if (sized) return;
+
+        // Size is inherited from the layout, so ask PowerPoint to shrink the text instead.
+        if (paragraph.Parent is not TextBody { BodyProperties: { } body }) return;
+        if (body.Elements<D.NormalAutoFit>().Any()) return;
+        body.RemoveAllChildren<D.NoAutoFit>();
+        body.RemoveAllChildren<D.ShapeAutoFit>();
+        var fit = new D.NormalAutoFit { FontScale = (int)(scale * 100000) };
+        var warp = body.GetFirstChild<D.PresetTextWarp>();
+        if (warp != null) warp.InsertAfterSelf(fit); else body.PrependChild(fit);
+    }
+
+    private static void ReplaceTokens(Slide slide, IReadOnlyDictionary<string, string> replacements)
     {
         foreach (var textElem in slide.Descendants<D.Text>())
         {

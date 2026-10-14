@@ -1,0 +1,219 @@
+@page "/events/invite"
+@attribute [Authorize]
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@using MeetupOrganiser.Core.Services
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject IMagicLinkService MagicLinkService
+@inject NavigationManager NavManager
+@inject IJSRuntime JS
+@inject ILogger<QuickInvite> Logger
+
+<PageTitle>Quick Invite - Meetup Organiser</PageTitle>
+
+<div class="container-fluid py-2" style="max-width: 860px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold mb-1">Quick Speaker Invite</h1>
+            <p class="text-secondary mb-0">Set the date, place and format, then send each speaker a link to fill in their profile and talk details.</p>
+        </div>
+        <a href="/events" class="btn btn-outline-secondary">Back to Events</a>
+    </div>
+
+    @if (statusMessage != null)
+    {
+        <div class="alert @(isError ? "alert-danger" : "alert-success")" role="alert">@statusMessage</div>
+    }
+
+    @if (links.Count == 0)
+    {
+        <div class="card border-0 shadow-sm p-4">
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Meetup Group</label>
+                <select class="form-select" @bind="groupId">
+                    @foreach (var g in groups)
+                    {
+                        <option value="@g.Id">@g.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Date &amp; Start Time (Local)</label>
+                    <input type="datetime-local" class="form-control" @bind="localEventDateTime" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Event Format</label>
+                    <select class="form-select" @bind="format">
+                        <option value="@EventFormat.Hybrid">Hybrid (in person + Zoom)</option>
+                        <option value="@EventFormat.InPerson">In Person only</option>
+                        <option value="@EventFormat.Online">Online only (Zoom)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold">Venue Name</label>
+                    <input type="text" class="form-control" @bind="venueName" disabled="@(format == EventFormat.Online)" />
+                </div>
+                <div class="col-md-7">
+                    <label class="form-label fw-semibold">Location / Platform</label>
+                    <input type="text" class="form-control" @bind="location" />
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-semibold d-block">Speakers</label>
+                <div class="btn-group">
+                    <input type="radio" class="btn-check" name="inviteSpeakers" id="inv1" checked="@(speakerCount == 1)" @onchange="() => speakerCount = 1">
+                    <label class="btn btn-outline-primary" for="inv1">1 Speaker</label>
+                    <input type="radio" class="btn-check" name="inviteSpeakers" id="inv2" checked="@(speakerCount == 2)" @onchange="() => speakerCount = 2">
+                    <label class="btn btn-outline-primary" for="inv2">2 Speakers</label>
+                </div>
+            </div>
+
+            <div>
+                <button type="button" class="btn btn-primary btn-lg" @onclick="CreateInviteAsync" disabled="@isSaving">
+                    <i class="bi bi-link-45deg me-1"></i> Create event &amp; speaker links
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm p-4">
+            <p class="mb-3">Draft event <strong>@createdTitle</strong> created. Share each link with its speaker. Each link works once; they can create their profile and enter their talk details.</p>
+            @for (var i = 0; i < links.Count; i++)
+            {
+                var url = links[i];
+                var label = $"Speaker {i + 1}";
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">@label</label>
+                    <div class="input-group">
+                        <input type="text" readonly class="form-control" value="@url" @onfocus="SelectAllAsync" />
+                        <button type="button" class="btn btn-outline-dark" @onclick="() => CopyAsync(url)">@(copiedLink == url ? "Copied!" : "Copy")</button>
+                    </div>
+                </div>
+            }
+            <div class="d-flex gap-2">
+                <a href="/events/edit/@createdEventId" class="btn btn-primary">Open event</a>
+                <a href="/events" class="btn btn-outline-secondary">Back to Events</a>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<MeetupGroup> groups = [];
+    private Guid groupId;
+    private DateTime localEventDateTime = DateTime.Now.AddDays(14).Date.AddHours(18).AddMinutes(30);
+    private EventFormat format = EventFormat.Hybrid;
+    private string? venueName = "CGI";
+    private string? location = "CGI, King Street Nottingham & Online";
+    private int speakerCount = 1;
+
+    private List<string> links = [];
+    private string createdTitle = string.Empty;
+    private Guid createdEventId;
+    private string? copiedLink;
+    private string? statusMessage;
+    private bool isError;
+    private bool isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        groups = await db.MeetupGroups.OrderBy(g => g.Name).ToListAsync();
+        groupId = groups.FirstOrDefault()?.Id ?? Guid.Empty;
+    }
+
+    private async Task CreateInviteAsync()
+    {
+        if (groupId == Guid.Empty)
+        {
+            statusMessage = "Please create a meetup group first.";
+            isError = true;
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            var group = groups.First(g => g.Id == groupId);
+
+            var evt = new MeetupEvent
+            {
+                MeetupGroupId = groupId,
+                Title = EventTitles.Placeholder(group.Name, localEventDateTime),
+                EventDateTimeUtc = localEventDateTime.ToUniversalTime(),
+                Format = format,
+                VenueName = format == EventFormat.Online ? null : venueName,
+                LocationOrPlatform = location,
+                Status = EventStatus.Draft
+            };
+            evt.ShortBitlyUrl = ShortUrl.ForEvent(group.ShortUrlStem, evt.EventDateTimeUtc);
+
+            var sessions = new List<EventSpeakerSession>();
+            for (var i = 0; i < speakerCount; i++)
+            {
+                var speaker = new Speaker { Name = Speaker.PlaceholderName };
+                db.Speakers.Add(speaker);
+                var session = new EventSpeakerSession { MeetupEventId = evt.Id, SpeakerId = speaker.Id, OrderIndex = i };
+                evt.Sessions.Add(session);
+                sessions.Add(session);
+            }
+            db.MeetupEvents.Add(evt);
+            await db.SaveChangesAsync();
+
+            var baseUrl = NavManager.BaseUri.TrimEnd('/');
+            var urls = new List<string>();
+            foreach (var session in sessions)
+            {
+                var (rawToken, _) = await MagicLinkService.CreateTokenAsync(session.SpeakerId, session.Id);
+                urls.Add($"{baseUrl}/speaker/submit/{rawToken}");
+            }
+
+            links = urls;
+            createdTitle = evt.Title;
+            createdEventId = evt.Id;
+            statusMessage = null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to create quick invite.");
+            statusMessage = $"Failed to create invite: {ex.Message}";
+            isError = true;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task CopyAsync(string text)
+    {
+        try
+        {
+            if (await JS.InvokeAsync<bool>("meetupOrganiser.copyText", text))
+            {
+                copiedLink = text;
+                statusMessage = null;
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Clipboard copy failed.");
+        }
+
+        statusMessage = "Couldn't copy automatically. Select the link and press Ctrl+C.";
+        isError = true;
+    }
+
+    private async Task SelectAllAsync() => await JS.InvokeVoidAsync("meetupOrganiser.selectFocused");
+}

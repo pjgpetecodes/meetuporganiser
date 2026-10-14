@@ -16,6 +16,7 @@
 @inject ISettingsService SettingsService
 @inject NavigationManager NavManager
 @inject ILogger<EventEdit> Logger
+@inject IJSRuntime JS
 
 <PageTitle>@(IsNew ? "New Event" : "Edit Event") - Meetup Organiser</PageTitle>
 
@@ -244,9 +245,9 @@
                     <div class="border rounded p-3 mb-3 bg-white">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <span class="badge bg-primary">Speaker 1</span>
-                            @if (!IsNew && session1 != null)
+                            @if (session1 != null)
                             {
-                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => GenerateMagicLinkForSessionAsync(session1)">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => GenerateMagicLinkAsync(0)">
                                     <i class="bi bi-link-45deg me-1"></i> Magic Link
                                 </button>
                             }
@@ -254,9 +255,9 @@
 
                         @if (magicLinkUrl1 != null)
                         {
-                            <div class="alert alert-info py-2 px-3 small mb-2 d-flex justify-content-between align-items-center">
-                                <span class="text-truncate me-2">@magicLinkUrl1</span>
-                                <button type="button" class="btn btn-xs btn-outline-dark" @onclick="() => CopyToClipboard(magicLinkUrl1)">Copy</button>
+                            <div class="alert alert-info py-2 px-3 small mb-2 d-flex justify-content-between align-items-center gap-2">
+                                <input type="text" readonly class="form-control form-control-sm" value="@magicLinkUrl1" @onfocus="SelectAllAsync" />
+                                <button type="button" class="btn btn-sm btn-outline-dark" @onclick="() => CopyToClipboardAsync(magicLinkUrl1)">@(copiedLink == magicLinkUrl1 ? "Copied!" : "Copy")</button>
                             </div>
                         }
 
@@ -268,7 +269,7 @@
                                 {
                                     @foreach (var s in speakers)
                                     {
-                                        <option value="@s.Id.ToString()">@s.Name (@s.Email)</option>
+                                        <option value="@s.Id.ToString()">@(s.IsPlaceholder ? "Speaker TBC (awaiting speaker details)" : $"{s.Name} ({s.Email})")</option>
                                     }
                                 }
                             </select>
@@ -299,9 +300,9 @@
                         <div class="border rounded p-3 mb-3 bg-white">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span class="badge bg-info text-dark">Speaker 2</span>
-                                @if (!IsNew && session2 != null)
+                                @if (session2 != null)
                                 {
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => GenerateMagicLinkForSessionAsync(session2)">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => GenerateMagicLinkAsync(1)">
                                         <i class="bi bi-link-45deg me-1"></i> Magic Link
                                     </button>
                                 }
@@ -309,9 +310,9 @@
 
                             @if (magicLinkUrl2 != null)
                             {
-                                <div class="alert alert-info py-2 px-3 small mb-2 d-flex justify-content-between align-items-center">
-                                    <span class="text-truncate me-2">@magicLinkUrl2</span>
-                                    <button type="button" class="btn btn-xs btn-outline-dark" @onclick="() => CopyToClipboard(magicLinkUrl2)">Copy</button>
+                                <div class="alert alert-info py-2 px-3 small mb-2 d-flex justify-content-between align-items-center gap-2">
+                                    <input type="text" readonly class="form-control form-control-sm" value="@magicLinkUrl2" @onfocus="SelectAllAsync" />
+                                    <button type="button" class="btn btn-sm btn-outline-dark" @onclick="() => CopyToClipboardAsync(magicLinkUrl2)">@(copiedLink == magicLinkUrl2 ? "Copied!" : "Copy")</button>
                                 </div>
                             }
 
@@ -323,7 +324,7 @@
                                     {
                                         @foreach (var s in speakers)
                                         {
-                                            <option value="@s.Id.ToString()">@s.Name (@s.Email)</option>
+                                            <option value="@s.Id.ToString()">@(s.IsPlaceholder ? "Speaker TBC (awaiting speaker details)" : $"{s.Name} ({s.Email})")</option>
                                         }
                                     }
                                 </select>
@@ -383,7 +384,8 @@
         if (string.Equals(Tab, "assets", StringComparison.OrdinalIgnoreCase)) activeTab = "assets";
     }
 
-    private bool IsNew => !Id.HasValue;
+    private bool persisted;
+    private bool IsNew => !Id.HasValue && !persisted;
 
     private MeetupEvent? evt;
     private AppDbContext? dbContext;
@@ -401,6 +403,7 @@
 
     private string? magicLinkUrl1;
     private string? magicLinkUrl2;
+    private string? copiedLink;
     private string sessionizeEventId = "sample-sessionize";
 
     private bool isSaving;
@@ -576,6 +579,13 @@
                     session2SpeakerId = session2.SpeakerId.ToString();
                     speakerCount = 2;
                 }
+
+                if (string.IsNullOrWhiteSpace(evt.Description) && !string.IsNullOrWhiteSpace(session1.TalkTitle))
+                {
+                    await PopulateEventDescriptionAsync();
+                    statusMessage = "Event description was generated from the speaker details. Review it and click Save Event to keep it.";
+                    isError = false;
+                }
             }
         }
         catch (Exception ex)
@@ -591,15 +601,17 @@
         speakerCount = count;
     }
 
-    private async Task SaveEventAsync()
+    private Task SaveEventAsync() => PersistEventAsync(navigateIfNew: true);
+
+    private async Task<bool> PersistEventAsync(bool navigateIfNew)
     {
-        if (evt == null) return;
+        if (evt == null) return false;
 
         if (string.IsNullOrWhiteSpace(evt.Title))
         {
             statusMessage = "Please enter an event title.";
             isError = true;
-            return;
+            return false;
         }
 
         try
@@ -610,9 +622,11 @@
 
             if (string.IsNullOrWhiteSpace(evt.ShortBitlyUrl)) ApplyShortUrlDefault();
 
-            if (IsNew)
+            var wasNew = IsNew;
+            if (wasNew)
             {
                 await DbContext.MeetupEvents.AddAsync(evt);
+                persisted = true;
             }
 
             // Sync session 1
@@ -651,16 +665,18 @@
             statusMessage = "Event successfully saved!";
             isError = false;
 
-            if (IsNew)
+            if (wasNew && navigateIfNew)
             {
                 NavManager.NavigateTo($"/events/edit/{evt.Id}");
             }
+            return true;
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to save event.");
             statusMessage = $"Error saving event: {ex.Message}";
             isError = true;
+            return false;
         }
         finally
         {
@@ -783,20 +799,34 @@
         }
     }
 
-    private async Task GenerateMagicLinkForSessionAsync(EventSpeakerSession session)
+    private async Task GenerateMagicLinkAsync(int slot)
     {
+        var session = slot == 0 ? session1 : session2;
         try
         {
+            var speakerIdText = slot == 0 ? session1SpeakerId : session2SpeakerId;
+            if (!Guid.TryParse(speakerIdText, out _))
+            {
+                var placeholder = new Speaker { Name = Speaker.PlaceholderName };
+                await DbContext.Speakers.AddAsync(placeholder);
+                speakers?.Add(placeholder);
+                if (slot == 0) session1SpeakerId = placeholder.Id.ToString();
+                else session2SpeakerId = placeholder.Id.ToString();
+            }
+
+            if (!await PersistEventAsync(navigateIfNew: false)) return;
+
             var baseUrl = NavManager.BaseUri.TrimEnd('/');
             var (rawToken, _) = await MagicLinkService.CreateTokenAsync(session.SpeakerId, session.Id);
             var url = $"{baseUrl}/speaker/submit/{rawToken}";
 
-            if (session.OrderIndex == 0)
+            if (slot == 0)
                 magicLinkUrl1 = url;
             else
                 magicLinkUrl2 = url;
 
-            statusMessage = "Magic link generated! Click 'Copy' to share with the speaker.";
+            copiedLink = null;
+            statusMessage = "Magic link generated (any previous unused link was revoked). Click 'Copy' to share it with the speaker.";
             isError = false;
         }
         catch (Exception ex)
@@ -807,10 +837,31 @@
         }
     }
 
-    private void CopyToClipboard(string text)
+    private async Task CopyToClipboardAsync(string text)
     {
-        // Could invoke JS clipboard API if desired, but providing the copyable input provides immediate functionality
+        try
+        {
+            var ok = await JS.InvokeAsync<bool>("meetupOrganiser.copyText", text);
+            if (ok)
+            {
+                copiedLink = text;
+                statusMessage = null;
+            }
+            else
+            {
+                statusMessage = "Couldn't copy automatically. Select the link and press Ctrl+C.";
+                isError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Clipboard copy failed.");
+            statusMessage = "Couldn't copy automatically. Select the link and press Ctrl+C.";
+            isError = true;
+        }
     }
+
+    private async Task SelectAllAsync() => await JS.InvokeVoidAsync("meetupOrganiser.selectFocused");
 
     private AppDbContext DbContext => dbContext ?? throw new InvalidOperationException("The event database context is not available.");
 

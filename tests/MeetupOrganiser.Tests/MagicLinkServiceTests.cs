@@ -18,6 +18,28 @@ public class MagicLinkServiceTests
     }
 
     [Fact]
+    public async Task CreateTokenAsync_RevokesPreviousUnusedTokensForSession()
+    {
+        using var context = CreateDbContext();
+        var service = new MagicLinkService(context);
+        var speakerId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+
+        var (_, oldEntity) = await service.CreateTokenAsync(speakerId, sessionId);
+        var (_, newEntity) = await service.CreateTokenAsync(speakerId, sessionId);
+
+        Assert.True(oldEntity.IsRevoked);
+        Assert.False(newEntity.IsRevoked);
+    }
+
+    [Fact]
+    public void Speaker_IsPlaceholder_OnlyForPlaceholderName()
+    {
+        Assert.True(new Speaker { Name = Speaker.PlaceholderName }.IsPlaceholder);
+        Assert.False(new Speaker { Name = "Jane" }.IsPlaceholder);
+    }
+
+    [Fact]
     public async Task CreateTokenAsync_GeneratesValidToken_And_PersistsHashedEntity()
     {
         // Arrange
