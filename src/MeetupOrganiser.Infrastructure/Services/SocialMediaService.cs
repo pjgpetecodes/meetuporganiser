@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MeetupOrganiser.Core.DTOs;
@@ -137,11 +139,151 @@ public class SocialMediaService : ISocialMediaService
         }
     }
 
-    public Task<SocialPostResult> PostToTwitterAsync(string text, byte[]? imageBytes, CancellationToken cancellationToken = default)
+    public async Task<SocialPostResult> PostToTwitterAsync(string text, byte[]? imageBytes, CancellationToken cancellationToken = default)
     {
         var intentUrl = $"https://twitter.com/intent/tweet?text={Uri.EscapeDataString(text)}";
-        return Task.FromResult(new SocialPostResult("Twitter", true, null, null, intentUrl, text, null));
+        var apiKey = (_settingsService != null
+                ? await _settingsService.GetSettingAsync("Integrations:Twitter:ApiKey", cancellationToken)
+                : null)
+            ?? _configuration["Integrations:Twitter:ApiKey"];
+        var apiSecret = (_settingsService != null
+                ? await _settingsService.GetSettingAsync("Integrations:Twitter:ApiSecret", cancellationToken)
+                : null)
+            ?? _configuration["Integrations:Twitter:ApiSecret"];
+        var accessToken = (_settingsService != null
+                ? await _settingsService.GetSettingAsync("Integrations:Twitter:AccessToken", cancellationToken)
+                : null)
+            ?? _configuration["Integrations:Twitter:AccessToken"];
+        var accessTokenSecret = (_settingsService != null
+                ? await _settingsService.GetSettingAsync("Integrations:Twitter:AccessTokenSecret", cancellationToken)
+                : null)
+            ?? _configuration["Integrations:Twitter:AccessTokenSecret"];
+
+        if (string.IsNullOrWhiteSpace(apiKey)
+            || string.IsNullOrWhiteSpace(apiSecret)
+            || string.IsNullOrWhiteSpace(accessToken)
+            || string.IsNullOrWhiteSpace(accessTokenSecret))
+        {
+            return new SocialPostResult(
+                "Twitter",
+                false,
+                null,
+                null,
+                intentUrl,
+                text,
+                "X API posting requires the API key, API secret, access token, and access token secret. Use Web Intent to compose the post instead.");
+        }
+
+        try
+        {
+            string? mediaId = null;
+            if (imageBytes is { Length: > 0 })
+            {
+                var multipartContent = new MultipartFormDataContent();
+                using var uploadRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.x.com/2/media/upload")
+                {
+                    Content = multipartContent
+                };
+                var imageContent = new ByteArrayContent(imageBytes);
+                imageContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+                multipartContent.Add(imageContent, "media", "social-card.png");
+                multipartContent.Add(new StringContent("tweet_image"), "media_category");
+                uploadRequest.Headers.Authorization = CreateTwitterAuthorizationHeader(
+                    HttpMethod.Post,
+                    uploadRequest.RequestUri!,
+                    apiKey,
+                    apiSecret,
+                    accessToken,
+                    accessTokenSecret);
+
+                using var uploadResponse = await _httpClient.SendAsync(uploadRequest, cancellationToken);
+                if (!uploadResponse.IsSuccessStatusCode)
+                {
+                    var error = await uploadResponse.Content.ReadAsStringAsync(cancellationToken);
+                    return new SocialPostResult("Twitter", false, null, null, intentUrl, text, $"X media upload error: {error}");
+                }
+
+                using var uploadJson = await uploadResponse.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken: cancellationToken);
+                var uploadData = uploadJson?.RootElement
+                    .GetProperty("data")
+                    ?? throw new InvalidOperationException("X media upload returned an empty response.");
+                mediaId = uploadData.GetProperty("id").GetString();
+                if (string.IsNullOrWhiteSpace(mediaId))
+                {
+                    throw new InvalidOperationException("X media upload response did not include a media ID.");
+                }
+            }
+
+            var postBody = mediaId == null
+                ? JsonSerializer.Serialize(new { text })
+                : JsonSerializer.Serialize(new { text, media = new { media_ids = new[] { mediaId } } });
+            using var postRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.x.com/2/tweets")
+            {
+                Content = new StringContent(postBody, Encoding.UTF8, "application/json")
+            };
+            postRequest.Headers.Authorization = CreateTwitterAuthorizationHeader(
+                HttpMethod.Post,
+                postRequest.RequestUri!,
+                apiKey,
+                apiSecret,
+                accessToken,
+                accessTokenSecret);
+
+            using var postResponse = await _httpClient.SendAsync(postRequest, cancellationToken);
+            if (!postResponse.IsSuccessStatusCode)
+            {
+                var error = await postResponse.Content.ReadAsStringAsync(cancellationToken);
+                return new SocialPostResult("Twitter", false, null, null, intentUrl, text, $"X post error: {error}");
+            }
+
+            using var postJson = await postResponse.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken: cancellationToken);
+            var postId = postJson?.RootElement.GetProperty("data").GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("X post response did not include a post ID.");
+            return new SocialPostResult("Twitter", true, postId, $"https://x.com/i/status/{postId}", intentUrl, text, null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to post to X.");
+            return new SocialPostResult("Twitter", false, null, null, intentUrl, text, ex.Message);
+        }
     }
+
+    private static AuthenticationHeaderValue CreateTwitterAuthorizationHeader(
+        HttpMethod method,
+        Uri requestUri,
+        string apiKey,
+        string apiSecret,
+        string accessToken,
+        string accessTokenSecret)
+    {
+        var oauthParameters = new SortedDictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["oauth_consumer_key"] = apiKey,
+            ["oauth_nonce"] = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
+            ["oauth_signature_method"] = "HMAC-SHA1",
+            ["oauth_timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+            ["oauth_token"] = accessToken,
+            ["oauth_version"] = "1.0"
+        };
+        var normalizedParameters = string.Join("&", oauthParameters.Select(parameter =>
+            $"{OAuthEncode(parameter.Key)}={OAuthEncode(parameter.Value)}"));
+        var signatureBase = $"{method.Method.ToUpperInvariant()}&{OAuthEncode(requestUri.GetLeftPart(UriPartial.Path))}&{OAuthEncode(normalizedParameters)}";
+        var signingKey = $"{OAuthEncode(apiSecret)}&{OAuthEncode(accessTokenSecret)}";
+        using var hmac = new HMACSHA1(Encoding.UTF8.GetBytes(signingKey));
+        oauthParameters["oauth_signature"] = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(signatureBase)));
+
+        var authorization = "OAuth " + string.Join(", ", oauthParameters.Select(parameter =>
+            $"{OAuthEncode(parameter.Key)}=\"{OAuthEncode(parameter.Value)}\""));
+        return AuthenticationHeaderValue.Parse(authorization);
+    }
+
+    private static string OAuthEncode(string value) =>
+        Uri.EscapeDataString(value)
+            .Replace("!", "%21", StringComparison.Ordinal)
+            .Replace("*", "%2A", StringComparison.Ordinal)
+            .Replace("'", "%27", StringComparison.Ordinal)
+            .Replace("(", "%28", StringComparison.Ordinal)
+            .Replace(")", "%29", StringComparison.Ordinal);
 
     public async Task<SocialPostResult> PostToLinkedInAsync(string text, byte[]? imageBytes, CancellationToken cancellationToken = default)
     {

@@ -109,6 +109,86 @@ public class SocialMediaServiceTests
     }
 
     [Fact]
+    public async Task PostToTwitterAsync_WithImage_UploadsAndPublishesPostWithImage()
+    {
+        var handler = new TestHttpMessageHandler((request, _) =>
+        {
+            Assert.Equal("OAuth", request.Headers.Authorization?.Scheme);
+            if (request.RequestUri!.AbsolutePath == "/2/media/upload")
+            {
+                Assert.Equal("api.x.com", request.RequestUri.Host);
+                Assert.Equal("multipart/form-data", request.Content!.Headers.ContentType!.MediaType);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"data":{"id":"456","media_key":"3_456"}}""", Encoding.UTF8, "application/json")
+                });
+            }
+
+            Assert.Equal("https://api.x.com/2/tweets", request.RequestUri.ToString());
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Created)
+            {
+                Content = new StringContent("""{"data":{"id":"123"}}""", Encoding.UTF8, "application/json")
+            });
+        });
+        var service = CreateTwitterService(handler);
+
+        var result = await service.PostToTwitterAsync("Hello X", [1, 2, 3]);
+
+        Assert.True(result.Success, result.ErrorMessage);
+        Assert.Equal("123", result.PostId);
+        Assert.Equal("https://x.com/i/status/123", result.PostUrl);
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Contains("media", handler.Bodies[0]);
+        Assert.Contains("social-card.png", handler.Bodies[0]);
+        Assert.Contains("tweet_image", handler.Bodies[0]);
+        using var postBody = JsonDocument.Parse(handler.Bodies[1]!);
+        Assert.Equal("Hello X", postBody.RootElement.GetProperty("text").GetString());
+        Assert.Equal("456", postBody.RootElement.GetProperty("media").GetProperty("media_ids")[0].GetString());
+    }
+
+    [Fact]
+    public async Task PostToTwitterAsync_WithoutImage_PublishesTextAndKeepsIntentFallback()
+    {
+        var handler = new TestHttpMessageHandler((request, _) =>
+        {
+            Assert.Equal("https://api.x.com/2/tweets", request.RequestUri!.ToString());
+            Assert.Equal("OAuth", request.Headers.Authorization?.Scheme);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Created)
+            {
+                Content = new StringContent("""{"data":{"id":"789"}}""", Encoding.UTF8, "application/json")
+            });
+        });
+        var service = CreateTwitterService(handler);
+
+        var result = await service.PostToTwitterAsync("Link only", null);
+
+        Assert.True(result.Success, result.ErrorMessage);
+        Assert.Single(handler.Requests);
+        Assert.StartsWith("https://twitter.com/intent/tweet?text=", result.FallbackShareUrl);
+        using var postBody = JsonDocument.Parse(handler.Bodies[0]!);
+        Assert.Equal("Link only", postBody.RootElement.GetProperty("text").GetString());
+        Assert.False(postBody.RootElement.TryGetProperty("media", out _));
+    }
+
+    [Fact]
+    public async Task PostToTwitterAsync_WithoutCredentials_ReturnsIntentFallback()
+    {
+        var handler = new TestHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+        var service = new SocialMediaService(
+            new HttpClient(handler),
+            new ConfigurationBuilder().Build(),
+            NullLogger<SocialMediaService>.Instance);
+
+        var result = await service.PostToTwitterAsync("Hello X", null);
+
+        Assert.False(result.Success);
+        Assert.Contains("API key", result.ErrorMessage);
+        Assert.NotNull(result.FallbackShareUrl);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
     public async Task PostToLinkedInAsync_WithMemberToken_PublishesTextPost()
     {
         var handler = new TestHttpMessageHandler((request, _) =>
@@ -201,6 +281,20 @@ public class SocialMediaServiceTests
             {
                 ["Integrations:LinkedIn:AccessToken"] = "test-token",
                 ["Integrations:LinkedIn:AuthorUrn"] = "urn:li:person:member123"
+            })
+            .Build();
+        return new SocialMediaService(new HttpClient(handler), config, NullLogger<SocialMediaService>.Instance);
+    }
+
+    private static SocialMediaService CreateTwitterService(HttpMessageHandler handler)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Integrations:Twitter:ApiKey"] = "consumer-key",
+                ["Integrations:Twitter:ApiSecret"] = "consumer-secret",
+                ["Integrations:Twitter:AccessToken"] = "access-token",
+                ["Integrations:Twitter:AccessTokenSecret"] = "access-token-secret"
             })
             .Build();
         return new SocialMediaService(new HttpClient(handler), config, NullLogger<SocialMediaService>.Instance);

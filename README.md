@@ -6,3 +6,7 @@ Uploaded logos, speaker photos and PPTX templates live in Azure Blob Storage (co
 - **Azure:** the App Service uses its managed identity (`Storage__AccountUrl`, role Storage Blob Data Contributor). Shared-key access is disabled on the account.
 - **Local development:** run the Azurite emulator (`npm i -g azurite && azurite`). `Storage:ConnectionString` is `UseDevelopmentStorage=true`.
 - **Migrating existing local uploads** (`wwwroot/storage`, ignored by git): `./scripts/migrate-storage.ps1 -AccountName <account> -SqlConnectionString "<conn>"` (or `-UseAzurite`). It uploads the files and rewrites the `/storage/...` URLs in the database. Use `-WhatIf` to preview.
+
+## API integrations
+
+Setup instructions for BlueSky, X, LinkedIn, Meetup, Zoom, and Sessionize are in the [API integrations guide](docs/API-INTEGRATIONS.md).

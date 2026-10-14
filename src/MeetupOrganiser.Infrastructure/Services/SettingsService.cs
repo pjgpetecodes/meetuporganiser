@@ -212,7 +212,7 @@ public class SettingsService : ISettingsService
             // Twitter / X
             new AppSetting { Key = "Integrations:Twitter:ApiKey", Category = "Twitter / X", Description = "Twitter API / Consumer Key", IsSecret = false },
             new AppSetting { Key = "Integrations:Twitter:ApiSecret", Category = "Twitter / X", Description = "Twitter API / Consumer Secret", IsSecret = true },
-            new AppSetting { Key = "Integrations:Twitter:AccessToken", Category = "Twitter / X", Description = "Twitter Access Token", IsSecret = false },
+            new AppSetting { Key = "Integrations:Twitter:AccessToken", Category = "Twitter / X", Description = "Twitter Access Token", IsSecret = true },
             new AppSetting { Key = "Integrations:Twitter:AccessTokenSecret", Category = "Twitter / X", Description = "Twitter Access Token Secret", IsSecret = true },
 
             // LinkedIn

@@ -166,7 +166,7 @@
                         </h5>
                         <div class="btn-group btn-group-sm">
                             <button type="button" class="btn btn-dark" @onclick="PublishToTwitterAsync" disabled="@isPublishingTwitter">
-                                <i class="bi bi-send me-1"></i> Post via API
+                                <i class="bi bi-send me-1"></i> @(attachTwitterImage ? "Post with Image" : "Post Link Only")
                             </button>
                             @if (!string.IsNullOrWhiteSpace(twitterIntentUrl))
                             {
@@ -179,9 +179,13 @@
                     <div class="mb-2">
                         <textarea class="form-control small" rows="3" @bind="twitterText"></textarea>
                     </div>
+                    <div class="form-check mb-2">
+                        <input id="twitter-attach-image" type="checkbox" class="form-check-input" @bind="attachTwitterImage" />
+                        <label class="form-check-label" for="twitter-attach-image">Attach social card image</label>
+                    </div>
                     <div class="d-flex justify-content-between align-items-center">
-                        <small class="text-muted">Character count: @(twitterText?.Length ?? 0) / 280</small>
-                        <span class="badge bg-light text-secondary border">Twitter API v2 + Intent</span>
+                        <small class="text-muted">Character count: @(twitterText?.Length ?? 0) / 280. Web Intent does not attach the image.</small>
+                        <span class="badge bg-light text-secondary border">X API + Web Intent</span>
                     </div>
                 </div>
 
@@ -231,6 +235,7 @@
     private bool attachLinkedInImage = true;
     private string? linkedInIntentUrl;
     private string? twitterText;
+    private bool attachTwitterImage = true;
     private string? twitterIntentUrl;
     private string? blueSkyText;
     private bool attachBlueSkyImage = true;
@@ -427,10 +432,12 @@
         try
         {
             isPublishingTwitter = true;
-            byte[]? imageBytes = previewImageBase64 != null ? Convert.FromBase64String(previewImageBase64) : null;
+            byte[]? imageBytes = attachTwitterImage && previewImageBase64 != null ? Convert.FromBase64String(previewImageBase64) : null;
             var result = await SocialMediaService.PostToTwitterAsync(twitterText ?? string.Empty, imageBytes);
             statusMessage = result.Success
-                ? "Successfully published to X (Twitter)!"
+                ? attachTwitterImage
+                    ? "Successfully published to X with the social image!"
+                    : "Successfully published to X!"
                 : $"X note: {result.ErrorMessage}. You can use the 'Web Intent' button.";
             isError = !result.Success;
         }

@@ -425,7 +425,10 @@
                                 <i class="bi bi-twitter-x  fs-4 me-3"></i>
                                 <span class="fw-bold me-auto">X (Twitter)</span>
                                 <span class="me-3">
-            @if (!string.IsNullOrWhiteSpace(model.TwitterApiKey) && !string.IsNullOrWhiteSpace(model.TwitterAccessToken))
+            @if (!string.IsNullOrWhiteSpace(model.TwitterApiKey)
+                && !string.IsNullOrWhiteSpace(model.TwitterApiSecret)
+                && !string.IsNullOrWhiteSpace(model.TwitterAccessToken)
+                && !string.IsNullOrWhiteSpace(model.TwitterAccessTokenSecret))
             {
                 <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
                     <i class="bi bi-check-circle me-1"></i> API Mode
@@ -444,7 +447,7 @@
                         {
                             <div class="accordion-collapse show">
                                 <div class="accordion-body">
-            <p class="small text-muted mb-3">Posts event teasers with speaker handles and hashtags, or opens pre-filled compose intents.</p>
+            <p class="small text-muted mb-3">Uses OAuth 1.0a user credentials with read and write access to publish posts and upload images. You can also use the pre-filled Web Intent fallback.</p>
             <div class="row g-2 mb-3">
                 <div class="col-md-6">
                     <label class="form-label fw-semibold small">API / Consumer Key</label>
@@ -453,8 +456,14 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-semibold small">Access Token</label>
-                    <input type="text" class="form-control" placeholder="Access Token"
-                           @bind="model.TwitterAccessToken" />
+                    <div class="input-group">
+                        <input type="@(showPasswords.Contains("TwitterToken") ? "text" : "password")"
+                               class="form-control" placeholder="Access Token"
+                               @bind="model.TwitterAccessToken" />
+                        <button class="btn btn-outline-secondary" type="button" @onclick='() => ToggleShowPassword("TwitterToken")'>
+                            <i class="bi @(showPasswords.Contains("TwitterToken") ? "bi-eye-slash" : "bi-eye")"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="mb-3">
