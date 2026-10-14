@@ -4,5 +4,5 @@ namespace MeetupOrganiser.Core.Interfaces;
 
 public interface IPptxGeneratorService
 {
-    Task<byte[]> GenerateEventDeckAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default);
+    Task<byte[]> GenerateEventDeckAsync(MeetupEvent meetupEvent, MeetupEvent? nextEvent = null, CancellationToken cancellationToken = default);
 }

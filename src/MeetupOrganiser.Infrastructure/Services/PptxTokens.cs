@@ -10,7 +10,7 @@ namespace MeetupOrganiser.Infrastructure.Services;
 // Token replacement shared by the deck generator and the template slide previews.
 public static partial class PptxTokens
 {
-    public static Dictionary<string, string> BuildReplacements(MeetupEvent meetupEvent, bool includeSampleLiterals)
+    public static Dictionary<string, string> BuildReplacements(MeetupEvent meetupEvent, bool includeSampleLiterals, MeetupEvent? nextEvent = null)
     {
         var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
         var session1 = sessions.FirstOrDefault();
@@ -38,6 +38,8 @@ public static partial class PptxTokens
             { "{{EventSubtitle}}", EventHeader.Subtitle(meetupEvent) ?? string.Empty },
         };
 
+        AddNextEventReplacements(replacements, nextEvent);
+
         if (!includeSampleLiterals) return replacements;
 
         // The built-in decks still carry sample text from the original slides.
@@ -59,6 +61,35 @@ public static partial class PptxTokens
         }
 
         return replacements;
+    }
+
+    private const string NextEventPlaceholder = "TBC";
+
+    // Next-event tokens fall back to "TBC" until the following event has been created.
+    private static void AddNextEventReplacements(Dictionary<string, string> replacements, MeetupEvent? next)
+    {
+        var sessions = next?.Sessions.OrderBy(s => s.OrderIndex).ToList() ?? [];
+        var first = sessions.FirstOrDefault();
+        var second = sessions.Skip(1).FirstOrDefault();
+
+        string Or(string? value) => string.IsNullOrWhiteSpace(value) ? NextEventPlaceholder : value;
+
+        replacements["{{NextEventTitle}}"] = Or(next?.Title);
+        replacements["{{NextEventDate}}"] = next == null ? NextEventPlaceholder : next.EventDateTimeUtc.ToString("dddd d'th' MMMM yyyy");
+        replacements["{{NextEventTime}}"] = next == null ? NextEventPlaceholder : EventHeader.ToUkTime(next.EventDateTimeUtc).ToString("HH:mm") + " UK time";
+        replacements["{{NextEventDateLine}}"] = next == null ? NextEventPlaceholder : EventHeader.DateLine(next);
+        replacements["{{NextEventVenue}}"] = Or(next?.LocationOrPlatform);
+        replacements["{{NextEventVenueLine}}"] = next == null ? NextEventPlaceholder : EventHeader.VenueLine(next);
+        replacements["{{NextEventFormat}}"] = next == null ? NextEventPlaceholder : EventHeader.FormatLabel(next.Format);
+        replacements["{{NextEventSubtitle}}"] = next == null ? string.Empty : EventHeader.Subtitle(next) ?? string.Empty;
+        replacements["{{NextEventShortUrl}}"] = Or(next?.ShortBitlyUrl ?? next?.MeetupEventUrl);
+        replacements["{{NextEventSpeakerName}}"] = Or(first?.Speaker?.Name);
+        replacements["{{NextEventSpeaker1Name}}"] = Or(first?.Speaker?.Name);
+        replacements["{{NextEventSpeaker2Name}}"] = Or(second?.Speaker?.Name);
+        replacements["{{NextEventSpeakers}}"] = Or(string.Join(" & ", sessions.Select(s => s.Speaker?.Name).Where(n => !string.IsNullOrWhiteSpace(n))));
+        replacements["{{NextEventTalkTitle}}"] = Or(first?.TalkTitle);
+        replacements["{{NextEventTalk1Title}}"] = Or(first?.TalkTitle);
+        replacements["{{NextEventTalk2Title}}"] = Or(second?.TalkTitle);
     }
 
     public static void ApplyToSlide(Slide slide, IReadOnlyDictionary<string, string> replacements)

@@ -241,7 +241,13 @@ app.MapGet("/api/events/{id:guid}/pptx", async (Guid id, AppDbContext db, IPptxG
         .FirstOrDefaultAsync(e => e.Id == id);
     if (evt == null) return Results.NotFound();
 
-    var bytes = await pptx.GenerateEventDeckAsync(evt);
+    var nextEvent = await db.MeetupEvents
+        .Include(e => e.Sessions).ThenInclude(s => s.Speaker)
+        .Where(e => e.MeetupGroupId == evt.MeetupGroupId && e.EventDateTimeUtc > evt.EventDateTimeUtc)
+        .OrderBy(e => e.EventDateTimeUtc)
+        .FirstOrDefaultAsync();
+
+    var bytes = await pptx.GenerateEventDeckAsync(evt, nextEvent);
     var safeName = string.Join("_", evt.Title.Split(Path.GetInvalidFileNameChars()));
     if (string.IsNullOrWhiteSpace(safeName)) safeName = "MeetupEvent";
     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.presentationml.presentation", $"{safeName}.pptx");
