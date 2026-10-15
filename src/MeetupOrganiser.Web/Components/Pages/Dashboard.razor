@@ -1,10 +1,13 @@
 @page "/dashboard"
 @attribute [Authorize]
 @using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext DbContext
 @inject NavigationManager NavManager
+@inject IMeetupService MeetupService
+@inject ILogger<Dashboard> Logger
 
 <PageTitle>Organizer Dashboard - Meetup Organiser</PageTitle>
 
@@ -118,7 +121,53 @@
                                         <a href="/events/edit/@evt.Id" class="fw-bold text-decoration-none text-reset" title="Edit event">@evt.Title</a>
                                         @if (!string.IsNullOrWhiteSpace(evt.ShortBitlyUrl))
                                         {
-                                            <div class="small text-muted">@evt.ShortBitlyUrl</div>
+                                            <div class="small">
+                                                @if (IsSafeExternalUrl(evt.ShortBitlyUrl))
+                                                {
+                                                    <a href="@evt.ShortBitlyUrl" target="_blank" rel="noopener noreferrer">@evt.ShortBitlyUrl</a>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">@evt.ShortBitlyUrl</span>
+                                                }
+                                            </div>
+                                        }
+                                        @if (IsSafeExternalUrl(evt.MeetupEventUrl))
+                                        {
+                                            <div class="small">
+                                                <a href="@evt.MeetupEventUrl" target="_blank" rel="noopener noreferrer">
+                                                    <i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i>Meetup event
+                                                </a>
+                                            </div>
+                                        }
+                                        @if (evt.Status is EventStatus.Published or EventStatus.Completed)
+                                        {
+                                            <div class="small text-secondary d-flex align-items-center gap-1">
+                                                <i class="bi bi-people-fill" title="Meetup attendees" aria-hidden="true"></i>
+                                                <span>@(evt.MeetupAttendeeCount?.ToString("N0") ?? "—")</span>
+                                                @if (IsSafeExternalUrl(evt.MeetupEventUrl))
+                                                {
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-link p-0 ms-1 text-secondary"
+                                                            title="Refresh attendee count"
+                                                            aria-label="@($"Refresh attendee count for {evt.Title}")"
+                                                            disabled="@refreshingAttendanceEventIds.Contains(evt.Id)"
+                                                            @onclick="() => RefreshAttendanceAsync(evt)">
+                                                        @if (refreshingAttendanceEventIds.Contains(evt.Id))
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                                                        }
+                                                    </button>
+                                                }
+                                            </div>
+                                            @if (attendanceMessages.TryGetValue(evt.Id, out var attendanceMessage))
+                                            {
+                                                <div class="small @(attendanceMessage.IsError ? "text-danger" : "text-success")">@attendanceMessage.Text</div>
+                                            }
                                         }
                                     </td>
                                     <td>
@@ -187,6 +236,9 @@
     private int totalSpeakers = 0;
     private int totalGroups = 0;
     private List<MeetupEvent>? upcomingEvents;
+    private bool hasStartedPublishedAttendanceRefresh;
+    private readonly HashSet<Guid> refreshingAttendanceEventIds = [];
+    private readonly Dictionary<Guid, AttendanceMessage> attendanceMessages = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -208,6 +260,81 @@
             .Take(5)
             .ToListAsync();
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || hasStartedPublishedAttendanceRefresh || upcomingEvents == null) return;
+
+        hasStartedPublishedAttendanceRefresh = true;
+        foreach (var evt in upcomingEvents.Where(item =>
+                     item.Status == EventStatus.Published
+                     && IsSafeExternalUrl(item.MeetupEventUrl)))
+        {
+            await RefreshAttendanceAsync(evt, showStatus: false);
+        }
+    }
+
+    private async Task RefreshAttendanceAsync(MeetupEvent evt, bool showStatus = true)
+    {
+        if (!refreshingAttendanceEventIds.Add(evt.Id)) return;
+        StateHasChanged();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(evt.MeetupEventUrl))
+            {
+                throw new InvalidOperationException("This event does not have a Meetup event URL.");
+            }
+
+            var attendeeCount = await MeetupService.GetAttendeeCountAsync(evt.MeetupEventUrl);
+            if (attendeeCount == null)
+            {
+                Logger.LogInformation("Meetup did not expose an attendee count for event {EventId}.", evt.Id);
+                if (showStatus)
+                {
+                    attendanceMessages[evt.Id] = new AttendanceMessage(
+                        "Meetup's event page did not include an attendee count.",
+                        IsError: true);
+                }
+                return;
+            }
+
+            var eventToUpdate = await DbContext.MeetupEvents.FindAsync(evt.Id);
+            if (eventToUpdate == null)
+            {
+                throw new InvalidOperationException("The event could not be found while saving its attendee count.");
+            }
+
+            eventToUpdate.MeetupAttendeeCount = attendeeCount.Value;
+            eventToUpdate.UpdatedAtUtc = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            evt.MeetupAttendeeCount = attendeeCount.Value;
+            attendanceMessages[evt.Id] = new AttendanceMessage(
+                $"Updated: {attendeeCount.Value:N0} attendee(s).",
+                IsError: false);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to refresh Meetup attendee count for event {EventId}.", evt.Id);
+            if (showStatus)
+            {
+                attendanceMessages[evt.Id] = new AttendanceMessage(
+                    "Unable to refresh the Meetup attendee count.",
+                    IsError: true);
+            }
+        }
+        finally
+        {
+            refreshingAttendanceEventIds.Remove(evt.Id);
+            StateHasChanged();
+        }
+    }
+
+    private static bool IsSafeExternalUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
+
+    private sealed record AttendanceMessage(string Text, bool IsError);
 
     private static string GetStatusBadgeClass(EventStatus status) => status switch
     {
