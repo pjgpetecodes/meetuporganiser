@@ -285,7 +285,7 @@
                                 </td>
                                 <td>
                                     <span class="badge @GetStatusBadge(evt.Status)">@evt.Status</span>
-                                    @if (evt.Sessions.Any(s => s.Speaker?.IsPlaceholder == true))
+                                    @if (evt.Sessions.Any(s => s.Speaker?.IsPlaceholder == true) || (evt.Status == EventStatus.Draft && MeetupOrganiser.Core.Services.EventTitles.IsPlaceholder(evt.Title)))
                                     {
                                         <span class="badge text-bg-warning ms-1">Awaiting speaker</span>
                                     }

@@ -68,12 +68,25 @@
 
             <div class="mb-4">
                 <label class="form-label fw-semibold d-block">Speakers</label>
-                <div class="btn-group">
+                <div class="btn-group mb-3">
                     <input type="radio" class="btn-check" name="inviteSpeakers" id="inv1" checked="@(speakerCount == 1)" @onchange="() => speakerCount = 1">
                     <label class="btn btn-outline-primary" for="inv1">1 Speaker</label>
                     <input type="radio" class="btn-check" name="inviteSpeakers" id="inv2" checked="@(speakerCount == 2)" @onchange="() => speakerCount = 2">
                     <label class="btn btn-outline-primary" for="inv2">2 Speakers</label>
                 </div>
+                @for (var s = 0; s < speakerCount; s++)
+                {
+                    var n = s;
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <input type="text" class="form-control" placeholder="@($"Speaker {n + 1} name (optional)")" @bind="speakerNames[n]" />
+                        </div>
+                        <div class="col-md-6">
+                            <input type="email" class="form-control" placeholder="@($"Speaker {n + 1} email (optional)")" @bind="speakerEmails[n]" />
+                        </div>
+                    </div>
+                }
+                <div class="form-text">Add an email address to be able to email the link straight to the speaker.</div>
             </div>
 
             <div>
@@ -98,7 +111,7 @@
                         <input type="text" readonly class="form-control" value="@url" @onfocus="SelectAllAsync" />
                         <button type="button" class="btn btn-outline-dark" @onclick="() => CopyAsync(url)">@(copiedLink == url ? "Copied!" : "Copy")</button>
                     </div>
-                    <EmailLinkForm Link="@url"                     SpeakerId="@speakerIds[index]"
+                    <EmailLinkForm Link="@url" SpeakerId="@speakerIds[index]" SpeakerName="@speakerLabels[index]" InitialEmail="@speakerEmailsSaved[index]"
                                    EventTitle="@createdTitle" EventDateUtc="@createdEventUtc" />
                 </div>
             }
@@ -119,6 +132,10 @@
     private string? location = "CGI, King Street Nottingham & Online";
     private int speakerCount = 1;
 
+    private string?[] speakerNames = new string?[2];
+    private string?[] speakerEmails = new string?[2];
+    private List<string?> speakerLabels = [];
+    private List<string?> speakerEmailsSaved = [];
     private List<string> links = [];
     private List<Guid> speakerIds = [];
     private DateTime? createdEventUtc;
@@ -166,7 +183,13 @@
             var sessions = new List<EventSpeakerSession>();
             for (var i = 0; i < speakerCount; i++)
             {
-                var speaker = new Speaker { Name = Speaker.PlaceholderName };
+                var name = speakerNames[i]?.Trim();
+                var email = speakerEmails[i]?.Trim();
+                var speaker = new Speaker
+                {
+                    Name = string.IsNullOrWhiteSpace(name) ? Speaker.PlaceholderName : name,
+                    Email = string.IsNullOrWhiteSpace(email) ? null : email
+                };
                 db.Speakers.Add(speaker);
                 var session = new EventSpeakerSession { MeetupEventId = evt.Id, SpeakerId = speaker.Id, OrderIndex = i };
                 evt.Sessions.Add(session);
@@ -185,6 +208,8 @@
 
             links = urls;
             speakerIds = sessions.Select(s => s.SpeakerId).ToList();
+            speakerLabels = Enumerable.Range(0, speakerCount).Select(i => speakerNames[i]?.Trim()).ToList();
+            speakerEmailsSaved = Enumerable.Range(0, speakerCount).Select(i => speakerEmails[i]?.Trim()).ToList();
             createdEventUtc = evt.EventDateTimeUtc;
             createdTitle = evt.Title;
             createdEventId = evt.Id;
