@@ -216,11 +216,11 @@
                                         <span class="badge @GetStatusBadgeClass(evt.Status)">@evt.Status</span>
                                     </td>
                                     <td class="text-end">
-                                        <div class="events-row-desktop-actions btn-group btn-group-sm">
-                                            <a href="/events/edit/@evt.Id?tab=assets" class="btn btn-outline-primary" title="Slide Deck & Social Cards">
-                                                <i class="bi bi-file-earmark-slides"></i> Slides &amp; Assets
+                                        <div class="events-row-desktop-actions">
+                                            <a href="/events/edit/@evt.Id?tab=assets" class="row-action row-action-primary" title="Slide Deck & Social Cards">
+                                                <i class="bi bi-file-earmark-slides"></i> Assets
                                             </a>
-                                            <a href="/events/edit/@evt.Id" class="btn btn-outline-secondary" title="Edit">
+                                            <a href="/events/edit/@evt.Id" class="row-action" title="Edit" aria-label="Edit">
                                                 <i class="bi bi-pencil"></i>
                                             </a>
                                         </div>

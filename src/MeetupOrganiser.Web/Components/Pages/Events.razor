@@ -393,17 +393,17 @@
                                     }
                                 </td>
                                 <td class="text-end">
-                                    <div class="events-row-desktop-actions btn-group btn-group-sm">
-                                        <a href="/events/edit/@evt.Id?tab=assets" class="btn btn-outline-primary" title="Slide Deck & Social Images">
-                                            <i class="bi bi-file-earmark-slides me-1"></i> Assets
+                                    <div class="events-row-desktop-actions">
+                                        <a href="/events/edit/@evt.Id?tab=assets" class="row-action row-action-primary" title="Slide Deck & Social Images">
+                                            <i class="bi bi-file-earmark-slides"></i> Assets
                                         </a>
-                                        <a href="/events/edit/@evt.Id" class="btn btn-outline-secondary" title="Edit Event">
+                                        <a href="/events/edit/@evt.Id" class="row-action" title="Edit Event" aria-label="Edit Event">
                                             <i class="bi bi-pencil"></i>
                                         </a>
-                                        <button class="btn btn-outline-info" title="Clone Event" @onclick="() => CloneEventAsync(evt)">
+                                        <button type="button" class="row-action" title="Clone Event" aria-label="Clone Event" @onclick="() => CloneEventAsync(evt)">
                                             <i class="bi bi-copy"></i>
                                         </button>
-                                        <button class="btn btn-outline-danger" title="Delete" @onclick="() => DeleteEventAsync(evt)">
+                                        <button type="button" class="row-action row-action-danger" title="Delete" aria-label="Delete Event" @onclick="() => DeleteEventAsync(evt)">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
