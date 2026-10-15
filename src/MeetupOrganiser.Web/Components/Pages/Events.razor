@@ -300,8 +300,7 @@
                                     <div class="small text-secondary">
                                         <i class="bi bi-geo-alt me-1"></i>@(evt.LocationOrPlatform ?? "Zoom")
                                     </div>
-                                    @if (evt.Status == EventStatus.Published
-                                        || (evt.Status == EventStatus.Completed && evt.MeetupAttendeeCount.HasValue))
+                                    @if (evt.Status is EventStatus.Published or EventStatus.Completed)
                                     {
                                         <div class="small text-secondary d-flex align-items-center gap-1">
                                             <i class="bi bi-people-fill" title="Meetup attendees" aria-hidden="true"></i>
@@ -328,7 +327,24 @@
                                     }
                                     @if (!string.IsNullOrWhiteSpace(evt.ShortBitlyUrl))
                                     {
-                                        <div class="small text-primary font-monospace">@evt.ShortBitlyUrl</div>
+                                        @if (IsSafeExternalUrl(evt.ShortBitlyUrl))
+                                        {
+                                            <div class="small font-monospace">
+                                                <a href="@evt.ShortBitlyUrl" target="_blank" rel="noopener noreferrer">@evt.ShortBitlyUrl</a>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="small text-primary font-monospace">@evt.ShortBitlyUrl</div>
+                                        }
+                                    }
+                                    @if (IsSafeExternalUrl(evt.MeetupEventUrl))
+                                    {
+                                        <div class="small">
+                                            <a href="@evt.MeetupEventUrl" target="_blank" rel="noopener noreferrer">
+                                                <i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i>Meetup event
+                                            </a>
+                                        </div>
                                     }
                                 </td>
                                 <td>
@@ -525,7 +541,13 @@
             var attendeeCount = await MeetupService.GetAttendeeCountAsync(evt.MeetupEventUrl);
             if (attendeeCount == null)
             {
-                throw new InvalidOperationException("Meetup did not expose an attendee count for this event.");
+                Logger.LogInformation("Meetup did not expose an attendee count for event {EventId}.", evt.Id);
+                if (showStatus)
+                {
+                    statusMessage = "Meetup's event page did not include an attendee count. The saved count was left unchanged.";
+                    isError = true;
+                }
+                return;
             }
 
             await using var dbContext = await DbContextFactory.CreateDbContextAsync();
@@ -951,4 +973,8 @@
         EventStatus.Completed => "bg-secondary text-white",
         _ => "bg-light text-dark"
     };
+
+    private static bool IsSafeExternalUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
 }

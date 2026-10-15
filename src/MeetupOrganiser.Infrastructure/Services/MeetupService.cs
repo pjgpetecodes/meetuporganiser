@@ -661,6 +661,17 @@ public class MeetupService : IMeetupService
     private static int? ParseAttendeeCount(string html)
     {
         var document = new HtmlParser().ParseDocument(html);
+        foreach (var element in document.QuerySelectorAll("[data-attendee-count], [data-rsvp-count], [data-going-count]"))
+        {
+            foreach (var attribute in new[] { "data-attendee-count", "data-rsvp-count", "data-going-count" })
+            {
+                if (int.TryParse(element.GetAttribute(attribute), out var count) && count >= 0)
+                {
+                    return count;
+                }
+            }
+        }
+
         foreach (var script in document.QuerySelectorAll("script"))
         {
             if (string.IsNullOrWhiteSpace(script.TextContent)) continue;
@@ -676,7 +687,8 @@ public class MeetupService : IMeetupService
             }
         }
 
-        var pageText = Regex.Replace(document.Body?.TextContent ?? string.Empty, @"\s+", " ");
+        var plainHtmlText = System.Net.WebUtility.HtmlDecode(Regex.Replace(html, @"<[^>]+>", " "));
+        var pageText = Regex.Replace($"{document.Body?.TextContent} {plainHtmlText}", @"\s+", " ");
         foreach (var pattern in new[]
         {
             @"\b(?<count>\d[\d,]*)\s+(?:(?:people|members)\s+)?(?:are\s+)?(?:going|attending|attendees|attended)\b",
