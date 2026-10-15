@@ -267,6 +267,24 @@
                             </div>
                         }
 
+                        @if (SelectedSpeaker(session1SpeakerId) is { IsPlaceholder: false } current1 && !changeSpeaker1)
+                        {
+                            <div class="d-flex align-items-center gap-3 mb-2">
+                                <SpeakerAvatar Speaker="current1" />
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold">@current1.Name</div>
+                                    @if (!string.IsNullOrWhiteSpace(session1.TalkTitle))
+                                    {
+                                        <div class="small text-secondary">@session1.TalkTitle</div>
+                                    }
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => changeSpeaker1 = true">
+                                    <i class="bi bi-arrow-left-right me-1"></i> Change speaker or talk
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
                         <div class="mb-2">
                             <label class="form-label small fw-semibold">Select Speaker</label>
                             <select class="form-select form-select-sm" @bind="session1SpeakerId">
@@ -286,8 +304,13 @@
                                     <summary class="small text-primary" style="cursor: pointer;">Look up @sp1.Name on Sessionize</summary>
                                     <div class="mt-2"><SessionizeProfileLookup @key="sp1.Id" InitialQuery="@sp1.Name" Current="sp1" OnApply="r => ApplyProfileToSpeakerAsync(sp1, r)" /></div>
                                 </details>
+                                @if (!sp1.IsPlaceholder)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @onclick="() => changeSpeaker1 = false">Done</button>
+                                }
                             }
                         </div>
+                        }
 
                         <div class="mb-2">
                             <label class="form-label small fw-semibold">Talk Title</label>
@@ -328,6 +351,24 @@
                                 </div>
                             }
 
+                            @if (SelectedSpeaker(session2SpeakerId) is { IsPlaceholder: false } current2 && !changeSpeaker2)
+                            {
+                                <div class="d-flex align-items-center gap-3 mb-2">
+                                    <SpeakerAvatar Speaker="current2" />
+                                    <div class="flex-grow-1">
+                                        <div class="fw-semibold">@current2.Name</div>
+                                        @if (!string.IsNullOrWhiteSpace(session2.TalkTitle))
+                                        {
+                                            <div class="small text-secondary">@session2.TalkTitle</div>
+                                        }
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => changeSpeaker2 = true">
+                                        <i class="bi bi-arrow-left-right me-1"></i> Change speaker or talk
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
                             <div class="mb-2">
                                 <label class="form-label small fw-semibold">Select Speaker</label>
                                 <select class="form-select form-select-sm" @bind="session2SpeakerId">
@@ -347,8 +388,13 @@
                                         <summary class="small text-primary" style="cursor: pointer;">Look up @sp2.Name on Sessionize</summary>
                                         <div class="mt-2"><SessionizeProfileLookup @key="sp2.Id" InitialQuery="@sp2.Name" Current="sp2" OnApply="r => ApplyProfileToSpeakerAsync(sp2, r)" /></div>
                                     </details>
+                                    @if (!sp2.IsPlaceholder)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @onclick="() => changeSpeaker2 = false">Done</button>
+                                    }
                                 }
                             </div>
+                            }
 
                             <div class="mb-2">
                                 <label class="form-label small fw-semibold">Talk Title</label>
@@ -412,6 +458,9 @@
 
     private string session1SpeakerId = string.Empty;
     private string session2SpeakerId = string.Empty;
+
+    private bool changeSpeaker1;
+    private bool changeSpeaker2;
 
     private string? magicLinkUrl1;
     private string? magicLinkUrl2;

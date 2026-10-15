@@ -1,0 +1,17 @@
+@using MeetupOrganiser.Core.Entities
+
+@if (!string.IsNullOrWhiteSpace(Speaker.PhotoBlobUrl))
+{
+    <img src="@Speaker.PhotoBlobUrl" alt="@Speaker.Name" class="rounded-circle border" style="width: @(Size)px; height: @(Size)px; object-fit: cover;" />
+}
+else
+{
+    <div class="rounded-circle bg-primary-subtle text-primary border d-flex align-items-center justify-content-center fw-bold" style="width: @(Size)px; height: @(Size)px;">
+        @Speaker.Name[..Math.Min(2, Speaker.Name.Length)]
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public Speaker Speaker { get; set; } = default!;
+    [Parameter] public int Size { get; set; } = 48;
+}

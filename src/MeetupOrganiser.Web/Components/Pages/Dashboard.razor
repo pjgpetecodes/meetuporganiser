@@ -115,7 +115,7 @@
                             {
                                 <tr>
                                     <td>
-                                        <strong>@evt.Title</strong>
+                                        <a href="/events/edit/@evt.Id" class="fw-bold text-decoration-none text-reset" title="Edit event">@evt.Title</a>
                                         @if (!string.IsNullOrWhiteSpace(evt.ShortBitlyUrl))
                                         {
                                             <div class="small text-muted">@evt.ShortBitlyUrl</div>
@@ -149,13 +149,26 @@
                                         <span class="badge @GetStatusBadgeClass(evt.Status)">@evt.Status</span>
                                     </td>
                                     <td class="text-end">
-                                        <div class="btn-group btn-group-sm">
+                                        <div class="events-row-desktop-actions btn-group btn-group-sm">
                                             <a href="/events/edit/@evt.Id?tab=assets" class="btn btn-outline-primary" title="Slide Deck & Social Cards">
                                                 <i class="bi bi-file-earmark-slides"></i> Slides &amp; Assets
                                             </a>
                                             <a href="/events/edit/@evt.Id" class="btn btn-outline-secondary" title="Edit">
                                                 <i class="bi bi-pencil"></i>
                                             </a>
+                                        </div>
+                                        <div class="events-compact-actions event-row-actions">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" popovertarget="@($"dash-event-actions-{evt.Id}")" aria-label="@($"Actions for {evt.Title}")">
+                                                <i class="bi bi-three-dots" aria-hidden="true"></i>
+                                            </button>
+                                            <div id="@($"dash-event-actions-{evt.Id}")" class="event-row-action-items" popover="auto">
+                                                <a href="/events/edit/@evt.Id?tab=assets" class="dropdown-item">
+                                                    <i class="bi bi-file-earmark-slides me-2" aria-hidden="true"></i> Slides &amp; Assets
+                                                </a>
+                                                <a href="/events/edit/@evt.Id" class="dropdown-item">
+                                                    <i class="bi bi-pencil me-2" aria-hidden="true"></i> Edit
+                                                </a>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
