@@ -120,6 +120,7 @@ public class MeetupServiceImportTests
     [InlineData("""<html><body><script type="application/json">{"event":{"attendeeCount":42}}</script></body></html>""", 42)]
     [InlineData("""<html><body><span data-attendee-count="17"></span></body></html>""", 17)]
     [InlineData("""<html><body><script>window.data = "25 people going";</script></body></html>""", 25)]
+    [InlineData("""<html><body><script type="application/json">{"props":{"pageProps":{"__APOLLO_STATE__":{"Event:312730011":{"goingCount":{"__typename":"RsvpConnection","totalCount":12}}}}}}</script></body></html>""", 12)]
     public async Task GetAttendeeCountAsync_ParsesAttendanceFromMeetupPage(string html, int expectedCount)
     {
         var service = new MeetupService(

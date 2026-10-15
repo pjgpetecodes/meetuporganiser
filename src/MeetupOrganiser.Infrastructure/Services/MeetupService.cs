@@ -711,17 +711,22 @@ public class MeetupService : IMeetupService
         {
             foreach (var property in element.EnumerateObject())
             {
+                var isGoingCount = property.Name.Equals("goingCount", StringComparison.OrdinalIgnoreCase);
+                var isYesRsvpConnection = property.Name.StartsWith("rsvps(", StringComparison.OrdinalIgnoreCase)
+                    && property.Name.Contains("YES", StringComparison.OrdinalIgnoreCase);
                 if (property.Name.Equals("attendeeCount", StringComparison.OrdinalIgnoreCase)
                     || property.Name.Equals("attendeesCount", StringComparison.OrdinalIgnoreCase)
                     || property.Name.Equals("rsvpCount", StringComparison.OrdinalIgnoreCase)
-                    || property.Name.Equals("goingCount", StringComparison.OrdinalIgnoreCase)
+                    || isGoingCount
                     || property.Name.Equals("yesRsvpCount", StringComparison.OrdinalIgnoreCase)
                     || property.Name.Equals("attendee_count", StringComparison.OrdinalIgnoreCase)
                     || property.Name.Equals("rsvp_count", StringComparison.OrdinalIgnoreCase)
                     || property.Name.Equals("yes_rsvp_count", StringComparison.OrdinalIgnoreCase)
-                    || property.Name.Equals("going", StringComparison.OrdinalIgnoreCase))
+                    || property.Name.Equals("going", StringComparison.OrdinalIgnoreCase)
+                    || isYesRsvpConnection)
                 {
-                    var count = ParseNonNegativeInt(property.Value);
+                    var count = ParseNonNegativeInt(property.Value)
+                        ?? ((isGoingCount || isYesRsvpConnection) ? FindTotalCount(property.Value) : null);
                     if (count.HasValue) return count;
                 }
             }
@@ -738,6 +743,21 @@ public class MeetupService : IMeetupService
             {
                 var count = FindAttendeeCount(item);
                 if (count.HasValue) return count;
+            }
+        }
+
+        return null;
+    }
+
+    private static int? FindTotalCount(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object) return null;
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.Name.Equals("totalCount", StringComparison.OrdinalIgnoreCase))
+            {
+                return ParseNonNegativeInt(property.Value);
             }
         }
 
