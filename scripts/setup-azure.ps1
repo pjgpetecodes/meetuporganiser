@@ -36,6 +36,9 @@ param(
     [string]$EntraClientSecret = "",
 
     [Parameter(Mandatory = $false)]
+    [switch]$ConfigureLocalEmail,
+
+    [Parameter(Mandatory = $false)]
     [switch]$ConfigureGitHubSecrets
 )
 
@@ -141,6 +144,12 @@ Write-Host "Storage Account:      $storageAccountName"
 Write-Host "Key Vault:            $keyVaultName"
 Write-Host "Email Sender:         $emailSenderAddress  (set the organiser address in Settings > Email Notifications)"
 Write-Host "======================================================"
+
+# Wire up local development email via user-secrets
+if ($ConfigureLocalEmail) {
+    Write-Host "`nConfiguring local email user-secrets..." -ForegroundColor Yellow
+    & (Join-Path $PSScriptRoot "configure-local-email.ps1") -ResourceGroupName $ResourceGroupName
+}
 
 # 6. Configure GitHub Secrets if requested or `gh` is available
 if ($ConfigureGitHubSecrets) {
