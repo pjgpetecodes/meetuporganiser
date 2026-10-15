@@ -51,6 +51,8 @@ public class MeetupEvent
     [MaxLength(500)]
     public string? ShortBitlyUrl { get; set; }
 
+    public int? MeetupAttendeeCount { get; set; }
+
     public EventStatus Status { get; set; } = EventStatus.Draft;
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;

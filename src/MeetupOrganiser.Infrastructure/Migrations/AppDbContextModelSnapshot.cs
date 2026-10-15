@@ -186,6 +186,9 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int?>("MeetupAttendeeCount")
+                        .HasColumnType("int");
+
                     b.Property<string>("MeetupEventId")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");

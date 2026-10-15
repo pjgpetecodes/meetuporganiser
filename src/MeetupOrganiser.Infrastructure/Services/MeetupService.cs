@@ -265,6 +265,20 @@ public class MeetupService : IMeetupService
         }
     }
 
+    public async Task<int?> GetAttendeeCountAsync(string eventUrl, CancellationToken cancellationToken = default)
+    {
+        if (!Uri.TryCreate(eventUrl, UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttps
+            || !IsMeetupHost(uri.Host)
+            || !uri.AbsolutePath.Contains("/events/", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("A valid Meetup event URL is required.", nameof(eventUrl));
+        }
+
+        var html = await FetchMeetupHtmlAsync(uri, cancellationToken);
+        return ParseAttendeeCount(html);
+    }
+
     private async Task<MeetupEventImportResult> ImportPastEventsFromHtmlAsync(
         string urlname,
         CancellationToken cancellationToken,
@@ -642,6 +656,97 @@ public class MeetupService : IMeetupService
             LimitLength(location, 200),
             speakers,
             imageUrl);
+    }
+
+    private static int? ParseAttendeeCount(string html)
+    {
+        var document = new HtmlParser().ParseDocument(html);
+        foreach (var script in document.QuerySelectorAll("script"))
+        {
+            if (string.IsNullOrWhiteSpace(script.TextContent)) continue;
+            try
+            {
+                using var json = JsonDocument.Parse(script.TextContent);
+                var count = FindAttendeeCount(json.RootElement);
+                if (count.HasValue) return count;
+            }
+            catch (JsonException)
+            {
+                // Most scripts on Meetup pages are not JSON.
+            }
+        }
+
+        var pageText = Regex.Replace(document.Body?.TextContent ?? string.Empty, @"\s+", " ");
+        foreach (var pattern in new[]
+        {
+            @"\b(?<count>\d[\d,]*)\s+(?:(?:people|members)\s+)?(?:are\s+)?(?:going|attending|attendees|attended)\b",
+            @"\b(?:attendees|attending|attended|people going|going)\s*[:(]\s*(?<count>\d[\d,]*)\b"
+        })
+        {
+            var match = Regex.Match(pageText, pattern, RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups["count"].Value.Replace(",", string.Empty), out var count))
+            {
+                return count;
+            }
+        }
+
+        return null;
+    }
+
+    private static int? FindAttendeeCount(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (property.Name.Equals("attendeeCount", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("attendeesCount", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("rsvpCount", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("goingCount", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("yesRsvpCount", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("attendee_count", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("rsvp_count", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("yes_rsvp_count", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("going", StringComparison.OrdinalIgnoreCase))
+                {
+                    var count = ParseNonNegativeInt(property.Value);
+                    if (count.HasValue) return count;
+                }
+            }
+
+            foreach (var property in element.EnumerateObject())
+            {
+                var count = FindAttendeeCount(property.Value);
+                if (count.HasValue) return count;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                var count = FindAttendeeCount(item);
+                if (count.HasValue) return count;
+            }
+        }
+
+        return null;
+    }
+
+    private static int? ParseNonNegativeInt(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) && number >= 0)
+        {
+            return number;
+        }
+
+        if (value.ValueKind == JsonValueKind.String
+            && int.TryParse(value.GetString(), out number)
+            && number >= 0)
+        {
+            return number;
+        }
+
+        return null;
     }
 
     private static JsonElement? FindJsonLdEvent(JsonElement element)

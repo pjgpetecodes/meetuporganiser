@@ -114,6 +114,34 @@ public class MeetupServiceImportTests
         Assert.Contains("Not authorized", result.ErrorMessage);
     }
 
+    [Theory]
+    [InlineData("""<html><body><div>12 people going</div></body></html>""", 12)]
+    [InlineData("""<html><body><div>1,234 attendees</div></body></html>""", 1234)]
+    [InlineData("""<html><body><script type="application/json">{"event":{"attendeeCount":42}}</script></body></html>""", 42)]
+    public async Task GetAttendeeCountAsync_ParsesAttendanceFromMeetupPage(string html, int expectedCount)
+    {
+        var service = new MeetupService(
+            new HttpClient(new QueueHttpMessageHandler([html])),
+            new ConfigurationBuilder().Build(),
+            NullLogger<MeetupService>.Instance);
+
+        var count = await service.GetAttendeeCountAsync("https://www.meetup.com/example/events/123/");
+
+        Assert.Equal(expectedCount, count);
+    }
+
+    [Fact]
+    public async Task GetAttendeeCountAsync_RejectsNonMeetupUrls()
+    {
+        var service = new MeetupService(
+            new HttpClient(),
+            new ConfigurationBuilder().Build(),
+            NullLogger<MeetupService>.Instance);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.GetAttendeeCountAsync("https://example.com/events/123/"));
+    }
+
     [Fact]
     public async Task ImportPastEventsAsync_UsesHtmlFallbackWithoutApiCredentialsAndReadsMeetupSpeakerDetails()
     {

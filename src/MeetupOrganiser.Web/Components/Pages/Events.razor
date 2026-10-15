@@ -300,6 +300,32 @@
                                     <div class="small text-secondary">
                                         <i class="bi bi-geo-alt me-1"></i>@(evt.LocationOrPlatform ?? "Zoom")
                                     </div>
+                                    @if (evt.Status == EventStatus.Published
+                                        || (evt.Status == EventStatus.Completed && evt.MeetupAttendeeCount.HasValue))
+                                    {
+                                        <div class="small text-secondary d-flex align-items-center gap-1">
+                                            <i class="bi bi-people-fill" title="Meetup attendees" aria-hidden="true"></i>
+                                            <span>@(evt.MeetupAttendeeCount?.ToString("N0") ?? "—")</span>
+                                            @if (!string.IsNullOrWhiteSpace(evt.MeetupEventUrl))
+                                            {
+                                                <button type="button"
+                                                        class="btn btn-sm btn-link p-0 ms-1 text-secondary"
+                                                        title="Refresh attendee count"
+                                                        aria-label="@($"Refresh attendee count for {evt.Title}")"
+                                                        disabled="@refreshingAttendanceEventIds.Contains(evt.Id)"
+                                                        @onclick="() => RefreshAttendanceAsync(evt)">
+                                                    @if (refreshingAttendanceEventIds.Contains(evt.Id))
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                                                    }
+                                                </button>
+                                            }
+                                        </div>
+                                    }
                                     @if (!string.IsNullOrWhiteSpace(evt.ShortBitlyUrl))
                                     {
                                         <div class="small text-primary font-monospace">@evt.ShortBitlyUrl</div>
@@ -406,6 +432,8 @@
     private string? statusMessage;
     private bool isError;
     private bool isSyncingMeetup;
+    private bool hasStartedPublishedAttendanceRefresh;
+    private readonly HashSet<Guid> refreshingAttendanceEventIds = [];
     private MeetupEventImportResult? pendingMeetupImport;
     private Guid? pendingMeetupGroupId;
     private List<Speaker> importSpeakers = [];
@@ -458,6 +486,19 @@
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || hasStartedPublishedAttendanceRefresh || allEvents == null) return;
+
+        hasStartedPublishedAttendanceRefresh = true;
+        foreach (var evt in allEvents.Where(item =>
+                     item.Status == EventStatus.Published
+                     && !string.IsNullOrWhiteSpace(item.MeetupEventUrl)))
+        {
+            await RefreshAttendanceAsync(evt, showStatus: false);
+        }
+    }
+
     private async Task LoadEventsAsync()
     {
         await using var dbContext = await DbContextFactory.CreateDbContextAsync();
@@ -467,6 +508,57 @@
                 .ThenInclude(s => s.Speaker)
             .OrderByDescending(e => e.EventDateTimeUtc)
             .ToListAsync();
+    }
+
+    private async Task RefreshAttendanceAsync(MeetupEvent evt, bool showStatus = true)
+    {
+        if (!refreshingAttendanceEventIds.Add(evt.Id)) return;
+        StateHasChanged();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(evt.MeetupEventUrl))
+            {
+                throw new InvalidOperationException("This event does not have a Meetup event URL.");
+            }
+
+            var attendeeCount = await MeetupService.GetAttendeeCountAsync(evt.MeetupEventUrl);
+            if (attendeeCount == null)
+            {
+                throw new InvalidOperationException("Meetup did not expose an attendee count for this event.");
+            }
+
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var eventToUpdate = await dbContext.MeetupEvents.FindAsync(evt.Id);
+            if (eventToUpdate == null)
+            {
+                throw new InvalidOperationException("The event could not be found while saving its attendee count.");
+            }
+
+            eventToUpdate.MeetupAttendeeCount = attendeeCount.Value;
+            eventToUpdate.UpdatedAtUtc = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync();
+            evt.MeetupAttendeeCount = attendeeCount.Value;
+            if (showStatus)
+            {
+                statusMessage = $"Attendance updated: {attendeeCount.Value:N0} attendee(s).";
+                isError = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to refresh Meetup attendee count for event {EventId}.", evt.Id);
+            if (showStatus)
+            {
+                statusMessage = "Unable to refresh the Meetup attendee count. The error has been logged.";
+                isError = true;
+            }
+        }
+        finally
+        {
+            refreshingAttendanceEventIds.Remove(evt.Id);
+            StateHasChanged();
+        }
     }
 
     private async Task CloneEventAsync(MeetupEvent evt)
