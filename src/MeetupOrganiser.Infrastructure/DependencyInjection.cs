@@ -18,8 +18,10 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? "Server=(localdb)\\mssqllocaldb;Database=MeetupOrganiserDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
 
-        services.AddDbContextFactory<AppDbContext>(options =>
+        services.AddSingleton<SpeakerPhotoInterceptor>();
+        services.AddDbContextFactory<AppDbContext>((serviceProvider, options) =>
         {
+            options.AddInterceptors(serviceProvider.GetRequiredService<SpeakerPhotoInterceptor>());
             options.UseSqlServer(connectionString, sqlOptions =>
             {
                 sqlOptions.EnableRetryOnFailure(

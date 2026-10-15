@@ -25,7 +25,9 @@ public class BlobStorageService : IBlobStorageService
         }
         else if (!string.IsNullOrWhiteSpace(connectionString))
         {
-            _blobServiceClient = new BlobServiceClient(connectionString);
+            // Azurite lags the SDK's default API version, so pin an older one for the emulator.
+            _blobServiceClient = new BlobServiceClient(connectionString,
+                new BlobClientOptions(BlobClientOptions.ServiceVersion.V2024_08_04));
             logger.LogInformation("Using Blob Storage from connection string (Azurite/development).");
         }
         else

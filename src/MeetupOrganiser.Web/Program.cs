@@ -86,6 +86,20 @@ using (var scope = app.Services.CreateScope())
                 await db.Database.EnsureCreatedAsync();
                 await DbInitializer.SeedAsync(db, logger);
             }
+
+            // Copy remote speaker photos (e.g. Sessionize) into blob storage; the save interceptor does the work.
+            try
+            {
+                var remote = await db.Speakers
+                    .Where(s => s.PhotoBlobUrl != null && s.PhotoBlobUrl.StartsWith("http"))
+                    .ToListAsync();
+                foreach (var s in remote) db.Entry(s).Property(x => x.PhotoBlobUrl).IsModified = true;
+                if (remote.Count > 0) await db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Speaker photo localisation skipped.");
+            }
         }
     }
     catch (Exception ex)

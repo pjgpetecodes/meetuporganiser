@@ -436,3 +436,10 @@ publish/
 # Runtime uploads (logos, templates)
 src/MeetupOrganiser.Web/wwwroot/storage/
 details.txt
+
+# Azurite emulator data
+__blobstorage__/
+__azurite_db_*.json
+__queuestorage__/
+__azurite_db_queue*.json
+debug.log
