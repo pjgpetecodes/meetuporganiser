@@ -30,6 +30,27 @@ public class SpeakerConfirmationTests
     }
 
     [Fact]
+    public void Ics_WithOrganiserAndAttendee_IsRsvpRequest()
+    {
+        var ics = IcsCalendar.Build(Event(), organiserEmail: "org@example.com", attendeeEmail: "ada@example.com", attendeeName: "Ada");
+        var unfolded = ics.Replace("\r\n ", "");
+
+        Assert.Contains("METHOD:REQUEST\r\n", ics);
+        Assert.Contains("ORGANIZER;CN=\"org@example.com\":mailto:org@example.com", unfolded);
+        Assert.Contains("ATTENDEE;CN=\"Ada\";ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:ada@example.com", unfolded);
+        Assert.Contains("SEQUENCE:0\r\n", ics);
+    }
+
+    [Fact]
+    public void Ics_WithoutOrganiser_IsPlainPublish()
+    {
+        var ics = IcsCalendar.Build(Event(), attendeeEmail: "ada@example.com");
+
+        Assert.Contains("METHOD:PUBLISH\r\n", ics);
+        Assert.DoesNotContain("ATTENDEE", ics);
+    }
+
+    [Fact]
     public void Ics_FoldsLongLines()
     {
         var evt = Event();

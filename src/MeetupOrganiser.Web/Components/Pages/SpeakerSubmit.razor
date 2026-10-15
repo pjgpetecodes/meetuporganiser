@@ -307,8 +307,8 @@
             if (meetupEvent == null || string.IsNullOrWhiteSpace(to) || !new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(to)) return;
 
             var (subject, body) = SpeakerConfirmationEmail.Build(speaker.Name, talkTitle, meetupEvent);
-            var ics = IcsCalendar.Build(meetupEvent);
-            var attachment = new EmailAttachment("meetup.ics", "text/calendar", System.Text.Encoding.UTF8.GetBytes(ics));
+            var ics = IcsCalendar.Build(meetupEvent, organiserEmail: organiserEmail, attendeeEmail: to, attendeeName: speaker.Name);
+            var attachment = new EmailAttachment("invite.ics", "text/calendar", System.Text.Encoding.UTF8.GetBytes(ics));
             await EmailService.SendAsync(to, subject, body, cc: organiserEmail, attachments: [attachment]);
         }
         catch (Exception ex)

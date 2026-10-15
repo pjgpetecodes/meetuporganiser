@@ -5,8 +5,20 @@ namespace MeetupOrganiser.Core.Services;
 
 public static class IcsCalendar
 {
-    public static string Build(MeetupEvent evt, string? description = null, DateTime? nowUtc = null)
+    /// <summary>
+    /// Builds an iCalendar file. When both organiser and attendee emails are supplied it is a
+    /// METHOD:REQUEST meeting invite (RSVP replies go to the organiser); otherwise a plain event.
+    /// </summary>
+    public static string Build(
+        MeetupEvent evt,
+        string? description = null,
+        DateTime? nowUtc = null,
+        string? organiserEmail = null,
+        string? attendeeEmail = null,
+        string? attendeeName = null,
+        string? organiserName = null)
     {
+        var isInvite = !string.IsNullOrWhiteSpace(organiserEmail) && !string.IsNullOrWhiteSpace(attendeeEmail);
         var start = DateTime.SpecifyKind(evt.EventDateTimeUtc, DateTimeKind.Utc);
         var end = start.AddMinutes(evt.DurationMinutes > 0 ? evt.DurationMinutes : 90);
         var location = string.Join(", ", new[] { evt.VenueName, evt.LocationOrPlatform }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -23,7 +35,7 @@ public static class IcsCalendar
             "VERSION:2.0",
             "PRODID:-//Meetup Organiser//EN",
             "CALSCALE:GREGORIAN",
-            "METHOD:PUBLISH",
+            isInvite ? "METHOD:REQUEST" : "METHOD:PUBLISH",
             "BEGIN:VEVENT",
             $"UID:{evt.Id}@meetuporganiser",
             $"DTSTAMP:{Format(nowUtc ?? DateTime.UtcNow)}",
@@ -31,6 +43,14 @@ public static class IcsCalendar
             $"DTEND:{Format(end)}",
             $"SUMMARY:{Escape(evt.Title)}"
         };
+        if (isInvite)
+        {
+            lines.Add($"ORGANIZER;CN={Param(organiserName ?? organiserEmail!)}:mailto:{organiserEmail!.Trim()}");
+            lines.Add($"ATTENDEE;CN={Param(attendeeName ?? attendeeEmail!)};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{attendeeEmail!.Trim()}");
+            lines.Add("SEQUENCE:0");
+            lines.Add("STATUS:CONFIRMED");
+            lines.Add("TRANSP:OPAQUE");
+        }
         if (location.Length > 0) lines.Add($"LOCATION:{Escape(location)}");
         if (details.Length > 0) lines.Add($"DESCRIPTION:{Escape(details.ToString().TrimEnd())}");
         lines.Add("END:VEVENT");
@@ -40,6 +60,9 @@ public static class IcsCalendar
     }
 
     private static string Format(DateTime utc) => utc.ToUniversalTime().ToString("yyyyMMdd'T'HHmmss'Z'");
+
+    // Parameter values can't contain quotes, colons, semicolons or commas unquoted
+    private static string Param(string value) => $"\"{value.Replace("\"", "'")}\"";
 
     private static string Escape(string value) => value
         .Replace("\\", "\\\\")
