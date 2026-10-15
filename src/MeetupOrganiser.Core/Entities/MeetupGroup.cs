@@ -37,6 +37,10 @@ public class MeetupGroup
     [MaxLength(100)]
     public string? MeetupUrlName { get; set; }
 
+    // Notified when a speaker completes their magic-link form; blank = use the global setting
+    [MaxLength(320)]
+    public string? OrganiserEmail { get; set; }
+
     // e.g. https://bit.ly/dotnetnotts; the event month and year are appended per event
     [MaxLength(200)]
     public string? ShortUrlStem { get; set; }

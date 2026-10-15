@@ -108,6 +108,11 @@
                             <input @bind="group.DefaultLocation" class="form-control" placeholder="e.g. CGI, Nottingham & Online On Zoom" />
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label fw-semibold">Organiser Email</label>
+                            <input type="email" @bind="group.OrganiserEmail" class="form-control" placeholder="organiser@example.com" />
+                            <small class="text-secondary">Notified when a speaker completes their magic-link form. Leave blank to use the address in Settings.</small>
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label fw-semibold">Default Hashtags</label>
                             <input @bind="group.DefaultHashtags" class="form-control" placeholder="#dotnet #dotnetnotts #azure" />
                         </div>
@@ -597,6 +602,7 @@
                 existing.PrimaryColorHex = group.PrimaryColorHex;
                 existing.SecondaryColorHex = group.SecondaryColorHex;
                 existing.DefaultLocation = group.DefaultLocation;
+                existing.OrganiserEmail = group.OrganiserEmail;
                 existing.DefaultHashtags = group.DefaultHashtags;
                 existing.MeetupUrlName = group.MeetupUrlName;
                 existing.ShortUrlStem = group.ShortUrlStem;

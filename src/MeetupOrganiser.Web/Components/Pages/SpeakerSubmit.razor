@@ -278,7 +278,9 @@
     {
         try
         {
-            var to = await SettingsService.GetSettingAsync(SpeakerSubmittedEmail.OrganiserEmailSettingKey);
+            var to = meetupEvent?.MeetupGroup?.OrganiserEmail;
+            if (string.IsNullOrWhiteSpace(to))
+                to = await SettingsService.GetSettingAsync(SpeakerSubmittedEmail.OrganiserEmailSettingKey);
             if (string.IsNullOrWhiteSpace(to) || meetupEvent == null) return;
 
             var editUrl = Navigation.ToAbsoluteUri($"/events/edit/{meetupEvent.Id}").ToString();

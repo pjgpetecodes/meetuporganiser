@@ -92,6 +92,22 @@
                 </div>
             </div>
 
+            <!-- Email Notifications Card -->
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0 d-flex align-items-center gap-2">
+                        <i class="bi bi-envelope text-primary fs-4"></i>
+                        <h5 class="fw-bold mb-0">Email Notifications</h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <p class="small text-muted mb-3">Emailed when a speaker completes their magic-link form.</p>
+                        <label class="form-label fw-semibold small">Default organiser email address</label>
+                        <input type="email" class="form-control" placeholder="organiser@example.com" @bind="model.OrganiserEmail" />
+                        <div class="form-text">Used when a meetup group has no organiser email of its own (set per group under Group Details).</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Meetup Description Template Card -->
             <div class="col-12">
                 <div class="card border-0 shadow-sm">
@@ -317,27 +333,6 @@
                 </div>
                 <div class="form-text">Optional fallback for manually supplied access tokens. OAuth connection above is preferred.</div>
             </div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                    <div class="accordion-item">
-                        <h2 class="accordion-header">
-                            <button class="accordion-button @(openIntegration == "notifications" ? "" : "collapsed")" type="button" @onclick='() => ToggleIntegration("notifications")'>
-                                <i class="bi bi-envelope text-primary fs-4 me-3"></i>
-                                <span class="fw-bold me-auto">Email Notifications</span>
-                            </button>
-                        </h2>
-                        @if (openIntegration == "notifications")
-                        {
-                            <div class="accordion-collapse show">
-                                <div class="accordion-body">
-                                    <p class="small text-muted mb-3">Sends an email when a speaker completes their magic-link form. Delivery uses Azure Communication Services (configured by the Email app settings).</p>
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold small">Organiser email address</label>
-                                        <input type="email" class="form-control" placeholder="organiser@example.com"
-                                               @bind="model.OrganiserEmail" />
-                                    </div>
                                 </div>
                             </div>
                         }

@@ -287,6 +287,10 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("OrganiserEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
                     b.Property<string>("PptxTemplateBlobUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
