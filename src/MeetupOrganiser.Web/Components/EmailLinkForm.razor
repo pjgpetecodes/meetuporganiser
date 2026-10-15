@@ -27,6 +27,7 @@
     [Parameter, EditorRequired] public string EventTitle { get; set; } = string.Empty;
     [Parameter] public DateTime? EventDateUtc { get; set; }
     [Parameter] public EventCallback<string> OnSent { get; set; }
+    [Parameter] public bool AutoSend { get; set; }
 
     private string? email;
     private string? message;
@@ -35,19 +36,28 @@
     private bool isError;
     private bool sent;
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         // A regenerated link is a new link: allow sending again
-        if (Link != lastLink)
+        var isNewLink = Link != lastLink;
+        if (isNewLink)
         {
             lastLink = Link;
             sent = false;
             message = null;
         }
         email ??= InitialEmail;
+
+        if (isNewLink && AutoSend && !string.IsNullOrWhiteSpace(Link)
+            && !string.IsNullOrWhiteSpace(email) && new EmailAddressAttribute().IsValid(email.Trim()))
+        {
+            await SendAsync(auto: true);
+        }
     }
 
-    private async Task SendAsync()
+    private Task SendAsync() => SendAsync(auto: false);
+
+    private async Task SendAsync(bool auto)
     {
         var to = email?.Trim();
         if (string.IsNullOrWhiteSpace(to) || !new EmailAddressAttribute().IsValid(to))
@@ -71,7 +81,10 @@
 
             sent = true;
             isError = false;
-            message = $"Link emailed to {to}.";
+            var who = string.IsNullOrWhiteSpace(SpeakerName) ? "" : $"{SpeakerName} at ";
+            message = auto
+                ? $"Link automatically emailed to {who}{to}. Enter another address to send it again."
+                : $"Link emailed to {who}{to}.";
             await SaveSpeakerEmailAsync(to);
             await OnSent.InvokeAsync(to);
         }

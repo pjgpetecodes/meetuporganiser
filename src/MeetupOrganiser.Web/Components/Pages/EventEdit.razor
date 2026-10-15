@@ -260,7 +260,7 @@
                                     <input type="text" readonly class="form-control form-control-sm" value="@magicLinkUrl1" @onfocus="SelectAllAsync" />
                                     <button type="button" class="btn btn-sm btn-outline-dark" @onclick="() => CopyToClipboardAsync(magicLinkUrl1)">@(copiedLink == magicLinkUrl1 ? "Copied!" : "Copy")</button>
                                 </div>
-                                <EmailLinkForm Link="@magicLinkUrl1" InitialEmail="@SelectedSpeaker(session1SpeakerId)?.Email"
+                                <EmailLinkForm Link="@magicLinkUrl1" AutoSend="true" InitialEmail="@SelectedSpeaker(session1SpeakerId)?.Email"
                                                SpeakerName="@SelectedSpeaker(session1SpeakerId)?.Name" SpeakerId="@SelectedSpeaker(session1SpeakerId)?.Id"
                                                EventTitle="@(evt?.Title ?? string.Empty)" EventDateUtc="@evt?.EventDateTimeUtc"
                                                OnSent="e => OnLinkEmailed(session1SpeakerId, e)" />
@@ -321,7 +321,7 @@
                                         <input type="text" readonly class="form-control form-control-sm" value="@magicLinkUrl2" @onfocus="SelectAllAsync" />
                                         <button type="button" class="btn btn-sm btn-outline-dark" @onclick="() => CopyToClipboardAsync(magicLinkUrl2)">@(copiedLink == magicLinkUrl2 ? "Copied!" : "Copy")</button>
                                     </div>
-                                    <EmailLinkForm Link="@magicLinkUrl2" InitialEmail="@SelectedSpeaker(session2SpeakerId)?.Email"
+                                    <EmailLinkForm Link="@magicLinkUrl2" AutoSend="true" InitialEmail="@SelectedSpeaker(session2SpeakerId)?.Email"
                                                    SpeakerName="@SelectedSpeaker(session2SpeakerId)?.Name" SpeakerId="@SelectedSpeaker(session2SpeakerId)?.Id"
                                                    EventTitle="@(evt?.Title ?? string.Empty)" EventDateUtc="@evt?.EventDateTimeUtc"
                                                    OnSent="e => OnLinkEmailed(session2SpeakerId, e)" />

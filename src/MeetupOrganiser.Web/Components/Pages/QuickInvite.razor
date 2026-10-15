@@ -111,7 +111,7 @@
                         <input type="text" readonly class="form-control" value="@url" @onfocus="SelectAllAsync" />
                         <button type="button" class="btn btn-outline-dark" @onclick="() => CopyAsync(url)">@(copiedLink == url ? "Copied!" : "Copy")</button>
                     </div>
-                    <EmailLinkForm Link="@url" SpeakerId="@speakerIds[index]" SpeakerName="@speakerLabels[index]" InitialEmail="@speakerEmailsSaved[index]"
+                    <EmailLinkForm Link="@url" AutoSend="true" SpeakerId="@speakerIds[index]" SpeakerName="@speakerLabels[index]" InitialEmail="@speakerEmailsSaved[index]"
                                    EventTitle="@createdTitle" EventDateUtc="@createdEventUtc" />
                 </div>
             }
