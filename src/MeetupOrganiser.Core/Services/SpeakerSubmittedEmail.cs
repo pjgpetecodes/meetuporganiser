@@ -18,7 +18,10 @@ public static class SpeakerSubmittedEmail
               <li><strong>Talk:</strong> {WebUtility.HtmlEncode(talk)}</li>
               <li><strong>Event:</strong> {WebUtility.HtmlEncode(eventTitle)}</li>
             </ul>
-            <p><a href="{WebUtility.HtmlEncode(editUrl)}">Review and edit the event</a></p>
+            <p>
+              <a href="{WebUtility.HtmlEncode(editUrl)}">Review and edit the event</a>
+            </p>
+            <p style="color:#6c757d;font-size:12px;">Sent by Meetup Organiser.</p>
             """;
 
         return (subject, html);
