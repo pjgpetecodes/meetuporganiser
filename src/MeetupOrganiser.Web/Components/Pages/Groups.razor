@@ -124,6 +124,7 @@
     private async Task LoadGroupsAsync()
     {
         groups = await DbContext.MeetupGroups
+            .AsNoTracking()
             .Include(g => g.Events)
             .OrderBy(g => g.Name)
             .ToListAsync();

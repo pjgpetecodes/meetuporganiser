@@ -34,6 +34,17 @@ public class SocialPostTemplateTests
             text);
     }
 
+    [Fact]
+    public void Render_EndsWithThanksToSponsors()
+    {
+        var evt = Event();
+        evt.MeetupGroup!.Sponsors.Add(new Sponsor { Name = "Raspberry Pi", TwitterHandle = "Raspberry_Pi", SortOrder = 0 });
+        evt.MeetupGroup.Sponsors.Add(new Sponsor { Name = "PJG Creations Ltd", SortOrder = 1 });
+
+        Assert.EndsWith("Thanks to @Raspberry_Pi and PJG Creations Ltd", SocialPostFormatter.Render(evt, "x", null));
+        Assert.EndsWith("Thanks to Raspberry Pi and PJG Creations Ltd", SocialPostFormatter.Render(evt, "linkedin", SocialPostFormatter.DotNetNottsDefault));
+    }
+
     [Theory]
     [InlineData("bluesky", "@adam.bsky.social")]
     [InlineData("linkedin", "Adam Blakey")]

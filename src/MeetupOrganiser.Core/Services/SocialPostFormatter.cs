@@ -3,7 +3,7 @@ using MeetupOrganiser.Core.Entities;
 namespace MeetupOrganiser.Core.Services;
 
 // Per-group template for the X, Bluesky and LinkedIn announcement posts.
-public static class SocialPostFormatter
+public static partial class SocialPostFormatter
 {
     public const string Default = """
         Announcing the next {{GroupName}} meetup!
@@ -15,6 +15,8 @@ public static class SocialPostFormatter
         🔗 {{ShortUrl}}
 
         {{Hashtags}}
+
+        Thanks to {{Sponsors}}
         """;
 
     public const string DotNetNottsDefault = """
@@ -25,6 +27,8 @@ public static class SocialPostFormatter
         ⏰ {{ShortDate}} @ {{ShortTime}}
         🌎 {{Where}}
         🔗 {{ShortUrl}}
+
+        Thanks to {{Sponsors}}
         """;
 
     public static readonly IReadOnlyList<(string Name, string Description)> Placeholders =
@@ -83,8 +87,19 @@ public static class SocialPostFormatter
             ["SponsorNames"] = Join(sponsors.Select(s => s.Name))
         };
 
-        return MeetupDescriptionTemplate.Render(string.IsNullOrWhiteSpace(template) ? Default : template, values).TrimEnd();
+        var body = string.IsNullOrWhiteSpace(template) ? Default : template;
+        // With no sponsors, drop lines built around the sponsor tokens so "Thanks to" is never left dangling.
+        if (sponsors.Count == 0)
+        {
+            body = string.Join("\n", body.Replace("\r\n", "\n").Split('\n')
+                .Where(line => !SponsorTokenRegex().IsMatch(line)));
+        }
+
+        return MeetupDescriptionTemplate.Render(body, values).TrimEnd();
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\{\{\s*(Sponsors|SponsorNames)\s*\}\}", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex SponsorTokenRegex();
 
     private static string Mention(Speaker speaker, string platform) =>
         Mention(speaker.Name, speaker.TwitterHandle, speaker.BlueSkyHandle, platform);

@@ -1,0 +1,549 @@
+@page "/speakers/new"
+@page "/speakers/edit/{Id:guid}"
+@attribute [Authorize]
+@using MeetupOrganiser.Core.DTOs
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@using MeetupOrganiser.Core.Services
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject NavigationManager NavManager
+@inject IBlobStorageService BlobStorageService
+@inject ISessionizeService SessionizeService
+@inject ISessionizeProfileService ProfileService
+@inject ISettingsService SettingsService
+@inject ILogger<SpeakerEdit> Logger
+
+<PageTitle>@(isNew ? "Add Speaker" : $"Edit {speaker.Name}") - Meetup Organiser</PageTitle>
+
+<div class="container-fluid py-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold mb-1">@(isNew ? "Add New Speaker" : "Edit Speaker Profile")</h1>
+            @if (!isNew)
+            {
+                <p class="text-secondary mb-0">@speaker.Name</p>
+            }
+        </div>
+        <a href="/speakers" class="btn btn-outline-secondary">Back to Speakers</a>
+    </div>
+
+    @if (statusMessage != null)
+    {
+        <div class="alert @(isError ? "alert-danger" : "alert-success")" role="alert">@statusMessage</div>
+    }
+
+    @if (loadFailed)
+    {
+        <div class="alert alert-warning">This speaker could not be found. <a href="/speakers">Back to Speakers</a></div>
+    }
+    else if (!loaded)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+    }
+    else
+    {
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <button type="button" class="nav-link @(activeTab == "details" ? "active" : "")" @onclick='() => activeTab = "details"'><i class="bi bi-person me-1"></i> Details</button>
+            </li>
+            @if (!isNew)
+            {
+                <li class="nav-item">
+                    <button type="button" class="nav-link @(activeTab == "talks" ? "active" : "")" @onclick='() => ShowTalksTabAsync()'><i class="bi bi-mic me-1"></i> Talks <span class="badge bg-secondary">@meetupTalks.Count</span></button>
+                </li>
+            }
+        </ul>
+
+        @if (activeTab == "details")
+        {
+            <div class="card border-0 shadow-sm p-4">
+                @if (isNew)
+                {
+                    <div class="card bg-light border-0 p-3 mb-3">
+                        <div class="fw-semibold mb-2"><i class="bi bi-cloud-arrow-down me-2 text-info"></i>Import from Sessionize</div>
+                        <div class="input-group">
+                            <input @bind="sessionizeEventId" class="form-control" placeholder="Sessionize API ID or Speakers endpoint URL" />
+                            <button type="button" class="btn btn-outline-info" @onclick="LoadSessionizeSpeakersAsync" disabled="@isLoadingSessionize">
+                                @if (isLoadingSessionize)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                Load Speakers
+                            </button>
+                        </div>
+                        @if (sessionizeMessage != null)
+                        {
+                            <div class="small text-secondary mt-2">@sessionizeMessage</div>
+                        }
+                        @if (sessionizeSpeakers.Count > 0)
+                        {
+                            <select class="form-select mt-2" @onchange="OnSessionizeSpeakerSelected">
+                                <option value="">Select a speaker to fill the form...</option>
+                                @foreach (var s in sessionizeSpeakers)
+                                {
+                                    <option value="@s.Id">@s.FullName</option>
+                                }
+                            </select>
+                        }
+                    </div>
+                }
+                <div class="mb-3">
+                    <SessionizeProfileLookup @key="speaker.Id" InitialQuery="@speaker.Name" Current="speaker" OnApply="OnProfileApplied" />
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Full Name *</label>
+                        <input @bind="speaker.Name" class="form-control" placeholder="e.g. Luce Carter" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Email Address</label>
+                        <input @bind="speaker.Email" class="form-control" type="email" placeholder="name@example.com" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Pronouns</label>
+                        <select @bind="speaker.Pronouns" class="form-select">
+                            <option value="">Not set (use name)</option>
+                            <option value="she/her">she/her</option>
+                            <option value="he/him">he/him</option>
+                            <option value="they/them">they/them</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-semibold">Bio</label>
+                        <textarea @bind="speaker.Bio" class="form-control" rows="3" placeholder="Speaker bio, credentials, and achievements..."></textarea>
+                    </div>
+                    <div class="col-12">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <label class="form-label fw-semibold mb-1">Third-person bio (used for Meetup descriptions)</label>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RegenerateThirdPersonBio">
+                                <i class="bi bi-arrow-repeat me-1"></i> Regenerate
+                            </button>
+                        </div>
+                        <textarea @bind="speaker.BioThirdPerson" class="form-control" rows="3" placeholder="Generated from the bio above when you save. Edit to correct."></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-semibold">Speaker Photo / Headshot</label>
+                        <InputFile OnChange="HandlePhotoUploadAsync" class="form-control" accept="image/png, image/jpeg, image/webp" />
+                        @if (!string.IsNullOrWhiteSpace(speaker.PhotoBlobUrl))
+                        {
+                            <div class="mt-2">
+                                <img src="@speaker.PhotoBlobUrl" class="rounded-circle border" style="width: 60px; height: 60px; object-fit: cover;" alt="Preview" />
+                            </div>
+                        }
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">LinkedIn Profile URL</label>
+                        <input @bind="speaker.LinkedInUrl" class="form-control" placeholder="https://linkedin.com/in/..." />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">BlueSky Handle</label>
+                        <input @bind="speaker.BlueSkyHandle" class="form-control" placeholder="handle.bsky.social" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">X / Twitter Handle</label>
+                        <input @bind="speaker.TwitterHandle" class="form-control" placeholder="@@username" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Facebook URL</label>
+                        <input @bind="speaker.FacebookUrl" class="form-control" placeholder="https://facebook.com/..." />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">GitHub / Repo</label>
+                        <input @bind="speaker.GitHubHandle" class="form-control" placeholder="username or https://github.com/user/repo" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Website</label>
+                        <input @bind="speaker.WebsiteUrl" class="form-control" placeholder="https://..." />
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-4">
+                    <button type="button" class="btn btn-primary" @onclick="SaveSpeakerAsync" disabled="@isSaving">Save Speaker</button>
+                    <a href="/speakers" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card border-0 shadow-sm p-4 mb-4">
+                <h2 class="h5 fw-bold mb-3"><i class="bi bi-calendar-event me-2"></i>Talks at our meetups</h2>
+                @if (meetupTalks.Count == 0)
+                {
+                    <p class="text-secondary mb-0">@speaker.Name hasn't been booked for any meetups yet.</p>
+                }
+                else
+                {
+                    <div class="list-group list-group-flush">
+                        @foreach (var talk in meetupTalks)
+                        {
+                            <div class="list-group-item px-0" @key="talk.Id">
+                                <div class="d-flex justify-content-between align-items-start gap-3">
+                                    <div>
+                                        <div class="fw-semibold">@talk.TalkTitle</div>
+                                        @if (!string.IsNullOrWhiteSpace(talk.TalkDescription))
+                                        {
+                                            <div class="small text-secondary">@talk.TalkDescription</div>
+                                        }
+                                        <div class="small text-secondary mt-1">
+                                            <a href="/events/edit/@talk.MeetupEventId" class="text-reset">@talk.MeetupEvent?.Title</a>
+                                            @if (talk.MeetupEvent?.MeetupGroup != null)
+                                            {
+                                                <span> &middot; @talk.MeetupEvent.MeetupGroup.Name</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    @if (talk.MeetupEvent != null)
+                                    {
+                                        <span class="badge bg-light text-secondary border text-nowrap">@talk.MeetupEvent.EventDateTimeUtc.ToString("d MMM yyyy")</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="card border-0 shadow-sm p-4">
+                <h2 class="h5 fw-bold mb-3"><i class="bi bi-cloud-arrow-down me-2 text-info"></i>Available talks on Sessionize</h2>
+                @if (isLoadingProfile)
+                {
+                    <div class="text-secondary"><span class="spinner-border spinner-border-sm me-2"></span>Looking up @speaker.Name on Sessionize...</div>
+                }
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(profileMessage))
+                    {
+                        <div class="text-secondary mb-2">@profileMessage</div>
+                    }
+
+                    @if (profileCandidates.Count > 1)
+                    {
+                        <div class="mb-3">
+                            <div class="small fw-semibold mb-1">Several profiles match. Pick the right one:</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach (var candidate in profileCandidates)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-info" @key="candidate.Slug" @onclick="() => LoadProfileAsync(candidate.Slug)">
+                                        @candidate.Name@(string.IsNullOrWhiteSpace(candidate.Tagline) ? "" : $" - {candidate.Tagline}")
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @if (profile != null)
+                    {
+                        <div class="small mb-2">
+                            <a href="@profile.Url" target="_blank" rel="noopener noreferrer"><i class="bi bi-box-arrow-up-right me-1"></i>@profile.Name on Sessionize</a>
+                        </div>
+                        @if (profile.Sessions.Count > 0)
+                        {
+                            <div class="list-group list-group-flush">
+                                @foreach (var session in profile.Sessions)
+                                {
+                                    <div class="list-group-item px-0" @key="session.Title">
+                                        <div class="fw-semibold">
+                                            @if (!string.IsNullOrWhiteSpace(session.Url))
+                                            {
+                                                <a href="@session.Url" target="_blank" rel="noopener noreferrer" class="text-reset">@session.Title</a>
+                                            }
+                                            else
+                                            {
+                                                @session.Title
+                                            }
+                                            @if (HasGivenTalk(session.Title))
+                                            {
+                                                <span class="badge text-bg-success ms-2">Given at a meetup</span>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(session.Summary))
+                                        {
+                                            <div class="small text-secondary">@session.Summary</div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+
+                    <div class="input-group input-group-sm mt-3" style="max-width: 32rem;">
+                        <input class="form-control" @bind="profileUrlInput" placeholder="Paste a Sessionize profile URL" />
+                        <button type="button" class="btn btn-outline-secondary" @onclick="() => LoadProfileAsync(profileUrlInput)">Load</button>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private Speaker speaker = new();
+    private bool isNew => Id == null;
+    private bool loaded;
+    private bool loadFailed;
+    private bool isSaving;
+    private string activeTab = "details";
+    private string? statusMessage;
+    private bool isError;
+
+    private List<EventSpeakerSession> meetupTalks = [];
+
+    private bool profileLoaded;
+    private bool isLoadingProfile;
+    private SessionizeProfile? profile;
+    private List<SessionizeProfileCandidate> profileCandidates = [];
+    private string? profileMessage;
+    private string profileUrlInput = string.Empty;
+
+    private string sessionizeEventId = string.Empty;
+    private string? sessionizeMessage;
+    private bool isLoadingSessionize;
+    private List<SessionizeSpeakerDto> sessionizeSpeakers = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loaded = false;
+        loadFailed = false;
+        profileLoaded = false;
+        profile = null;
+        profileCandidates = [];
+        profileMessage = null;
+        activeTab = "details";
+
+        if (isNew)
+        {
+            speaker = new Speaker { Id = Guid.Empty };
+            meetupTalks = [];
+            try
+            {
+                sessionizeEventId = await SettingsService.GetSettingAsync("Integrations:Sessionize:DefaultEventId") ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Could not read the default Sessionize event ID.");
+            }
+
+            loaded = true;
+            return;
+        }
+
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var existing = await dbContext.Speakers.AsNoTracking().FirstOrDefaultAsync(s => s.Id == Id);
+            if (existing == null)
+            {
+                loadFailed = true;
+                return;
+            }
+
+            speaker = existing;
+            meetupTalks = await dbContext.EventSpeakerSessions.AsNoTracking()
+                .Include(s => s.MeetupEvent!).ThenInclude(e => e.MeetupGroup)
+                .Where(s => s.SpeakerId == Id)
+                .ToListAsync();
+            meetupTalks = meetupTalks.OrderByDescending(s => s.MeetupEvent?.EventDateTimeUtc).ToList();
+            loaded = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load speaker {SpeakerId}.", Id);
+            loadFailed = true;
+        }
+    }
+
+    private async Task ShowTalksTabAsync()
+    {
+        activeTab = "talks";
+        if (profileLoaded) return;
+
+        profileLoaded = true;
+        isLoadingProfile = true;
+        try
+        {
+            profileCandidates = await ProfileService.SearchAsync(speaker.Name);
+            var match = profileCandidates.FirstOrDefault(c => string.Equals(c.Name, speaker.Name, StringComparison.OrdinalIgnoreCase))
+                ?? (profileCandidates.Count == 1 ? profileCandidates[0] : null);
+            if (match != null)
+            {
+                await LoadProfileAsync(match.Slug);
+            }
+            else
+            {
+                profileMessage = profileCandidates.Count == 0
+                    ? "No public Sessionize profile found for this speaker."
+                    : null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Sessionize lookup failed for {Speaker}.", speaker.Name);
+            profileMessage = "Could not reach Sessionize. Try again, or paste the profile URL.";
+        }
+        finally
+        {
+            isLoadingProfile = false;
+        }
+    }
+
+    private async Task LoadProfileAsync(string urlOrSlug)
+    {
+        if (string.IsNullOrWhiteSpace(urlOrSlug)) return;
+
+        isLoadingProfile = true;
+        profileMessage = null;
+        try
+        {
+            profile = await ProfileService.GetProfileAsync(urlOrSlug.Trim());
+            profileMessage = profile == null
+                ? "Could not read that Sessionize profile."
+                : profile.Sessions.Count == 0 ? "No public talks listed on their Sessionize profile." : null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Sessionize profile fetch failed for {Speaker}.", speaker.Name);
+            profileMessage = "Could not read the Sessionize profile. Try again later.";
+        }
+        finally
+        {
+            isLoadingProfile = false;
+        }
+    }
+
+    private bool HasGivenTalk(string title) =>
+        meetupTalks.Any(t => string.Equals(t.TalkTitle.Trim(), title.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private async Task LoadSessionizeSpeakersAsync()
+    {
+        if (string.IsNullOrWhiteSpace(sessionizeEventId))
+        {
+            sessionizeMessage = "Enter a Sessionize API ID first.";
+            return;
+        }
+
+        isLoadingSessionize = true;
+        sessionizeMessage = null;
+        try
+        {
+            sessionizeSpeakers = (await SessionizeService.GetSpeakersAsync(sessionizeEventId.Trim()))
+                .OrderBy(s => s.FullName)
+                .ToList();
+            sessionizeMessage = sessionizeSpeakers.Count == 0
+                ? "No speakers were returned. Check the API ID and that the Speakers endpoint is enabled."
+                : $"{sessionizeSpeakers.Count} speaker(s) found.";
+        }
+        finally
+        {
+            isLoadingSessionize = false;
+        }
+    }
+
+    private async Task OnSessionizeSpeakerSelected(ChangeEventArgs e)
+    {
+        var selected = sessionizeSpeakers.FirstOrDefault(s => s.Id == e.Value?.ToString());
+        if (selected == null) return;
+
+        SessionizeSpeakerMapper.Apply(speaker, selected);
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        var exists = await dbContext.Speakers.AnyAsync(s => s.Name == speaker.Name);
+        sessionizeMessage = exists
+            ? $"Imported {speaker.Name}. Note: a speaker with this name already exists in your directory."
+            : $"Imported {speaker.Name}. Review the details and save.";
+    }
+
+    private void RegenerateThirdPersonBio() => SpeakerBio.EnsureThirdPerson(speaker, force: true);
+
+    private void OnProfileApplied((SessionizeProfile Profile, SessionizeProfileFields Fields) result)
+    {
+        SessionizeSpeakerMapper.ApplyProfile(speaker, result.Profile, result.Fields);
+        StateHasChanged();
+    }
+
+    private async Task HandlePhotoUploadAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        try
+        {
+            using var stream = file.OpenReadStream(10 * 1024 * 1024);
+            speaker.PhotoBlobUrl = await BlobStorageService.UploadAsync("speaker-photos", file.Name, stream, file.ContentType);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to upload speaker headshot.");
+            statusMessage = "Unable to upload the photo. The error has been logged.";
+            isError = true;
+        }
+    }
+
+    private async Task SaveSpeakerAsync()
+    {
+        if (string.IsNullOrWhiteSpace(speaker.Name))
+        {
+            statusMessage = "A name is required.";
+            isError = true;
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            if (isNew)
+            {
+                speaker.Id = Guid.NewGuid();
+                speaker.CreatedAtUtc = DateTime.UtcNow;
+                speaker.UpdatedAtUtc = DateTime.UtcNow;
+                SpeakerBio.EnsureThirdPerson(speaker);
+                await dbContext.Speakers.AddAsync(speaker);
+            }
+            else
+            {
+                var existing = await dbContext.Speakers.FindAsync(speaker.Id);
+                if (existing == null)
+                {
+                    statusMessage = "This speaker no longer exists.";
+                    isError = true;
+                    return;
+                }
+
+                var bioChanged = !string.Equals(existing.Bio, speaker.Bio, StringComparison.Ordinal)
+                    || !string.Equals(existing.Pronouns, speaker.Pronouns, StringComparison.Ordinal);
+                var thirdPersonEdited = !string.Equals(existing.BioThirdPerson, speaker.BioThirdPerson, StringComparison.Ordinal);
+
+                existing.Name = speaker.Name;
+                existing.Email = speaker.Email;
+                existing.Bio = speaker.Bio;
+                existing.Pronouns = speaker.Pronouns;
+                existing.BioThirdPerson = speaker.BioThirdPerson;
+                SpeakerBio.EnsureThirdPerson(existing, force: bioChanged && !thirdPersonEdited);
+                existing.PhotoBlobUrl = speaker.PhotoBlobUrl;
+                existing.LinkedInUrl = speaker.LinkedInUrl;
+                existing.TwitterHandle = speaker.TwitterHandle;
+                existing.BlueSkyHandle = speaker.BlueSkyHandle;
+                existing.GitHubHandle = speaker.GitHubHandle;
+                existing.FacebookUrl = speaker.FacebookUrl;
+                existing.WebsiteUrl = speaker.WebsiteUrl;
+                existing.UpdatedAtUtc = DateTime.UtcNow;
+            }
+
+            await dbContext.SaveChangesAsync();
+            NavManager.NavigateTo("/speakers");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save speaker {SpeakerId}.", speaker.Id);
+            if (isNew) speaker.Id = Guid.Empty;
+            statusMessage = "Unable to save the speaker. The error has been logged.";
+            isError = true;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+}

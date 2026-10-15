@@ -25,9 +25,9 @@
             <button class="btn btn-outline-info" @onclick="ToggleBulkImportAsync">
                 <i class="bi bi-cloud-arrow-down me-1"></i> Import from Sessionize
             </button>
-            <button class="btn btn-primary" @onclick="OpenCreateModal">
+            <a class="btn btn-primary" href="/speakers/new">
                 <i class="bi bi-person-plus me-1"></i> Add Speaker
-            </button>
+            </a>
         </div>
     </div>
 
@@ -86,7 +86,7 @@
             <h4 class="fw-bold">No Speakers Found</h4>
             <p class="text-secondary">Add speakers to your directory to easily assign them to upcoming meetups.</p>
             <div>
-                <button class="btn btn-primary" @onclick="OpenCreateModal">Add New Speaker</button>
+                <a class="btn btn-primary" href="/speakers/new">Add New Speaker</a>
             </div>
         </div>
     }
@@ -98,7 +98,7 @@
                 <div class="col-md-6 col-lg-4">
                     <div class="card h-100 border-0 shadow-sm p-4">
                         <div class="d-flex align-items-center gap-3 mb-3">
-                            <a href="#" class="text-decoration-none" title="Edit @sp.Name" @onclick="() => OpenEditModal(sp)" @onclick:preventDefault>
+                            <a href="/speakers/edit/@sp.Id" class="text-decoration-none" title="Edit @sp.Name">
                                 @if (!string.IsNullOrWhiteSpace(sp.PhotoBlobUrl))
                                 {
                                     <img src="@sp.PhotoBlobUrl" alt="@sp.Name" class="rounded-circle border" style="width: 60px; height: 60px; object-fit: cover;" />
@@ -111,7 +111,7 @@
                                 }
                             </a>
                             <div>
-                                <h5 class="fw-bold mb-0"><a href="#" class="text-reset text-decoration-none" title="Edit @sp.Name" @onclick="() => OpenEditModal(sp)" @onclick:preventDefault>@sp.Name</a></h5>
+                                <h5 class="fw-bold mb-0"><a href="/speakers/edit/@sp.Id" class="text-reset text-decoration-none" title="Edit @sp.Name">@sp.Name</a></h5>
                                 @if (!string.IsNullOrWhiteSpace(sp.Email))
                                 {
                                     <div class="small text-secondary">@sp.Email</div>
@@ -169,9 +169,9 @@
                                 @sp.Sessions.Count Talk(s)
                             </span>
                             <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-secondary" @onclick="() => OpenEditModal(sp)">
+                                <a class="btn btn-outline-secondary" href="/speakers/edit/@sp.Id">
                                     <i class="bi bi-pencil me-1"></i> Edit
-                                </button>
+                                </a>
                                 <button class="btn btn-outline-danger" @onclick="() => DeleteSpeakerAsync(sp)">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -184,134 +184,12 @@
     }
 </div>
 
-<!-- Modal for Create / Edit -->
-@if (showModal)
-{
-    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold">@(editingSpeaker.Id == Guid.Empty ? "Add New Speaker" : "Edit Speaker Profile")</h5>
-                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
-                </div>
-                <div class="modal-body">
-                    @if (editingSpeaker.Id == Guid.Empty)
-                    {
-                        <div class="card bg-light border-0 p-3 mb-3">
-                            <div class="fw-semibold mb-2"><i class="bi bi-cloud-arrow-down me-2 text-info"></i>Import from Sessionize</div>
-                            <div class="input-group">
-                                <input @bind="sessionizeEventId" class="form-control" placeholder="Sessionize API ID or Speakers endpoint URL" />
-                                <button type="button" class="btn btn-outline-info" @onclick="LoadSessionizeSpeakersAsync" disabled="@isLoadingSessionize">
-                                    @if (isLoadingSessionize)
-                                    {
-                                        <span class="spinner-border spinner-border-sm me-1"></span>
-                                    }
-                                    Load Speakers
-                                </button>
-                            </div>
-                            @if (sessionizeMessage != null)
-                            {
-                                <div class="small text-secondary mt-2">@sessionizeMessage</div>
-                            }
-                            @if (sessionizeSpeakers.Count > 0)
-                            {
-                                <select class="form-select mt-2" @onchange="OnSessionizeSpeakerSelected">
-                                    <option value="">Select a speaker to fill the form...</option>
-                                    @foreach (var s in sessionizeSpeakers)
-                                    {
-                                        <option value="@s.Id">@s.FullName</option>
-                                    }
-                                </select>
-                            }
-                        </div>
-                    }
-                    <div class="mb-3">
-                        <SessionizeProfileLookup @key="editingSpeaker.Id" InitialQuery="@editingSpeaker.Name" Current="editingSpeaker" OnApply="OnProfileApplied" />
-                    </div>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Full Name *</label>
-                            <input @bind="editingSpeaker.Name" class="form-control" placeholder="e.g. Luce Carter" required />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Email Address</label>
-                            <input @bind="editingSpeaker.Email" class="form-control" type="email" placeholder="name@example.com" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Pronouns</label>
-                            <select @bind="editingSpeaker.Pronouns" class="form-select">
-                                <option value="">Not set (use name)</option>
-                                <option value="she/her">she/her</option>
-                                <option value="he/him">he/him</option>
-                                <option value="they/them">they/them</option>
-                            </select>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Bio</label>
-                            <textarea @bind="editingSpeaker.Bio" class="form-control" rows="3" placeholder="Speaker bio, credentials, and achievements..."></textarea>
-                        </div>
-                        <div class="col-12">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <label class="form-label fw-semibold mb-1">Third-person bio (used for Meetup descriptions)</label>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RegenerateThirdPersonBio">
-                                    <i class="bi bi-arrow-repeat me-1"></i> Regenerate
-                                </button>
-                            </div>
-                            <textarea @bind="editingSpeaker.BioThirdPerson" class="form-control" rows="3" placeholder="Generated from the bio above when you save. Edit to correct."></textarea>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Speaker Photo / Headshot</label>
-                            <InputFile OnChange="HandlePhotoUploadAsync" class="form-control" accept="image/png, image/jpeg, image/webp" />
-                            @if (!string.IsNullOrWhiteSpace(editingSpeaker.PhotoBlobUrl))
-                            {
-                                <div class="mt-2">
-                                    <img src="@editingSpeaker.PhotoBlobUrl" class="rounded-circle border" style="width: 60px; height: 60px; object-fit: cover;" alt="Preview" />
-                                </div>
-                            }
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">LinkedIn Profile URL</label>
-                            <input @bind="editingSpeaker.LinkedInUrl" class="form-control" placeholder="https://linkedin.com/in/..." />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">BlueSky Handle</label>
-                            <input @bind="editingSpeaker.BlueSkyHandle" class="form-control" placeholder="handle.bsky.social" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">X / Twitter Handle</label>
-                            <input @bind="editingSpeaker.TwitterHandle" class="form-control" placeholder="@@username" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Facebook URL</label>
-                            <input @bind="editingSpeaker.FacebookUrl" class="form-control" placeholder="https://facebook.com/..." />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">GitHub / Repo</label>
-                            <input @bind="editingSpeaker.GitHubHandle" class="form-control" placeholder="username or https://github.com/user/repo" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Website</label>
-                            <input @bind="editingSpeaker.WebsiteUrl" class="form-control" placeholder="https://..." />
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="SaveSpeakerAsync">Save Speaker</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
 <ConfirmDialog @ref="confirmDialog" />
 
 @code {
     private ConfirmDialog? confirmDialog;
     private List<Speaker>? allSpeakers;
     private string searchQuery = string.Empty;
-    private bool showModal = false;
-    private Speaker editingSpeaker = new();
     private string? statusMessage;
     private bool isError;
 
@@ -326,17 +204,6 @@
         try
         {
             await LoadSpeakersAsync();
-            var editId = new Uri(NavManager.Uri).Query
-                .TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
-                .Select(p => p.Split('=', 2))
-                .Where(p => p.Length == 2 && p[0] == "edit")
-                .Select(p => p[1])
-                .FirstOrDefault();
-            if (Guid.TryParse(editId, out var editGuid))
-            {
-                var target = allSpeakers?.FirstOrDefault(s => s.Id == editGuid);
-                if (target != null) OpenEditModal(target);
-            }
         }
         catch (Exception ex)
         {
@@ -356,29 +223,7 @@
     }
 
     private string sessionizeEventId = string.Empty;
-    private string? sessionizeMessage;
     private bool isLoadingSessionize;
-    private List<SessionizeSpeakerDto> sessionizeSpeakers = [];
-
-    private async Task OpenCreateModal()
-    {
-        editingSpeaker = new Speaker { Id = Guid.Empty };
-        sessionizeSpeakers = [];
-        sessionizeMessage = null;
-        showModal = true;
-
-        if (string.IsNullOrWhiteSpace(sessionizeEventId))
-        {
-            try
-            {
-                sessionizeEventId = await SettingsService.GetSettingAsync("Integrations:Sessionize:DefaultEventId") ?? string.Empty;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Could not read the default Sessionize event ID.");
-            }
-        }
-    }
 
     private bool showBulkImport;
 
@@ -483,170 +328,6 @@
         if (!string.IsNullOrWhiteSpace(current) || string.IsNullOrWhiteSpace(incoming)) return false;
         assign(incoming);
         return true;
-    }
-
-    private async Task LoadSessionizeSpeakersAsync()
-    {
-        if (string.IsNullOrWhiteSpace(sessionizeEventId))
-        {
-            sessionizeMessage = "Enter a Sessionize API ID first.";
-            return;
-        }
-
-        isLoadingSessionize = true;
-        sessionizeMessage = null;
-        try
-        {
-            sessionizeSpeakers = (await SessionizeService.GetSpeakersAsync(sessionizeEventId.Trim()))
-                .OrderBy(s => s.FullName)
-                .ToList();
-            sessionizeMessage = sessionizeSpeakers.Count == 0
-                ? "No speakers were returned. Check the API ID and that the Speakers endpoint is enabled."
-                : $"{sessionizeSpeakers.Count} speaker(s) found.";
-        }
-        finally
-        {
-            isLoadingSessionize = false;
-        }
-    }
-
-    private void OnSessionizeSpeakerSelected(ChangeEventArgs e)
-    {
-        var selected = sessionizeSpeakers.FirstOrDefault(s => s.Id == e.Value?.ToString());
-        if (selected == null) return;
-
-        SessionizeSpeakerMapper.Apply(editingSpeaker, selected);
-        var existing = allSpeakers?.FirstOrDefault(s => string.Equals(s.Name, editingSpeaker.Name, StringComparison.OrdinalIgnoreCase));
-        sessionizeMessage = existing != null
-            ? $"Imported {editingSpeaker.Name}. Note: a speaker with this name already exists in your directory."
-            : $"Imported {editingSpeaker.Name}. Review the details and save.";
-    }
-
-    private void OpenEditModal(Speaker speaker)
-    {
-        editingSpeaker = new Speaker
-        {
-            Id = speaker.Id,
-            Name = speaker.Name,
-            Email = speaker.Email,
-            Bio = speaker.Bio,
-            BioThirdPerson = speaker.BioThirdPerson,
-            Pronouns = speaker.Pronouns,
-            PhotoBlobUrl = speaker.PhotoBlobUrl,
-            LinkedInUrl = speaker.LinkedInUrl,
-            TwitterHandle = speaker.TwitterHandle,
-            BlueSkyHandle = speaker.BlueSkyHandle,
-            GitHubHandle = speaker.GitHubHandle,
-            FacebookUrl = speaker.FacebookUrl,
-            WebsiteUrl = speaker.WebsiteUrl
-        };
-        showModal = true;
-    }
-
-    private void CloseModal()
-    {
-        showModal = false;
-    }
-
-    private void RegenerateThirdPersonBio() => SpeakerBio.EnsureThirdPerson(editingSpeaker, force: true);
-
-    private void OnProfileApplied((SessionizeProfile Profile, SessionizeProfileFields Fields) result)
-    {
-        SessionizeSpeakerMapper.ApplyProfile(editingSpeaker, result.Profile, result.Fields);
-        StateHasChanged();
-    }
-
-    private async Task HandlePhotoUploadAsync(InputFileChangeEventArgs e)
-    {
-        var file = e.File;
-        if (file == null) return;
-
-        try
-        {
-            using var stream = file.OpenReadStream(10 * 1024 * 1024);
-            var url = await BlobStorageService.UploadAsync("speaker-photos", file.Name, stream, file.ContentType);
-            editingSpeaker.PhotoBlobUrl = url;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to upload speaker headshot.");
-        }
-    }
-
-    private async Task SaveSpeakerAsync()
-    {
-        if (string.IsNullOrWhiteSpace(editingSpeaker.Name)) return;
-
-        var isNewSpeaker = editingSpeaker.Id == Guid.Empty;
-        try
-        {
-            await using (var dbContext = await DbContextFactory.CreateDbContextAsync())
-            {
-                if (isNewSpeaker)
-                {
-                    editingSpeaker.Id = Guid.NewGuid();
-                    editingSpeaker.CreatedAtUtc = DateTime.UtcNow;
-                    editingSpeaker.UpdatedAtUtc = DateTime.UtcNow;
-                    SpeakerBio.EnsureThirdPerson(editingSpeaker);
-                    await dbContext.Speakers.AddAsync(editingSpeaker);
-                }
-                else
-                {
-                    var existing = await dbContext.Speakers.FindAsync(editingSpeaker.Id);
-                    if (existing == null)
-                    {
-                        statusMessage = "This speaker no longer exists.";
-                        isError = true;
-                        return;
-                    }
-
-                    var bioChanged = !string.Equals(existing.Bio, editingSpeaker.Bio, StringComparison.Ordinal)
-                        || !string.Equals(existing.Pronouns, editingSpeaker.Pronouns, StringComparison.Ordinal);
-                    var thirdPersonEdited = !string.Equals(existing.BioThirdPerson, editingSpeaker.BioThirdPerson, StringComparison.Ordinal);
-
-                    existing.Name = editingSpeaker.Name;
-                    existing.Email = editingSpeaker.Email;
-                    existing.Bio = editingSpeaker.Bio;
-                    existing.Pronouns = editingSpeaker.Pronouns;
-                    existing.BioThirdPerson = editingSpeaker.BioThirdPerson;
-                    SpeakerBio.EnsureThirdPerson(existing, force: bioChanged && !thirdPersonEdited);
-                    existing.PhotoBlobUrl = editingSpeaker.PhotoBlobUrl;
-                    existing.LinkedInUrl = editingSpeaker.LinkedInUrl;
-                    existing.TwitterHandle = editingSpeaker.TwitterHandle;
-                    existing.BlueSkyHandle = editingSpeaker.BlueSkyHandle;
-                    existing.GitHubHandle = editingSpeaker.GitHubHandle;
-                    existing.FacebookUrl = editingSpeaker.FacebookUrl;
-                    existing.WebsiteUrl = editingSpeaker.WebsiteUrl;
-                    existing.UpdatedAtUtc = DateTime.UtcNow;
-                }
-
-                await dbContext.SaveChangesAsync();
-            }
-
-            showModal = false;
-            statusMessage = "Speaker saved.";
-            isError = false;
-        }
-        catch (Exception ex)
-        {
-            var speakerId = editingSpeaker.Id;
-            Logger.LogError(ex, "Failed to save speaker {SpeakerId}.", speakerId);
-            if (isNewSpeaker) editingSpeaker.Id = Guid.Empty;
-            statusMessage = "Unable to save the speaker. The error has been logged.";
-            isError = true;
-            return;
-        }
-
-        try
-        {
-            await LoadSpeakersAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Speaker {SpeakerId} was saved but the directory could not be refreshed.", editingSpeaker.Id);
-            statusMessage = "Speaker saved, but the directory could not be refreshed. Reload the page to see the update.";
-            isError = true;
-        }
     }
 
     private async Task DeleteSpeakerAsync(Speaker speaker)

@@ -130,12 +130,22 @@
                                     if (speaker is null) continue;
                                     var isApplied = selectedSessionizeProfiles.ContainsKey(speaker.Name);
                                     var useMeetup = meetupDetailsSpeakers.Contains(speaker.Name);
+                                    var linked = LinkedSpeaker(speaker.Name);
                                     <div class="border-top pt-2 mt-2" @key="@($"{importedEvent.MeetupEventId}:{speaker.Name}")">
                                         <div class="d-flex flex-wrap align-items-center gap-2">
                                             <span class="fw-semibold">@speaker.Name</span>
+                                            @if (linked != null)
+                                            {
+                                                <span class="badge text-bg-info">In directory@(string.Equals(linked.Name, speaker.Name, StringComparison.OrdinalIgnoreCase) ? "" : $": {linked.Name}")</span>
+                                                <button type="button" class="btn btn-sm btn-link p-0" @onclick="() => UnlinkDirectorySpeaker(speaker)">Not the same person</button>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge text-bg-light border">New speaker</span>
+                                            }
                                             @if (isApplied)
                                             {
-                                                <span class="badge text-bg-success">Profile created</span>
+                                                <span class="badge text-bg-success">@(linked != null ? "Profile will update listing" : "Profile created")</span>
                                                 <button type="button" class="btn btn-sm btn-link p-0" @onclick="() => UseMeetupSpeakerDetails(speaker)">Use Meetup details instead</button>
                                             }
                                             else if (useMeetup)
@@ -148,14 +158,37 @@
                                                 <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => UseMeetupDetailsOnly(speaker)">Use Meetup details instead</button>
                                             }
                                         </div>
+                                        @if (linked == null)
+                                        {
+                                            var suggestions = DirectorySuggestions(speaker.Name);
+                                            <div class="mt-2">
+                                                <div class="small text-secondary mb-1">Is this someone already in your speaker directory?</div>
+                                                <input class="form-control form-control-sm mb-1" placeholder="Search speaker directory..."
+                                                       value="@DirectorySearchText(speaker.Name)"
+                                                       @oninput="e => SetDirectorySearch(speaker.Name, e.Value?.ToString())" />
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    @foreach (var candidate in suggestions)
+                                                    {
+                                                        <button type="button" class="btn btn-sm btn-outline-info" @key="candidate.Id" @onclick="() => LinkDirectorySpeaker(speaker, candidate)">
+                                                            <i class="bi bi-person-check me-1"></i>Use @candidate.Name
+                                                        </button>
+                                                    }
+                                                    @if (suggestions.Count == 0)
+                                                    {
+                                                        <span class="small text-secondary">No matching speakers; a new one will be created.</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
                                         @if (!isApplied && !useMeetup)
                                         {
-                                            <SessionizeProfileLookup @key="speaker.Name"
+                                            <SessionizeProfileLookup @key="@($"{speaker.Name}:{linked?.Id}")"
                                                                      InitialQuery="@speaker.Name"
-                                                                     Current="speaker"
+                                                                     Current="@(linked ?? speaker)"
                                                                      OnApply="result => ApplyImportedSpeakerProfileAsync(speaker, result)" />
                                         }
                                     </div>
+
                                 }
                             </div>
                         </div>
@@ -285,7 +318,7 @@
                                             <div class="d-flex align-items-center gap-2 mb-1">
                                                 @if (s.Speaker != null)
                                                 {
-                                                    <a href="/speakers?edit=@s.Speaker.Id" title="Edit @s.Speaker.Name">
+                                                    <a href="/speakers/edit/@s.Speaker.Id" title="Edit @s.Speaker.Name">
                                                         @if (!string.IsNullOrWhiteSpace(s.Speaker.PhotoBlobUrl))
                                                         {
                                                             <img src="@s.Speaker.PhotoBlobUrl" alt="@s.Speaker.Name" class="rounded-circle border" style="width: 28px; height: 28px; object-fit: cover;" />
@@ -295,7 +328,7 @@
                                                             <i class="bi bi-person-fill text-primary"></i>
                                                         }
                                                     </a>
-                                                    <span><a href="/speakers?edit=@s.Speaker.Id" class="fw-bold text-reset text-decoration-none" title="Edit @s.Speaker.Name">@s.Speaker.Name</a>: @s.TalkTitle</span>
+                                                    <span><a href="/speakers/edit/@s.Speaker.Id" class="fw-bold text-reset text-decoration-none" title="Edit @s.Speaker.Name">@s.Speaker.Name</a>: @s.TalkTitle</span>
                                                 }
                                                 else
                                                 {
@@ -376,6 +409,9 @@
     private MeetupEventImportResult? pendingMeetupImport;
     private Guid? pendingMeetupGroupId;
     private List<Speaker> importSpeakers = [];
+    private List<Speaker> directorySpeakers = [];
+    private readonly Dictionary<string, Guid> linkedSpeakerIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> directorySearch = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SelectedSessionizeProfile> selectedSessionizeProfiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> meetupDetailsSpeakers = new(StringComparer.OrdinalIgnoreCase);
 
@@ -552,6 +588,19 @@
                     Bio = group.Select(item => item.Bio).FirstOrDefault(bio => !string.IsNullOrWhiteSpace(bio))
                 })
                 .ToList();
+            await using (var dbContext = await DbContextFactory.CreateDbContextAsync())
+            {
+                directorySpeakers = await dbContext.Speakers.AsNoTracking().OrderBy(item => item.Name).ToListAsync();
+            }
+
+            linkedSpeakerIds.Clear();
+            directorySearch.Clear();
+            foreach (var imported in importSpeakers)
+            {
+                var match = directorySpeakers.FirstOrDefault(item => string.Equals(item.Name, imported.Name, StringComparison.OrdinalIgnoreCase));
+                if (match != null) linkedSpeakerIds[imported.Name] = match.Id;
+            }
+
             statusMessage = null;
             isError = false;
         }
@@ -571,15 +620,59 @@
         Speaker speaker,
         (SessionizeProfile Profile, SessionizeProfileFields Fields) selection)
     {
-        selectedSessionizeProfiles[speaker.Name] = new SelectedSessionizeProfile(selection.Profile, selection.Fields, speaker.Pronouns);
-        speaker.Pronouns = null;
+        var current = LinkedSpeaker(speaker.Name) ?? speaker;
+        selectedSessionizeProfiles[speaker.Name] = new SelectedSessionizeProfile(selection.Profile, selection.Fields, current.Pronouns);
+        current.Pronouns = null;
         return Task.CompletedTask;
+    }
+
+    // Imported speakers map to a directory speaker by id; Guid.Empty means "create a new speaker".
+    private Speaker? LinkedSpeaker(string importedName) =>
+        linkedSpeakerIds.TryGetValue(importedName.Trim(), out var id) && id != Guid.Empty
+            ? directorySpeakers.FirstOrDefault(item => item.Id == id)
+            : null;
+
+    private void LinkDirectorySpeaker(Speaker speaker, Speaker directorySpeaker)
+    {
+        linkedSpeakerIds[speaker.Name] = directorySpeaker.Id;
+        selectedSessionizeProfiles.Remove(speaker.Name);
+    }
+
+    private void UnlinkDirectorySpeaker(Speaker speaker)
+    {
+        linkedSpeakerIds[speaker.Name] = Guid.Empty;
+        selectedSessionizeProfiles.Remove(speaker.Name);
+    }
+
+    private string DirectorySearchText(string importedName) =>
+        directorySearch.TryGetValue(importedName, out var text) ? text : string.Empty;
+
+    private void SetDirectorySearch(string importedName, string? text) => directorySearch[importedName] = text ?? string.Empty;
+
+    private List<Speaker> DirectorySuggestions(string importedName)
+    {
+        var search = DirectorySearchText(importedName).Trim();
+        var candidates = directorySpeakers.Where(item => !item.IsPlaceholder);
+        if (search.Length > 0)
+        {
+            return candidates.Where(item => item.Name.Contains(search, StringComparison.OrdinalIgnoreCase)).Take(8).ToList();
+        }
+
+        var tokens = importedName.Split([' ', '-', '.'], StringSplitOptions.RemoveEmptyEntries).Where(token => token.Length >= 3).ToList();
+        return candidates
+            .Select(item => (Speaker: item, Score: tokens.Count(token => item.Name.Contains(token, StringComparison.OrdinalIgnoreCase))))
+            .Where(item => item.Score > 0)
+            .OrderByDescending(item => item.Score)
+            .ThenBy(item => item.Speaker.Name)
+            .Take(5)
+            .Select(item => item.Speaker)
+            .ToList();
     }
 
     private void UseMeetupSpeakerDetails(Speaker speaker)
     {
         selectedSessionizeProfiles.Remove(speaker.Name);
-        speaker.Pronouns = null;
+        (LinkedSpeaker(speaker.Name) ?? speaker).Pronouns = null;
         meetupDetailsSpeakers.Add(speaker.Name);
     }
 
@@ -648,14 +741,32 @@
                     for (var index = 0; index < importedEvent.Speakers.Count; index++)
                     {
                         var importedSpeaker = importedEvent.Speakers[index];
-                        var speaker = knownSpeakers.FirstOrDefault(existing =>
-                            string.Equals(existing.Name, importedSpeaker.Name, StringComparison.OrdinalIgnoreCase));
+                        var importedName = importedSpeaker.Name.Trim();
+                        Speaker? speaker = null;
+                        if (linkedSpeakerIds.TryGetValue(importedName, out var linkedId))
+                        {
+                            if (linkedId != Guid.Empty) speaker = knownSpeakers.FirstOrDefault(existing => existing.Id == linkedId);
+                        }
+                        else
+                        {
+                            speaker = knownSpeakers.FirstOrDefault(existing =>
+                                string.Equals(existing.Name, importedName, StringComparison.OrdinalIgnoreCase));
+                        }
+
+                        selectedSessionizeProfiles.TryGetValue(importedName, out var selectedProfile);
+                        // A chosen Sessionize profile that matches an existing listing by name updates it rather than adding a duplicate.
+                        if (speaker == null && selectedProfile != null && !linkedSpeakerIds.ContainsKey(importedName))
+                        {
+                            speaker = knownSpeakers.FirstOrDefault(existing =>
+                                string.Equals(existing.Name, selectedProfile.Profile.Name, StringComparison.OrdinalIgnoreCase));
+                        }
+
                         if (speaker == null)
                         {
                             speaker = new Speaker
                             {
                                 Id = Guid.NewGuid(),
-                                Name = importedSpeaker.Name,
+                                Name = importedName,
                                 Bio = importedSpeaker.Bio,
                                 CreatedAtUtc = DateTime.UtcNow,
                                 UpdatedAtUtc = DateTime.UtcNow
@@ -663,6 +774,8 @@
                             SpeakerBio.EnsureThirdPerson(speaker);
                             await dbContext.Speakers.AddAsync(speaker);
                             knownSpeakers.Add(speaker);
+                            // Later events in this import reuse the speaker just created.
+                            linkedSpeakerIds[importedName] = speaker.Id;
                             importedSpeakerCount++;
                         }
                         else if (string.IsNullOrWhiteSpace(speaker.Bio) && !string.IsNullOrWhiteSpace(importedSpeaker.Bio))
@@ -672,7 +785,7 @@
                             speaker.UpdatedAtUtc = DateTime.UtcNow;
                         }
 
-                        if (selectedSessionizeProfiles.TryGetValue(importedSpeaker.Name.Trim(), out var selectedProfile))
+                        if (selectedProfile != null)
                         {
                             SessionizeSpeakerMapper.ApplyProfile(speaker, selectedProfile.Profile, selectedProfile.Fields);
                             speaker.Pronouns = selectedProfile.Pronouns;
@@ -701,6 +814,9 @@
             pendingMeetupImport = null;
             pendingMeetupGroupId = null;
             importSpeakers = [];
+            directorySpeakers = [];
+            linkedSpeakerIds.Clear();
+            directorySearch.Clear();
             selectedSessionizeProfiles.Clear();
             meetupDetailsSpeakers.Clear();
             statusMessage = $"Synced {importedEventCount} past events and added {importedSpeakerCount} speaker profiles. "
@@ -724,6 +840,9 @@
         pendingMeetupImport = null;
         pendingMeetupGroupId = null;
         importSpeakers = [];
+        directorySpeakers = [];
+        linkedSpeakerIds.Clear();
+        directorySearch.Clear();
         selectedSessionizeProfiles.Clear();
         meetupDetailsSpeakers.Clear();
         statusMessage = null;
