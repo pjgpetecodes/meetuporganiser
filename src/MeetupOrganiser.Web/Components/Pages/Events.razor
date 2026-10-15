@@ -14,12 +14,12 @@
 <PageTitle>Meetup Events - Meetup Organiser</PageTitle>
 
 <div class="container-fluid py-2">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="events-header d-flex justify-content-between align-items-center mb-4">
         <div>
             <h1 class="h3 fw-bold mb-1">Meetup Events</h1>
             <p class="text-secondary mb-0">Create, schedule, clone, and manage community meetup events.</p>
         </div>
-        <div class="d-flex gap-2">
+        <div class="events-desktop-actions d-flex gap-2">
             <button class="btn btn-outline-danger" @onclick="SyncPastMeetupEventsAsync" disabled="@(!Guid.TryParse(selectedGroupId, out _) || isSyncingMeetup || pendingMeetupImport != null)">
                 @if (isSyncingMeetup)
                 {
@@ -35,6 +35,33 @@
             <a href="/events/invite" class="btn btn-outline-primary">
                 <i class="bi bi-send me-1"></i> Quick Invite
             </a>
+            <a href="/events/new" class="btn btn-primary">
+                <i class="bi bi-plus-circle me-1"></i> New Event
+            </a>
+        </div>
+        <div class="events-compact-actions d-flex align-items-center gap-2">
+            <details class="events-action-dropdown">
+                <summary class="btn btn-outline-secondary">
+                    <i class="bi bi-three-dots me-1"></i> More
+                </summary>
+                <div class="events-action-dropdown-menu">
+                    <button type="button" class="dropdown-item text-danger" @onclick="SyncPastMeetupEventsAsync" disabled="@(!Guid.TryParse(selectedGroupId, out _) || isSyncingMeetup || pendingMeetupImport != null)">
+                        @if (isSyncingMeetup)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Loading...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-cloud-download me-1"></i>
+                            <span>Sync Past Meetup Events</span>
+                        }
+                    </button>
+                    <a href="/events/invite" class="dropdown-item text-primary">
+                        <i class="bi bi-send me-1"></i> Quick Invite
+                    </a>
+                </div>
+            </details>
             <a href="/events/new" class="btn btn-primary">
                 <i class="bi bi-plus-circle me-1"></i> New Event
             </a>
@@ -291,7 +318,7 @@
                                     }
                                 </td>
                                 <td class="text-end">
-                                    <div class="btn-group btn-group-sm">
+                                    <div class="events-row-desktop-actions btn-group btn-group-sm">
                                         <a href="/events/edit/@evt.Id?tab=assets" class="btn btn-outline-primary" title="Slide Deck & Social Images">
                                             <i class="bi bi-file-earmark-slides me-1"></i> Assets
                                         </a>
@@ -304,6 +331,25 @@
                                         <button class="btn btn-outline-danger" title="Delete" @onclick="() => DeleteEventAsync(evt)">
                                             <i class="bi bi-trash"></i>
                                         </button>
+                                    </div>
+                                    <div class="events-compact-actions event-row-actions">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" popovertarget="@($"event-actions-{evt.Id}")" aria-label="@($"Actions for {evt.Title}")">
+                                            <i class="bi bi-three-dots" aria-hidden="true"></i>
+                                        </button>
+                                        <div id="@($"event-actions-{evt.Id}")" class="event-row-action-items" popover="auto">
+                                            <a href="/events/edit/@evt.Id?tab=assets" class="dropdown-item" title="Slide Deck & Social Images">
+                                                <i class="bi bi-file-earmark-slides me-2" aria-hidden="true"></i> Assets
+                                            </a>
+                                            <a href="/events/edit/@evt.Id" class="dropdown-item" title="Edit Event">
+                                                <i class="bi bi-pencil me-2" aria-hidden="true"></i> Edit
+                                            </a>
+                                            <button type="button" class="dropdown-item" title="Clone Event" @onclick="() => CloneEventAsync(evt)">
+                                                <i class="bi bi-copy me-2" aria-hidden="true"></i> Clone
+                                            </button>
+                                            <button type="button" class="dropdown-item text-danger" title="Delete" @onclick="() => DeleteEventAsync(evt)">
+                                                <i class="bi bi-trash me-2" aria-hidden="true"></i> Delete
+                                            </button>
+                                        </div>
                                     </div>
                                 </td>
                             </tr>

@@ -177,8 +177,9 @@ public class PptxPreviewService : IPptxPreviewService
             canvas.Clear(SKColors.White);
             canvas.Scale((float)(width / cx));
 
-            var theme = doc.PresentationPart.ThemePart?.Theme;
-            var ctx = new RenderContext(canvas, theme, cx, cy);
+            var masterPart0 = part.SlideLayoutPart?.SlideMasterPart;
+            var themePart = masterPart0?.ThemePart ?? doc.PresentationPart.ThemePart;
+            var ctx = new RenderContext(canvas, themePart?.Theme, cx, cy) { ClrMap = masterPart0?.SlideMaster?.ColorMap, ThemePart = themePart };
             DrawBackground(ctx, part);
             // Master shapes (logos etc.) sit beneath layout and slide shapes unless hidden via showMasterSp.
             var layout = part.SlideLayoutPart?.SlideLayout;
@@ -210,13 +211,27 @@ public class PptxPreviewService : IPptxPreviewService
         }
     }
 
-    private sealed record RenderContext(SKCanvas Canvas, D.Theme? Theme, double Cx, double Cy);
+    private sealed record RenderContext(SKCanvas Canvas, D.Theme? Theme, double Cx, double Cy)
+    {
+        public ColorMap? ClrMap { get; init; }
+
+        public OpenXmlPart? ThemePart { get; init; }
+
+        // Colour substituted for "phClr" while drawing a theme background fill style.
+        public SKColor? PhClr { get; set; }
+    }
 
     private static void DrawBackground(RenderContext ctx, SlidePart part)
     {
         var background = part.Slide?.CommonSlideData?.Background
             ?? part.SlideLayoutPart?.SlideLayout?.CommonSlideData?.Background
             ?? part.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.Background;
+        if (background?.BackgroundStyleReference is { } styleRef)
+        {
+            DrawBackgroundStyleReference(ctx, styleRef);
+            return;
+        }
+
         var props = background?.BackgroundProperties;
         if (props == null) return;
 
@@ -230,6 +245,33 @@ public class PptxPreviewService : IPptxPreviewService
 
         using var paint = FillPaint(ctx, props, rect);
         if (paint != null) ctx.Canvas.DrawRect(rect, paint);
+    }
+
+    // bgRef points at one of the theme's background fill styles (1001-based), recoloured with the reference's own colour.
+    private static void DrawBackgroundStyleReference(RenderContext ctx, BackgroundStyleReference styleRef)
+    {
+        var styles = ctx.Theme?.ThemeElements?.FormatScheme?.BackgroundFillStyleList;
+        var index = (int)(styleRef.Index?.Value ?? 1001) - 1001;
+        var fill = styles?.ChildElements.ElementAtOrDefault(index);
+        if (fill == null) return;
+
+        ctx.PhClr = ResolveColor(ctx, styleRef);
+        try
+        {
+            var rect = new SKRect(0, 0, (float)ctx.Cx, (float)ctx.Cy);
+            if (fill is D.BlipFill blip)
+            {
+                if (ctx.ThemePart != null) DrawBlip(ctx, ctx.ThemePart, blip, rect);
+                return;
+            }
+
+            using var paint = FillPaint(ctx, fill.Parent!, rect, fill);
+            if (paint != null) ctx.Canvas.DrawRect(rect, paint);
+        }
+        finally
+        {
+            ctx.PhClr = null;
+        }
     }
 
     private static void DrawTree(RenderContext ctx, OpenXmlElement tree, OpenXmlPart owner, bool skipPlaceholders)
@@ -316,6 +358,10 @@ public class PptxPreviewService : IPptxPreviewService
             using var bitmap = ImageOrientation.Decode(ReadAll(imageStream));
             if (bitmap == null) return;
 
+            var blipEl = blipFill.GetFirstChild<D.Blip>()!;
+            if (blipEl.GetFirstChild<D.Duotone>() is { } duotone) ApplyDuotone(ctx, bitmap, duotone);
+            var alpha = blipEl.GetFirstChild<D.AlphaModulationFixed>()?.Amount?.Value ?? 100000;
+
             var src = new SKRect(0, 0, bitmap.Width, bitmap.Height);
             if (blipFill.GetFirstChild<D.SourceRectangle>() is { } crop)
             {
@@ -324,13 +370,35 @@ public class PptxPreviewService : IPptxPreviewService
                 src = new SKRect(bitmap.Width * l, bitmap.Height * t, bitmap.Width * (1 - r), bitmap.Height * (1 - b));
             }
 
-            using var paint = new SKPaint { IsAntialias = true };
+            using var paint = new SKPaint { IsAntialias = true, Color = SKColors.White.WithAlpha((byte)(Math.Clamp(alpha, 0, 100000) * 255L / 100000)) };
             ctx.Canvas.DrawBitmap(bitmap, src, rect, paint);
         }
         catch
         {
             // Unsupported image formats (e.g. EMF) are skipped.
         }
+    }
+
+    // Maps each pixel's luminance onto a gradient between the duotone's two colours.
+    private static void ApplyDuotone(RenderContext ctx, SKBitmap bitmap, D.Duotone duotone)
+    {
+        var colours = duotone.ChildElements.Select(e => ResolveColorElement(ctx, e)).Where(c => c != null).Select(c => c!.Value).ToList();
+        if (colours.Count < 2) return;
+
+        var (dark, light) = (colours[0], colours[1]);
+        var pixels = bitmap.Pixels;
+        for (var i = 0; i < pixels.Length; i++)
+        {
+            var p = pixels[i];
+            var lum = (0.2126f * p.Red + 0.7152f * p.Green + 0.0722f * p.Blue) / 255f;
+            pixels[i] = new SKColor(
+                (byte)(dark.Red + (light.Red - dark.Red) * lum),
+                (byte)(dark.Green + (light.Green - dark.Green) * lum),
+                (byte)(dark.Blue + (light.Blue - dark.Blue) * lum),
+                p.Alpha);
+        }
+
+        bitmap.Pixels = pixels;
     }
 
     private static byte[] ReadAll(Stream stream)
@@ -373,14 +441,14 @@ public class PptxPreviewService : IPptxPreviewService
         else canvas.DrawRect(rect, paint);
     }
 
-    private static SKPaint? FillPaint(RenderContext ctx, OpenXmlElement props, SKRect rect)
+    private static SKPaint? FillPaint(RenderContext ctx, OpenXmlElement props, SKRect rect, OpenXmlElement? explicitFill = null)
     {
-        if (props.GetFirstChild<D.SolidFill>() is { } solid && ResolveColor(ctx, solid) is { } colour)
+        if ((explicitFill as D.SolidFill ?? props.GetFirstChild<D.SolidFill>()) is { } solid && ResolveColor(ctx, solid) is { } colour)
         {
             return new SKPaint { Color = colour, IsAntialias = true, Style = SKPaintStyle.Fill };
         }
 
-        if (props.GetFirstChild<D.GradientFill>() is { } gradient)
+        if ((explicitFill as D.GradientFill ?? props.GetFirstChild<D.GradientFill>()) is { } gradient)
         {
             var stops = gradient.GradientStopList?.Elements<D.GradientStop>()
                 .Select(s => (Pos: (s.Position?.Value ?? 0) / 100000f, Colour: ResolveColor(ctx, s)))
@@ -400,37 +468,85 @@ public class PptxPreviewService : IPptxPreviewService
         return null;
     }
 
-    private static SKColor? ResolveColor(RenderContext ctx, OpenXmlElement holder)
+    private static SKColor? ResolveColor(RenderContext ctx, OpenXmlElement holder) =>
+        holder.ChildElements.Select(e => ResolveColorElement(ctx, e)).FirstOrDefault(c => c != null);
+
+    private static SKColor? ResolveColorElement(RenderContext ctx, OpenXmlElement el)
     {
-        SKColor? colour = null;
-        if (holder.GetFirstChild<D.RgbColorModelHex>() is { Val.Value: { } hex } && SKColor.TryParse(hex, out var parsed))
+        SKColor? colour;
+        switch (el)
         {
-            colour = parsed;
-            if (holder.GetFirstChild<D.RgbColorModelHex>()!.GetFirstChild<D.Alpha>()?.Val?.Value is { } a)
-            {
-                colour = colour.Value.WithAlpha((byte)(a * 255 / 100000));
-            }
-        }
-        else if (holder.GetFirstChild<D.SchemeColor>() is { } scheme && scheme.Val?.Value is { } name)
-        {
-            colour = SchemeColour(ctx.Theme, name);
-            if (colour != null && scheme.GetFirstChild<D.Alpha>()?.Val?.Value is { } a)
-            {
-                colour = colour.Value.WithAlpha((byte)(a * 255 / 100000));
-            }
-        }
-        else if (holder.GetFirstChild<D.PresetColor>() is { Val.Value: { } preset })
-        {
-            colour = preset == D.PresetColorValues.White ? SKColors.White : preset == D.PresetColorValues.Black ? SKColors.Black : null;
+            case D.RgbColorModelHex { Val.Value: { } hex } when SKColor.TryParse(hex, out var parsed):
+                colour = parsed;
+                break;
+            case D.SchemeColor { Val.Value: { } name }:
+                colour = name == D.SchemeColorValues.PhColor ? ctx.PhClr : SchemeColour(ctx, name);
+                break;
+            case D.PresetColor { Val.Value: { } preset }:
+                colour = preset == D.PresetColorValues.White ? SKColors.White : preset == D.PresetColorValues.Black ? SKColors.Black : null;
+                break;
+            default:
+                return null;
         }
 
-        return colour;
+        return colour == null ? null : ApplyColorModifiers(colour.Value, el);
     }
 
-    private static SKColor? SchemeColour(D.Theme? theme, D.SchemeColorValues name)
+    private static SKColor ApplyColorModifiers(SKColor colour, OpenXmlElement el)
     {
-        var scheme = theme?.ThemeElements?.ColorScheme;
+        var alpha = colour.Alpha;
+        foreach (var mod in el.ChildElements)
+        {
+            switch (mod)
+            {
+                case D.Alpha a when a.Val?.Value is { } v:
+                    alpha = (byte)(v * 255L / 100000);
+                    break;
+                case D.Tint t when t.Val?.Value is { } v:
+                    colour = Blend(colour, SKColors.White, 1 - v / 100000f);
+                    break;
+                case D.Shade s when s.Val?.Value is { } v:
+                    colour = Blend(colour, SKColors.Black, 1 - v / 100000f);
+                    break;
+                case D.LuminanceModulation or D.LuminanceOffset or D.SaturationModulation or D.HueModulation:
+                    colour.ToHsl(out var h, out var sat, out var lum);
+                    if (mod is D.LuminanceModulation lm && lm.Val?.Value is { } lmv) lum = Math.Min(100, lum * lmv / 100000f);
+                    else if (mod is D.LuminanceOffset lo && lo.Val?.Value is { } lov) lum = Math.Clamp(lum + lov / 1000f, 0, 100);
+                    else if (mod is D.SaturationModulation sm && sm.Val?.Value is { } smv) sat = Math.Min(100, sat * smv / 100000f);
+                    else if (mod is D.HueModulation hm && hm.Val?.Value is { } hmv) h = (h * hmv / 100000f) % 360;
+                    colour = SKColor.FromHsl(h, sat, lum);
+                    break;
+            }
+        }
+
+        return colour.WithAlpha(alpha);
+    }
+
+    private static SKColor Blend(SKColor from, SKColor to, float amount) => new(
+        (byte)(from.Red + (to.Red - from.Red) * amount),
+        (byte)(from.Green + (to.Green - from.Green) * amount),
+        (byte)(from.Blue + (to.Blue - from.Blue) * amount));
+
+    private static SKColor? SchemeColour(RenderContext ctx, D.SchemeColorValues name)
+    {
+        var scheme = ctx.Theme?.ThemeElements?.ColorScheme;
         if (scheme == null) return null;
+
+        // bg1/tx1/bg2/tx2 are indirected through the master's colour map (dark masters map tx1 to light).
+        var map = ctx.ClrMap;
+        var mapped = name == D.SchemeColorValues.Background1 ? map?.Background1?.Value
+            : name == D.SchemeColorValues.Text1 ? map?.Text1?.Value
+            : name == D.SchemeColorValues.Background2 ? map?.Background2?.Value
+            : name == D.SchemeColorValues.Text2 ? map?.Text2?.Value
+            : null;
+        if (mapped != null)
+        {
+            name = mapped.Value == D.ColorSchemeIndexValues.Dark1 ? D.SchemeColorValues.Dark1
+                : mapped.Value == D.ColorSchemeIndexValues.Light1 ? D.SchemeColorValues.Light1
+                : mapped.Value == D.ColorSchemeIndexValues.Dark2 ? D.SchemeColorValues.Dark2
+                : mapped.Value == D.ColorSchemeIndexValues.Light2 ? D.SchemeColorValues.Light2
+                : name;
+        }
 
         D.Color2Type? slot = null;
         if (name == D.SchemeColorValues.Background1 || name == D.SchemeColorValues.Light1) slot = scheme.Light1Color;

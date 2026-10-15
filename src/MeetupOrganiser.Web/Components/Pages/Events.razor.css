@@ -1,0 +1,102 @@
+.events-compact-actions {
+    display: none !important;
+}
+
+.events-action-dropdown-menu,
+.event-row-action-items {
+    --bs-dropdown-link-color: var(--bs-body-color);
+    --bs-dropdown-link-hover-color: var(--bs-body-color);
+    --bs-dropdown-link-hover-bg: var(--bs-tertiary-bg);
+    --bs-dropdown-link-active-color: var(--bs-primary-text-emphasis);
+    --bs-dropdown-link-active-bg: var(--bs-primary-bg-subtle);
+    --bs-dropdown-link-disabled-color: var(--bs-tertiary-color);
+}
+
+.events-action-dropdown {
+    position: relative;
+}
+
+.events-action-dropdown > summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.events-action-dropdown > summary::-webkit-details-marker {
+    display: none;
+}
+
+.events-action-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 5;
+    min-width: 13rem;
+    padding: 0.5rem 0;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 15%);
+}
+
+.events-action-dropdown-menu .dropdown-item {
+    width: 100%;
+    padding: 0.375rem 1rem;
+    text-align: left;
+}
+
+.event-row-actions {
+    display: none;
+}
+
+.event-row-action-items {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    min-width: 10rem;
+    padding: 0.5rem 0;
+    color: var(--bs-body-color);
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 15%);
+}
+
+.event-row-action-items .dropdown-item {
+    padding: 0.375rem 1rem;
+}
+
+@media (max-width: 1399.98px) {
+    .events-header {
+        flex-wrap: wrap;
+    }
+
+    .events-header > div:first-child {
+        flex: 1 1 100%;
+    }
+
+    .events-header .events-desktop-actions {
+        display: none !important;
+    }
+
+    .events-row-desktop-actions {
+        display: none !important;
+    }
+
+    .events-header .events-compact-actions {
+        display: flex !important;
+        margin-left: auto;
+    }
+
+    .event-row-actions {
+        display: block !important;
+        text-align: left;
+    }
+
+}
+
+@media (min-width: 1400px) {
+    .events-header .events-compact-actions,
+    .event-row-actions {
+        display: none !important;
+    }
+}
