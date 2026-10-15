@@ -147,6 +147,15 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   }
 }
 
+// Allow the publish profile used by the GitHub Actions deploy step
+resource scmBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: webApp
+  name: 'scm'
+  properties: {
+    allow: true
+  }
+}
+
 output webAppId string = webApp.id
 output webAppName string = webApp.name
 output defaultHostName string = webApp.properties.defaultHostName

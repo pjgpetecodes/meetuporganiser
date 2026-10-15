@@ -6,7 +6,8 @@
 .DESCRIPTION
     Idempotent: re-running reuses the app registration and rotates its client secret.
     The principal gets Contributor plus Role Based Access Control Administrator (limited to
-    assigning Storage Blob Data Contributor) on the resource group only, which is what the Bicep
+    assigning Storage Blob Data Contributor, Contributor and Communication and Email Service Owner)
+    on the resource group only, which is what the Bicep
     deployment (including storage-rbac.bicep) needs.
 
     Requires: az login with rights to create app registrations and role assignments, and gh auth login.
@@ -72,7 +73,7 @@ for ($i = 0; -not $spId -and $i -lt 6; $i++) {
 if (-not $spId) { throw "Could not create service principal for $appId." }
 
 # Role assignments on the resource group only
-$rbacAdminCondition = "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {ba92f5b4-2d11-453d-a403-e96b0029c9fe})) AND ((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {ba92f5b4-2d11-453d-a403-e96b0029c9fe}))"
+$rbacAdminCondition = "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {ba92f5b4-2d11-453d-a403-e96b0029c9fe, b24988ac-6180-42a0-ab88-20f7382dd24c, 09976791-48a7-449e-bb21-39d1a415f350})) AND ((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {ba92f5b4-2d11-453d-a403-e96b0029c9fe, b24988ac-6180-42a0-ab88-20f7382dd24c, 09976791-48a7-449e-bb21-39d1a415f350}))"
 $roles = @(
     @{ Name = "Contributor"; Condition = $null },
     @{ Name = "Role Based Access Control Administrator"; Condition = $rbacAdminCondition }

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "8514293830338086300"
+      "templateHash": "5335945370564311529"
     }
   },
   "parameters": {
@@ -57,6 +57,48 @@
       "defaultValue": "",
       "metadata": {
         "description": "Entra ID App Registration Client Secret."
+      }
+    },
+    "emailCustomDomain": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional custom email sender domain (e.g. example.com). Leave empty to use the Azure-managed domain."
+      }
+    },
+    "emailCustomDomainVerified": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Set true once the custom email domain has been verified in Azure (DNS), to send from it."
+      }
+    },
+    "emailSenderUsername": {
+      "type": "string",
+      "defaultValue": "noreply",
+      "metadata": {
+        "description": "Local part of the sender address on the custom domain."
+      }
+    },
+    "smtpClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Client ID of the Entra app used for ACS SMTP (calendar invites). Empty disables SMTP."
+      }
+    },
+    "smtpServicePrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Object ID of that app's service principal (gets the ACS email role)."
+      }
+    },
+    "smtpClientSecret": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Client secret of the SMTP Entra app (SMTP password)."
       }
     }
   },
@@ -466,10 +508,7 @@
             "value": "[variables('keyVaultName')]"
           },
           "secrets": {
-            "value": {
-              "SqlConnectionString": "[reference(resourceId('Microsoft.Resources/deployments', 'sqlDeployment'), '2025-04-01').outputs.connectionString.value]",
-              "AppInsightsConnectionString": "[reference(resourceId('Microsoft.Resources/deployments', 'appInsightsDeployment'), '2025-04-01').outputs.appInsightsConnectionString.value]"
-            }
+            "value": "[union(createObject('SqlConnectionString', reference(resourceId('Microsoft.Resources/deployments', 'sqlDeployment'), '2025-04-01').outputs.connectionString.value, 'AppInsightsConnectionString', reference(resourceId('Microsoft.Resources/deployments', 'appInsightsDeployment'), '2025-04-01').outputs.appInsightsConnectionString.value), if(empty(parameters('smtpClientSecret')), createObject(), createObject('SmtpPassword', parameters('smtpClientSecret'))))]"
           }
         },
         "template": {
@@ -571,6 +610,160 @@
     {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
+      "name": "emailDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "namePrefix": {
+            "value": "[format('{0}-{1}', parameters('resourcePrefix'), variables('uniqueSuffix'))]"
+          },
+          "customDomain": {
+            "value": "[parameters('emailCustomDomain')]"
+          },
+          "customDomainVerified": {
+            "value": "[parameters('emailCustomDomainVerified')]"
+          },
+          "senderUsername": {
+            "value": "[parameters('emailSenderUsername')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "6096428897263172473"
+            }
+          },
+          "parameters": {
+            "namePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Base name for the communication resources."
+              }
+            },
+            "dataLocation": {
+              "type": "string",
+              "defaultValue": "Europe",
+              "metadata": {
+                "description": "Data residency location for Communication Services (e.g. Europe, UnitedStates)."
+              }
+            },
+            "customDomain": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional custom sender domain (e.g. example.com). Created customer-managed; DNS records must be added and verified in Azure before it can be linked."
+              }
+            },
+            "customDomainVerified": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Set true once the custom domain is verified in Azure, to link it and send from it."
+              }
+            },
+            "senderUsername": {
+              "type": "string",
+              "defaultValue": "noreply",
+              "metadata": {
+                "description": "Local part of the sender address on the custom domain."
+              }
+            }
+          },
+          "variables": {
+            "emailServiceName": "[format('email-{0}', parameters('namePrefix'))]",
+            "communicationServiceName": "[format('acs-{0}', parameters('namePrefix'))]",
+            "useCustomSender": "[and(not(empty(parameters('customDomain'))), parameters('customDomainVerified'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Communication/emailServices",
+              "apiVersion": "2023-04-01",
+              "name": "[variables('emailServiceName')]",
+              "location": "global",
+              "properties": {
+                "dataLocation": "[parameters('dataLocation')]"
+              }
+            },
+            {
+              "type": "Microsoft.Communication/emailServices/domains",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}', variables('emailServiceName'), 'AzureManagedDomain')]",
+              "location": "global",
+              "properties": {
+                "domainManagement": "AzureManaged"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Communication/emailServices', variables('emailServiceName'))]"
+              ]
+            },
+            {
+              "condition": "[not(empty(parameters('customDomain')))]",
+              "type": "Microsoft.Communication/emailServices/domains",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}', variables('emailServiceName'), parameters('customDomain'))]",
+              "location": "global",
+              "properties": {
+                "domainManagement": "CustomerManaged"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Communication/emailServices', variables('emailServiceName'))]"
+              ]
+            },
+            {
+              "condition": "[not(empty(parameters('customDomain')))]",
+              "type": "Microsoft.Communication/emailServices/domains/senderUsernames",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}/{2}', variables('emailServiceName'), parameters('customDomain'), parameters('senderUsername'))]",
+              "properties": {
+                "username": "[parameters('senderUsername')]",
+                "displayName": "Meetup Organiser"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Communication/emailServices/domains', variables('emailServiceName'), parameters('customDomain'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Communication/communicationServices",
+              "apiVersion": "2023-04-01",
+              "name": "[variables('communicationServiceName')]",
+              "location": "global",
+              "properties": {
+                "dataLocation": "[parameters('dataLocation')]",
+                "linkedDomains": "[if(variables('useCustomSender'), createArray(resourceId('Microsoft.Communication/emailServices/domains', variables('emailServiceName'), 'AzureManagedDomain'), resourceId('Microsoft.Communication/emailServices/domains', variables('emailServiceName'), parameters('customDomain'))), createArray(resourceId('Microsoft.Communication/emailServices/domains', variables('emailServiceName'), 'AzureManagedDomain')))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Communication/emailServices/domains', variables('emailServiceName'), parameters('customDomain'))]",
+                "[resourceId('Microsoft.Communication/emailServices/domains', variables('emailServiceName'), 'AzureManagedDomain')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "endpoint": {
+              "type": "string",
+              "value": "[format('https://{0}', reference(resourceId('Microsoft.Communication/communicationServices', variables('communicationServiceName')), '2023-04-01').hostName)]"
+            },
+            "senderAddress": {
+              "type": "string",
+              "value": "[if(variables('useCustomSender'), format('{0}@{1}', parameters('senderUsername'), parameters('customDomain')), format('DoNotReply@{0}', reference(resourceId('Microsoft.Communication/emailServices/domains', variables('emailServiceName'), 'AzureManagedDomain'), '2023-04-01').mailFromSenderDomain))]"
+            },
+            "communicationServiceName": {
+              "type": "string",
+              "value": "[variables('communicationServiceName')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
       "name": "appServiceDeployment",
       "properties": {
         "expressionEvaluationOptions": {
@@ -596,6 +789,16 @@
           "storageAccountUrl": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storageDeployment'), '2025-04-01').outputs.blobEndpoint.value]"
           },
+          "emailEndpoint": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'emailDeployment'), '2025-04-01').outputs.endpoint.value]"
+          },
+          "emailSenderAddress": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'emailDeployment'), '2025-04-01').outputs.senderAddress.value]"
+          },
+          "emailSmtpUsername": "[if(empty(parameters('smtpClientId')), createObject('value', ''), createObject('value', format('{0}.{1}.{2}', reference(resourceId('Microsoft.Resources/deployments', 'emailDeployment'), '2025-04-01').outputs.communicationServiceName.value, parameters('smtpClientId'), tenant().tenantId)))]",
+          "emailSmtpPassword": {
+            "value": "[parameters('smtpClientSecret')]"
+          },
           "entraClientId": {
             "value": "[parameters('entraClientId')]"
           },
@@ -610,7 +813,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "16231016291137225105"
+              "templateHash": "1052328009583797258"
             }
           },
           "parameters": {
@@ -664,6 +867,18 @@
                 "description": "Blob service endpoint of the storage account (accessed via managed identity)."
               }
             },
+            "emailEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Communication Services endpoint used to send email (managed identity)."
+              }
+            },
+            "emailSenderAddress": {
+              "type": "string",
+              "metadata": {
+                "description": "Verified sender address for outgoing email."
+              }
+            },
             "entraClientId": {
               "type": "string",
               "defaultValue": "",
@@ -683,6 +898,20 @@
               "defaultValue": "",
               "metadata": {
                 "description": "Entra ID Client Secret."
+              }
+            },
+            "emailSmtpUsername": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "ACS SMTP username (<acs-name>.<app-client-id>.<tenant-id>) used to send calendar invites inline."
+              }
+            },
+            "emailSmtpPassword": {
+              "type": "securestring",
+              "defaultValue": "",
+              "metadata": {
+                "description": "ACS SMTP password (client secret of the SMTP Entra app)."
               }
             }
           },
@@ -747,6 +976,22 @@
                       "value": "generated-assets"
                     },
                     {
+                      "name": "Email__Endpoint",
+                      "value": "[parameters('emailEndpoint')]"
+                    },
+                    {
+                      "name": "Email__SenderAddress",
+                      "value": "[parameters('emailSenderAddress')]"
+                    },
+                    {
+                      "name": "Email__Smtp__Username",
+                      "value": "[parameters('emailSmtpUsername')]"
+                    },
+                    {
+                      "name": "Email__Smtp__Password",
+                      "value": "[parameters('emailSmtpPassword')]"
+                    },
+                    {
                       "name": "AzureAd__Instance",
                       "value": "[environment().authentication.loginEndpoint]"
                     },
@@ -776,6 +1021,17 @@
               "dependsOn": [
                 "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]"
               ]
+            },
+            {
+              "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+              "apiVersion": "2023-12-01",
+              "name": "[format('{0}/{1}', parameters('webAppName'), 'scm')]",
+              "properties": {
+                "allow": true
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
+              ]
             }
           ],
           "outputs": {
@@ -804,6 +1060,7 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'appInsightsDeployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'emailDeployment')]",
         "[resourceId('Microsoft.Resources/deployments', 'sqlDeployment')]",
         "[resourceId('Microsoft.Resources/deployments', 'storageDeployment')]"
       ]
@@ -871,6 +1128,145 @@
         "[resourceId('Microsoft.Resources/deployments', 'appServiceDeployment')]",
         "[resourceId('Microsoft.Resources/deployments', 'storageDeployment')]"
       ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "emailRbacDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "communicationServiceName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'emailDeployment'), '2025-04-01').outputs.communicationServiceName.value]"
+          },
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appServiceDeployment'), '2025-04-01').outputs.principalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "13454453674112813499"
+            }
+          },
+          "parameters": {
+            "communicationServiceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Communication Service name."
+              }
+            },
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the identity that needs access."
+              }
+            },
+            "roleDefinitionGuid": {
+              "type": "string",
+              "defaultValue": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+              "metadata": {
+                "description": "Role definition GUID. Defaults to Contributor, which lets an identity send email via Entra auth."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName'))]",
+              "name": "[guid(resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName')), parameters('principalId'), parameters('roleDefinitionGuid'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionGuid'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'appServiceDeployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'emailDeployment')]"
+      ]
+    },
+    {
+      "condition": "[not(empty(parameters('smtpServicePrincipalId')))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "smtpRbacDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "communicationServiceName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'emailDeployment'), '2025-04-01').outputs.communicationServiceName.value]"
+          },
+          "principalId": {
+            "value": "[parameters('smtpServicePrincipalId')]"
+          },
+          "roleDefinitionGuid": {
+            "value": "09976791-48a7-449e-bb21-39d1a415f350"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "13454453674112813499"
+            }
+          },
+          "parameters": {
+            "communicationServiceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Communication Service name."
+              }
+            },
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the identity that needs access."
+              }
+            },
+            "roleDefinitionGuid": {
+              "type": "string",
+              "defaultValue": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+              "metadata": {
+                "description": "Role definition GUID. Defaults to Contributor, which lets an identity send email via Entra auth."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName'))]",
+              "name": "[guid(resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName')), parameters('principalId'), parameters('roleDefinitionGuid'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionGuid'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'emailDeployment')]"
+      ]
     }
   ],
   "outputs": {
@@ -897,6 +1293,10 @@
     "keyVaultName": {
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyVaultDeployment'), '2025-04-01').outputs.keyVaultName.value]"
+    },
+    "emailSenderAddress": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'emailDeployment'), '2025-04-01').outputs.senderAddress.value]"
     },
     "appInsightsName": {
       "type": "string",

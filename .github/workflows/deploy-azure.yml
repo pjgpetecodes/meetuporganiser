@@ -65,7 +65,13 @@ jobs:
             --template-file infra/main.bicep \
             --parameters sqlAdministratorLoginPassword="${{ secrets.AZURE_SQL_PASSWORD }}" \
                          entraClientId="${{ vars.AZURE_ENTRA_CLIENT_ID }}" \
-                         entraClientSecret="${{ secrets.AZURE_ENTRA_CLIENT_SECRET }}"
+                         entraClientSecret="${{ secrets.AZURE_ENTRA_CLIENT_SECRET }}" \
+                         smtpClientId="${{ vars.AZURE_SMTP_CLIENT_ID }}" \
+                         smtpServicePrincipalId="${{ vars.AZURE_SMTP_SERVICE_PRINCIPAL_ID }}" \
+                         smtpClientSecret="${{ secrets.AZURE_SMTP_CLIENT_SECRET }}" \
+                         emailCustomDomain="${{ vars.AZURE_EMAIL_CUSTOM_DOMAIN }}" \
+                         emailSenderUsername="${{ vars.AZURE_EMAIL_SENDER_USERNAME || 'noreply' }}" \
+                         emailCustomDomainVerified="${{ vars.AZURE_EMAIL_CUSTOM_DOMAIN_VERIFIED || 'false' }}"
         else
           echo "AZURE_RESOURCE_GROUP variable not set. Skipping automated infra deployment."
         fi

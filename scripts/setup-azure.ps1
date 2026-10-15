@@ -193,6 +193,23 @@ Write-Host "Key Vault:            $keyVaultName"
 Write-Host "Email Sender:         $emailSenderAddress  (set the organiser address in Settings > Email Notifications)"
 Write-Host "======================================================"
 
+# Register the sign-in redirect URIs on the Entra app so Entra login works on the deployed site
+if (-not [string]::IsNullOrWhiteSpace($EntraClientId)) {
+    Write-Host "`nConfiguring Entra sign-in redirect URIs for $webAppUrl ..." -ForegroundColor Yellow
+    $existingUris = @()
+    $appJson = az ad app show --id $EntraClientId --output json 2>$null | ConvertFrom-Json
+    if ($appJson -and $appJson.web -and $appJson.web.redirectUris) { $existingUris = @($appJson.web.redirectUris) }
+    $uris = @($existingUris + "$webAppUrl/signin-oidc" | Select-Object -Unique)
+    az ad app update --id $EntraClientId --web-redirect-uris @uris `
+        --web-home-page-url $webAppUrl `
+        --enable-id-token-issuance true --output none
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Redirect URIs: $($uris -join ', ')" -ForegroundColor Green
+    } else {
+        Write-Warning "Could not update the Entra app. Add '$webAppUrl/signin-oidc' as a Web redirect URI manually and enable ID tokens."
+    }
+}
+
 # Wire up local development email via user-secrets
 if ($ConfigureLocalEmail) {
     Write-Host "`nConfiguring local email user-secrets..." -ForegroundColor Yellow
@@ -209,6 +226,22 @@ if ($ConfigureGitHubSecrets) {
         gh variable set AZURE_SQL_SERVER --body $sqlServerFqdn
         gh variable set AZURE_SQL_DB --body $sqlDbName
         gh secret set AZURE_SQL_PASSWORD --body $SqlAdminPassword
+        # Parameters the deploy workflow re-passes to Bicep so a CI redeploy doesn't drop auth/email settings
+        gh variable set AZURE_ENTRA_CLIENT_ID --body $EntraClientId
+        if ($EntraClientSecret) { gh secret set AZURE_ENTRA_CLIENT_SECRET --body $EntraClientSecret }
+        if ($smtpClientId) {
+            gh variable set AZURE_SMTP_CLIENT_ID --body $smtpClientId
+            gh variable set AZURE_SMTP_SERVICE_PRINCIPAL_ID --body $smtpServicePrincipalId
+            gh secret set AZURE_SMTP_CLIENT_SECRET --body $smtpClientSecret
+        }
+        gh variable set AZURE_EMAIL_CUSTOM_DOMAIN --body $EmailCustomDomain
+        gh variable set AZURE_EMAIL_SENDER_USERNAME --body $EmailSenderUsername
+        gh variable set AZURE_EMAIL_CUSTOM_DOMAIN_VERIFIED --body $EmailCustomDomainVerified.IsPresent.ToString().ToLower()
+        # Publish profile used by the webapps-deploy step
+        $publishProfile = az webapp deployment list-publishing-profiles --name $webAppName --resource-group $ResourceGroupName --xml
+        if ($LASTEXITCODE -eq 0 -and $publishProfile) { $publishProfile | gh secret set AZURE_WEBAPP_PUBLISH_PROFILE }
+        else { Write-Warning "Could not fetch the publish profile; set AZURE_WEBAPP_PUBLISH_PROFILE manually." }
+        Write-Host "Also run scripts/setup-github-credentials.ps1 to create the AZURE_CREDENTIALS deploy principal." -ForegroundColor Cyan
         Write-Host "GitHub Variables & Secrets successfully configured!" -ForegroundColor Green
     } else {
         Write-Warning "GitHub CLI (gh) is not authenticated. Skipping automatic GitHub secret configuration."
