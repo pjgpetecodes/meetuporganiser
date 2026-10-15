@@ -13,7 +13,13 @@ namespace MeetupOrganiser.Infrastructure.Services;
 /// </summary>
 public class AcsEmailService(IConfiguration configuration, ILogger<AcsEmailService> logger) : IEmailService
 {
-    public async Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken cancellationToken = default)
+    public async Task<bool> SendAsync(
+        string to,
+        string subject,
+        string htmlBody,
+        string? cc = null,
+        IReadOnlyList<MeetupOrganiser.Core.Interfaces.EmailAttachment>? attachments = null,
+        CancellationToken cancellationToken = default)
     {
         var sender = configuration["Email:SenderAddress"];
         var connectionString = configuration["Email:ConnectionString"];
@@ -29,7 +35,15 @@ public class AcsEmailService(IConfiguration configuration, ILogger<AcsEmailServi
             ? new EmailClient(connectionString)
             : new EmailClient(new Uri(endpoint!), new DefaultAzureCredential());
 
-        await client.SendAsync(WaitUntil.Started, sender, to, subject, htmlBody, plainTextContent: null, cancellationToken);
+        var recipients = new EmailRecipients([new EmailAddress(to)]);
+        if (!string.IsNullOrWhiteSpace(cc) && !string.Equals(cc, to, StringComparison.OrdinalIgnoreCase))
+            recipients.CC.Add(new EmailAddress(cc));
+
+        var message = new EmailMessage(sender, recipients, new EmailContent(subject) { Html = htmlBody });
+        foreach (var attachment in attachments ?? [])
+            message.Attachments.Add(new Azure.Communication.Email.EmailAttachment(attachment.FileName, attachment.ContentType, BinaryData.FromBytes(attachment.Content)));
+
+        await client.SendAsync(WaitUntil.Started, message, cancellationToken);
         return true;
     }
 }

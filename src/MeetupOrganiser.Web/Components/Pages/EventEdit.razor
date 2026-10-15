@@ -255,9 +255,15 @@
 
                         @if (magicLinkUrl1 != null)
                         {
-                            <div class="alert alert-info py-2 px-3 small mb-2 d-flex justify-content-between align-items-center gap-2">
-                                <input type="text" readonly class="form-control form-control-sm" value="@magicLinkUrl1" @onfocus="SelectAllAsync" />
-                                <button type="button" class="btn btn-sm btn-outline-dark" @onclick="() => CopyToClipboardAsync(magicLinkUrl1)">@(copiedLink == magicLinkUrl1 ? "Copied!" : "Copy")</button>
+                            <div class="alert alert-info py-2 px-3 small mb-2">
+                                <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                    <input type="text" readonly class="form-control form-control-sm" value="@magicLinkUrl1" @onfocus="SelectAllAsync" />
+                                    <button type="button" class="btn btn-sm btn-outline-dark" @onclick="() => CopyToClipboardAsync(magicLinkUrl1)">@(copiedLink == magicLinkUrl1 ? "Copied!" : "Copy")</button>
+                                </div>
+                                <EmailLinkForm Link="@magicLinkUrl1" InitialEmail="@SelectedSpeaker(session1SpeakerId)?.Email"
+                                               SpeakerName="@SelectedSpeaker(session1SpeakerId)?.Name" SpeakerId="@SelectedSpeaker(session1SpeakerId)?.Id"
+                                               EventTitle="@(evt?.Title ?? string.Empty)" EventDateUtc="@evt?.EventDateTimeUtc"
+                                               OnSent="e => OnLinkEmailed(session1SpeakerId, e)" />
                             </div>
                         }
 
@@ -310,9 +316,15 @@
 
                             @if (magicLinkUrl2 != null)
                             {
-                                <div class="alert alert-info py-2 px-3 small mb-2 d-flex justify-content-between align-items-center gap-2">
-                                    <input type="text" readonly class="form-control form-control-sm" value="@magicLinkUrl2" @onfocus="SelectAllAsync" />
-                                    <button type="button" class="btn btn-sm btn-outline-dark" @onclick="() => CopyToClipboardAsync(magicLinkUrl2)">@(copiedLink == magicLinkUrl2 ? "Copied!" : "Copy")</button>
+                                <div class="alert alert-info py-2 px-3 small mb-2">
+                                    <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                        <input type="text" readonly class="form-control form-control-sm" value="@magicLinkUrl2" @onfocus="SelectAllAsync" />
+                                        <button type="button" class="btn btn-sm btn-outline-dark" @onclick="() => CopyToClipboardAsync(magicLinkUrl2)">@(copiedLink == magicLinkUrl2 ? "Copied!" : "Copy")</button>
+                                    </div>
+                                    <EmailLinkForm Link="@magicLinkUrl2" InitialEmail="@SelectedSpeaker(session2SpeakerId)?.Email"
+                                                   SpeakerName="@SelectedSpeaker(session2SpeakerId)?.Name" SpeakerId="@SelectedSpeaker(session2SpeakerId)?.Id"
+                                                   EventTitle="@(evt?.Title ?? string.Empty)" EventDateUtc="@evt?.EventDateTimeUtc"
+                                                   OnSent="e => OnLinkEmailed(session2SpeakerId, e)" />
                                 </div>
                             }
 
@@ -859,6 +871,12 @@
             statusMessage = "Couldn't copy automatically. Select the link and press Ctrl+C.";
             isError = true;
         }
+    }
+
+    private void OnLinkEmailed(string speakerId, string address)
+    {
+        if (SelectedSpeaker(speakerId) is { } sp && string.IsNullOrWhiteSpace(sp.Email))
+            sp.Email = address;
     }
 
     private async Task SelectAllAsync() => await JS.InvokeVoidAsync("meetupOrganiser.selectFocused");

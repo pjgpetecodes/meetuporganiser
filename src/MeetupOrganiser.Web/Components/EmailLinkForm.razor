@@ -1,0 +1,109 @@
+@using System.ComponentModel.DataAnnotations
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Interfaces
+@using MeetupOrganiser.Core.Services
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject IEmailService EmailService
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject ILogger<EmailLinkForm> Logger
+
+<div class="input-group input-group-sm">
+    <input type="email" class="form-control" placeholder="Speaker's email address" @bind="email" @bind:event="oninput" disabled="@isSending" />
+    <button type="button" class="btn btn-outline-primary" @onclick="SendAsync" disabled="@(isSending || string.IsNullOrWhiteSpace(email))">
+        <i class="bi bi-envelope me-1"></i> @(isSending ? "Sending..." : sent ? "Sent!" : "Email link")
+    </button>
+</div>
+@if (message != null)
+{
+    <div class="small mt-1 @(isError ? "text-danger" : "text-success")">@message</div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Link { get; set; } = string.Empty;
+    [Parameter] public string? InitialEmail { get; set; }
+    [Parameter] public string? SpeakerName { get; set; }
+    [Parameter] public Guid? SpeakerId { get; set; }
+    [Parameter, EditorRequired] public string EventTitle { get; set; } = string.Empty;
+    [Parameter] public DateTime? EventDateUtc { get; set; }
+    [Parameter] public EventCallback<string> OnSent { get; set; }
+
+    private string? email;
+    private string? message;
+    private string? lastLink;
+    private bool isSending;
+    private bool isError;
+    private bool sent;
+
+    protected override void OnParametersSet()
+    {
+        // A regenerated link is a new link: allow sending again
+        if (Link != lastLink)
+        {
+            lastLink = Link;
+            sent = false;
+            message = null;
+        }
+        email ??= InitialEmail;
+    }
+
+    private async Task SendAsync()
+    {
+        var to = email?.Trim();
+        if (string.IsNullOrWhiteSpace(to) || !new EmailAddressAttribute().IsValid(to))
+        {
+            message = "Enter a valid email address.";
+            isError = true;
+            return;
+        }
+
+        isSending = true;
+        message = null;
+        try
+        {
+            var (subject, body) = SpeakerInviteEmail.Build(SpeakerName, EventTitle, EventDateUtc, Link);
+            if (!await EmailService.SendAsync(to, subject, body))
+            {
+                message = "Email isn't configured, so nothing was sent. Use Copy instead.";
+                isError = true;
+                return;
+            }
+
+            sent = true;
+            isError = false;
+            message = $"Link emailed to {to}.";
+            await SaveSpeakerEmailAsync(to);
+            await OnSent.InvokeAsync(to);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to email magic link.");
+            message = "Couldn't send the email. Use Copy instead.";
+            isError = true;
+        }
+        finally
+        {
+            isSending = false;
+        }
+    }
+
+    // Remember the address on the speaker profile when it isn't already known
+    private async Task SaveSpeakerEmailAsync(string to)
+    {
+        if (SpeakerId is not { } id) return;
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            var speaker = await db.Speakers.FirstOrDefaultAsync(s => s.Id == id);
+            if (speaker != null && string.IsNullOrWhiteSpace(speaker.Email))
+            {
+                speaker.Email = to;
+                await db.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Couldn't save speaker email address.");
+        }
+    }
+}

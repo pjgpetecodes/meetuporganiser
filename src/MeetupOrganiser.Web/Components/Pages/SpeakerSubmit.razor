@@ -274,22 +274,46 @@
         }
     }
 
-    private async Task NotifyOrganiserAsync()
+    private async Task<string?> ResolveOrganiserEmailAsync()
+    {
+        var email = meetupEvent?.MeetupGroup?.OrganiserEmail;
+        if (string.IsNullOrWhiteSpace(email))
+            email = await SettingsService.GetSettingAsync(SpeakerSubmittedEmail.OrganiserEmailSettingKey);
+        return string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+    }
+
+    private async Task NotifyOrganiserAsync(string? organiserEmail)
     {
         try
         {
-            var to = meetupEvent?.MeetupGroup?.OrganiserEmail;
-            if (string.IsNullOrWhiteSpace(to))
-                to = await SettingsService.GetSettingAsync(SpeakerSubmittedEmail.OrganiserEmailSettingKey);
-            if (string.IsNullOrWhiteSpace(to) || meetupEvent == null) return;
+            if (organiserEmail == null || meetupEvent == null) return;
 
             var editUrl = Navigation.ToAbsoluteUri($"/events/edit/{meetupEvent.Id}").ToString();
             var (subject, body) = SpeakerSubmittedEmail.Build(speaker.Name, talkTitle, meetupEvent.Title, editUrl);
-            await EmailService.SendAsync(to.Trim(), subject, body);
+            await EmailService.SendAsync(organiserEmail, subject, body);
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Failed to send speaker-submitted notification email.");
+        }
+    }
+
+    // Confirmation to the speaker with a calendar invite, copying in the organiser
+    private async Task ConfirmToSpeakerAsync(string? organiserEmail)
+    {
+        try
+        {
+            var to = speaker.Email?.Trim();
+            if (meetupEvent == null || string.IsNullOrWhiteSpace(to) || !new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(to)) return;
+
+            var (subject, body) = SpeakerConfirmationEmail.Build(speaker.Name, talkTitle, meetupEvent);
+            var ics = IcsCalendar.Build(meetupEvent);
+            var attachment = new EmailAttachment("meetup.ics", "text/calendar", System.Text.Encoding.UTF8.GetBytes(ics));
+            await EmailService.SendAsync(to, subject, body, cc: organiserEmail, attachments: [attachment]);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to send speaker confirmation email.");
         }
     }
 
@@ -326,7 +350,11 @@
 
             await DbContext.SaveChangesAsync();
             showSuccess = true;
-            await NotifyOrganiserAsync();
+            string? organiserEmail = null;
+            try { organiserEmail = await ResolveOrganiserEmailAsync(); }
+            catch (Exception ex) { Logger.LogWarning(ex, "Couldn't resolve organiser email."); }
+            await NotifyOrganiserAsync(organiserEmail);
+            await ConfirmToSpeakerAsync(organiserEmail);
         }
         catch (Exception ex)
         {
