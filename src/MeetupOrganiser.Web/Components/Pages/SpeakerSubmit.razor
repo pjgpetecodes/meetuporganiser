@@ -334,6 +334,8 @@
             session.TalkTitle = talkTitle;
             session.TalkDescription = talkDescription;
             tokenEntity.UsedAtUtc = DateTime.UtcNow;
+            // Set before any await so an intermediate render doesn't show the used-link page
+            showSuccess = true;
 
             if (meetupEvent != null && EventTitles.IsPlaceholder(meetupEvent.Title))
             {
@@ -349,7 +351,10 @@
             }
 
             await DbContext.SaveChangesAsync();
-            showSuccess = true;
+            isSaving = false;
+            StateHasChanged();
+
+            // Emails are slow (cold managed-identity token); the speaker already sees success
             string? organiserEmail = null;
             try { organiserEmail = await ResolveOrganiserEmailAsync(); }
             catch (Exception ex) { Logger.LogWarning(ex, "Couldn't resolve organiser email."); }
@@ -358,6 +363,8 @@
         }
         catch (Exception ex)
         {
+            showSuccess = false;
+            if (tokenEntity != null) tokenEntity.UsedAtUtc = null;
             Logger.LogError(ex, "Error saving speaker session details via magic link.");
             errorMessage = "An error occurred while saving. Please try again.";
         }
