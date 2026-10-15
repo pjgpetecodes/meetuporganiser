@@ -26,7 +26,10 @@ public static class SpeakerConfirmationEmail
             <p>Hi {WebUtility.HtmlEncode(name)},</p>
             <p>Thanks for completing your speaker details. Here's a summary of the meetup:</p>
             <ul>{string.Concat(rows)}</ul>
-            <p>A calendar invite is attached so you can add it to your diary.</p>
+            <p>A calendar invite is attached so you can add it to your diary. If it doesn't show Accept / Decline buttons, add it here instead:
+              <a href="{WebUtility.HtmlEncode(CalendarLinks.Google(evt))}">Google Calendar</a> |
+              <a href="{WebUtility.HtmlEncode(CalendarLinks.Outlook(evt))}">Outlook.com</a>
+            </p>
             """;
 
         return ($"Confirmed: {evt.Title}", html);

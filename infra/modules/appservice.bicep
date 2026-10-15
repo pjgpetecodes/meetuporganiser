@@ -39,6 +39,13 @@ param entraTenantId string = tenant().tenantId
 @secure()
 param entraClientSecret string = ''
 
+@description('ACS SMTP username (<acs-name>.<app-client-id>.<tenant-id>) used to send calendar invites inline.')
+param emailSmtpUsername string = ''
+
+@description('ACS SMTP password (client secret of the SMTP Entra app).')
+@secure()
+param emailSmtpPassword string = ''
+
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: appServicePlanName
   location: location
@@ -102,6 +109,14 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'Email__SenderAddress'
           value: emailSenderAddress
+        }
+        {
+          name: 'Email__Smtp__Username'
+          value: emailSmtpUsername
+        }
+        {
+          name: 'Email__Smtp__Password'
+          value: emailSmtpPassword
         }
         {
           name: 'AzureAd__Instance'

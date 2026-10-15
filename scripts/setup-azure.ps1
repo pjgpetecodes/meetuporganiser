@@ -15,6 +15,9 @@
 .PARAMETER SqlAdminPassword
     Strong password for the Azure SQL Server administrator.
 
+.PARAMETER SkipSmtpInvites
+    Skip creating the MeetupOrganiser-Smtp Entra app used to send inline RSVP calendar invites.
+
 .PARAMETER ConfigureGitHubSecrets
     Switch to automatically configure GitHub Actions repository secrets and variables using `gh`.
 #>
@@ -43,6 +46,9 @@ param(
 
     [Parameter(Mandatory = $false)]
     [switch]$EmailCustomDomainVerified,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipSmtpInvites,
 
     [Parameter(Mandatory = $false)]
     [switch]$ConfigureLocalEmail,
@@ -105,6 +111,27 @@ if ([string]::IsNullOrWhiteSpace($EntraClientId)) {
     }
 }
 
+# 4b. Dedicated Entra app for ACS SMTP (inline calendar invites). Its secret is the SMTP password.
+$smtpClientId = ""; $smtpServicePrincipalId = ""; $smtpClientSecret = ""
+if (-not $SkipSmtpInvites) {
+    Write-Host "`n[4b] Ensuring SMTP Entra app 'MeetupOrganiser-Smtp' exists..." -ForegroundColor Yellow
+    $smtpApp = az ad app list --filter "displayName eq 'MeetupOrganiser-Smtp'" --output json 2>$null | ConvertFrom-Json
+    if ($smtpApp -and $smtpApp.Count -gt 0) {
+        $smtpClientId = $smtpApp[0].appId
+        $smtpAppObjectId = $smtpApp[0].id
+    } else {
+        $created = az ad app create --display-name "MeetupOrganiser-Smtp" --output json | ConvertFrom-Json
+        $smtpClientId = $created.appId
+        $smtpAppObjectId = $created.id
+    }
+    $sp = az ad sp show --id $smtpClientId --output json 2>$null | ConvertFrom-Json
+    if (-not $sp) { $sp = az ad sp create --id $smtpClientId --output json | ConvertFrom-Json }
+    $smtpServicePrincipalId = $sp.id
+    Start-Sleep -Seconds 2
+    $smtpClientSecret = (az ad app credential reset --id $smtpAppObjectId --display-name "acs-smtp" --query password -o tsv).Trim()
+    Write-Host "SMTP app ready: $smtpClientId" -ForegroundColor Green
+}
+
 # 5. Create Resource Group
 Write-Host "`n[5/7] Creating Resource Group '$ResourceGroupName' in '$Location'..." -ForegroundColor Yellow
 az group create --name $ResourceGroupName --location $Location --output none
@@ -122,6 +149,12 @@ if (-not [string]::IsNullOrWhiteSpace($EntraClientId)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($EntraClientSecret)) {
     $deploymentParams += "entraClientSecret=$EntraClientSecret"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($smtpClientId)) {
+    $deploymentParams += "smtpClientId=$smtpClientId"
+    $deploymentParams += "smtpServicePrincipalId=$smtpServicePrincipalId"
+    $deploymentParams += "smtpClientSecret=$smtpClientSecret"
 }
 
 if (-not [string]::IsNullOrWhiteSpace($EmailCustomDomain)) {

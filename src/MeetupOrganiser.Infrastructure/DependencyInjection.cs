@@ -62,7 +62,9 @@ public static class DependencyInjection
         services.AddScoped<IPptxPreviewService, PptxPreviewService>();
         services.AddScoped<ISocialImageGeneratorService, SocialImageGeneratorService>();
         services.AddScoped<IMagicLinkService, MagicLinkService>();
-        services.AddScoped<IEmailService, AcsEmailService>();
+        services.AddScoped<AcsEmailService>();
+        services.AddScoped<AcsSmtpEmailService>();
+        services.AddScoped<IEmailService, EmailService>();
 
         return services;
     }

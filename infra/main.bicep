@@ -34,6 +34,16 @@ param emailCustomDomainVerified bool = false
 @description('Local part of the sender address on the custom domain.')
 param emailSenderUsername string = 'noreply'
 
+@description('Client ID of the Entra app used for ACS SMTP (calendar invites). Empty disables SMTP.')
+param smtpClientId string = ''
+
+@description('Object ID of that app\'s service principal (gets the ACS email role).')
+param smtpServicePrincipalId string = ''
+
+@description('Client secret of the SMTP Entra app (SMTP password).')
+@secure()
+param smtpClientSecret string = ''
+
 var uniqueSuffix = uniqueString(resourceGroup().id)
 var storageAccountName = take('st${resourcePrefix}${uniqueSuffix}', 24)
 var sqlServerName = 'sql-${resourcePrefix}-${uniqueSuffix}'
@@ -77,10 +87,12 @@ module keyVault 'modules/keyvault.bicep' = {
   params: {
     location: location
     keyVaultName: keyVaultName
-    secrets: {
+    secrets: union({
       SqlConnectionString: sql.outputs.connectionString
       AppInsightsConnectionString: appInsights.outputs.appInsightsConnectionString
-    }
+    }, empty(smtpClientSecret) ? {} : {
+      SmtpPassword: smtpClientSecret
+    })
   }
 }
 
@@ -107,6 +119,8 @@ module appService 'modules/appservice.bicep' = {
     storageAccountUrl: storage.outputs.blobEndpoint
     emailEndpoint: email.outputs.endpoint
     emailSenderAddress: email.outputs.senderAddress
+    emailSmtpUsername: empty(smtpClientId) ? '' : '${email.outputs.communicationServiceName}.${smtpClientId}.${tenant().tenantId}'
+    emailSmtpPassword: smtpClientSecret
     entraClientId: entraClientId
     entraClientSecret: entraClientSecret
   }
@@ -130,7 +144,15 @@ module emailRbac 'modules/email-rbac.bicep' = {
   }
 }
 
-// Outputs for CI/CD and deployment scripts
+// 8b. Grant the SMTP Entra app permission to authenticate to ACS SMTP
+module smtpRbac 'modules/email-rbac.bicep' = if (!empty(smtpServicePrincipalId)) {
+  name: 'smtpRbacDeployment'
+  params: {
+    communicationServiceName: email.outputs.communicationServiceName
+    principalId: smtpServicePrincipalId
+    roleDefinitionGuid: '09976791-48a7-449e-bb21-39d1a415f350' // Communication and Email Service Owner
+  }
+}
 output webAppUrl string = appService.outputs.webAppUrl
 output webAppName string = appService.outputs.webAppName
 output sqlServerFqdn string = sql.outputs.sqlServerFqdn

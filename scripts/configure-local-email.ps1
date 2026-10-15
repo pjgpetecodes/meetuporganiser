@@ -31,4 +31,17 @@ dotnet user-secrets init --project $webProject | Out-Null
 dotnet user-secrets set "Email:ConnectionString" $connectionString --project $webProject | Out-Null
 dotnet user-secrets set "Email:SenderAddress" $SenderAddress --project $webProject | Out-Null
 
+# SMTP credentials for inline RSVP calendar invites (optional: skipped if the SMTP app doesn't exist)
+$smtpApp = az ad app list --filter "displayName eq 'MeetupOrganiser-Smtp'" --output json 2>$null | ConvertFrom-Json
+if ($smtpApp -and $smtpApp.Count -gt 0) {
+    $tenantId = az account show --query tenantId -o tsv
+    # --append keeps the deployed app's secret valid
+    $smtpSecret = (az ad app credential reset --id $smtpApp[0].id --append --display-name "local-dev" --query password -o tsv).Trim()
+    dotnet user-secrets set "Email:Smtp:Username" "$($svc.name).$($smtpApp[0].appId).$tenantId" --project $webProject | Out-Null
+    dotnet user-secrets set "Email:Smtp:Password" $smtpSecret --project $webProject | Out-Null
+    Write-Host "Local SMTP configured for inline calendar invites." -ForegroundColor Green
+} else {
+    Write-Warning "MeetupOrganiser-Smtp app not found; calendar invites will be sent as attachments only. Run setup-azure.ps1 first."
+}
+
 Write-Host "Local email configured. Sender: $SenderAddress" -ForegroundColor Green

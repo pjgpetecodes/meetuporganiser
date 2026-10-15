@@ -19,6 +19,7 @@ public class AcsEmailService(IConfiguration configuration, ILogger<AcsEmailServi
         string htmlBody,
         string? cc = null,
         IReadOnlyList<MeetupOrganiser.Core.Interfaces.EmailAttachment>? attachments = null,
+        CalendarInvite? invite = null,
         CancellationToken cancellationToken = default)
     {
         var sender = configuration["Email:SenderAddress"];

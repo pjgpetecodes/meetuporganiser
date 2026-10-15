@@ -309,7 +309,7 @@
             var (subject, body) = SpeakerConfirmationEmail.Build(speaker.Name, talkTitle, meetupEvent);
             var ics = IcsCalendar.Build(meetupEvent, organiserEmail: organiserEmail, attendeeEmail: to, attendeeName: speaker.Name);
             var attachment = new EmailAttachment("invite.ics", "text/calendar", System.Text.Encoding.UTF8.GetBytes(ics));
-            await EmailService.SendAsync(to, subject, body, cc: organiserEmail, attachments: [attachment]);
+            await EmailService.SendAsync(to, subject, body, cc: organiserEmail, attachments: [attachment], invite: string.IsNullOrWhiteSpace(organiserEmail) ? null : new CalendarInvite(ics));
         }
         catch (Exception ex)
         {
