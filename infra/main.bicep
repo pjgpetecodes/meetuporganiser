@@ -75,7 +75,15 @@ module keyVault 'modules/keyvault.bicep' = {
   }
 }
 
-// 5. Azure App Service
+// 5. Azure Communication Services Email (organiser notifications)
+module email 'modules/email.bicep' = {
+  name: 'emailDeployment'
+  params: {
+    namePrefix: '${resourcePrefix}-${uniqueSuffix}'
+  }
+}
+
+// 6. Azure App Service
 module appService 'modules/appservice.bicep' = {
   name: 'appServiceDeployment'
   params: {
@@ -85,16 +93,27 @@ module appService 'modules/appservice.bicep' = {
     appInsightsConnectionString: appInsights.outputs.appInsightsConnectionString
     sqlConnectionString: sql.outputs.connectionString
     storageAccountUrl: storage.outputs.blobEndpoint
+    emailEndpoint: email.outputs.endpoint
+    emailSenderAddress: email.outputs.senderAddress
     entraClientId: entraClientId
     entraClientSecret: entraClientSecret
   }
 }
 
-// 6. Grant the web app's managed identity access to blob data (no account keys)
+// 7. Grant the web app's managed identity access to blob data (no account keys)
 module storageRbac 'modules/storage-rbac.bicep' = {
   name: 'storageRbacDeployment'
   params: {
     storageAccountName: storage.outputs.storageAccountName
+    principalId: appService.outputs.principalId
+  }
+}
+
+// 8. Grant the web app's managed identity permission to send email
+module emailRbac 'modules/email-rbac.bicep' = {
+  name: 'emailRbacDeployment'
+  params: {
+    communicationServiceName: email.outputs.communicationServiceName
     principalId: appService.outputs.principalId
   }
 }
@@ -106,5 +125,6 @@ output sqlServerFqdn string = sql.outputs.sqlServerFqdn
 output sqlDatabaseName string = sql.outputs.sqlDatabaseName
 output storageAccountName string = storage.outputs.storageAccountName
 output keyVaultName string = keyVault.outputs.keyVaultName
+output emailSenderAddress string = email.outputs.senderAddress
 output appInsightsName string = appInsights.outputs.appInsightsName
 output resourceGroupName string = resourceGroup().name

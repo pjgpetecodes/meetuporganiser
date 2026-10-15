@@ -23,6 +23,12 @@ param sqlConnectionString string
 @description('Blob service endpoint of the storage account (accessed via managed identity).')
 param storageAccountUrl string
 
+@description('Azure Communication Services endpoint used to send email (managed identity).')
+param emailEndpoint string
+
+@description('Verified sender address for outgoing email.')
+param emailSenderAddress string
+
 @description('Entra ID Client ID.')
 param entraClientId string = ''
 
@@ -88,6 +94,14 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'Storage__AssetsContainer'
           value: 'generated-assets'
+        }
+        {
+          name: 'Email__Endpoint'
+          value: emailEndpoint
+        }
+        {
+          name: 'Email__SenderAddress'
+          value: emailSenderAddress
         }
         {
           name: 'AzureAd__Instance'

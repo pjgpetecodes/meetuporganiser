@@ -24,6 +24,9 @@ public class IntegrationSettingsModel
     public string? MeetupRedirectUri { get; set; }
     public bool MeetupOAuthConnected { get; set; }
 
+    // Notifications
+    public string? OrganiserEmail { get; set; }
+
     // Sessionize
     public string? SessionizeDefaultEventId { get; set; }
 

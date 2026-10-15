@@ -304,7 +304,10 @@
     </div>
 }
 
+<ConfirmDialog @ref="confirmDialog" />
+
 @code {
+    private ConfirmDialog? confirmDialog;
     private List<Speaker>? allSpeakers;
     private string searchQuery = string.Empty;
     private bool showModal = false;
@@ -648,6 +651,8 @@
 
     private async Task DeleteSpeakerAsync(Speaker speaker)
     {
+        if (!await confirmDialog!.ShowAsync($"Delete speaker \"{speaker.Name}\"? This cannot be undone.", "Delete speaker?")) return;
+
         try
         {
             await using (var dbContext = await DbContextFactory.CreateDbContextAsync())

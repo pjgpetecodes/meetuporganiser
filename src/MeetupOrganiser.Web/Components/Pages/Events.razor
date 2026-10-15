@@ -315,7 +315,10 @@
     }
 </div>
 
+<ConfirmDialog @ref="confirmDialog" />
+
 @code {
+    private ConfirmDialog? confirmDialog;
     private List<MeetupEvent>? allEvents;
     private List<MeetupGroup>? groups;
     private string searchQuery = string.Empty;
@@ -435,6 +438,8 @@
 
     private async Task DeleteEventAsync(MeetupEvent evt)
     {
+        if (!await confirmDialog!.ShowAsync($"Delete the event \"{evt.Title}\"? This cannot be undone.", "Delete event?")) return;
+
         try
         {
             await using (var dbContext = await DbContextFactory.CreateDbContextAsync())

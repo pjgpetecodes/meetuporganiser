@@ -65,7 +65,7 @@ if ([string]::IsNullOrWhiteSpace($SqlAdminPassword)) {
 
 # 3. Register resource providers
 Write-Host "`n[3/7] Ensuring required Azure Resource Providers are registered..." -ForegroundColor Yellow
-$providers = @("Microsoft.Web", "Microsoft.Sql", "Microsoft.Storage", "Microsoft.KeyVault", "Microsoft.Insights", "Microsoft.OperationalInsights")
+$providers = @("Microsoft.Web", "Microsoft.Sql", "Microsoft.Storage", "Microsoft.KeyVault", "Microsoft.Insights", "Microsoft.OperationalInsights", "Microsoft.Communication")
 foreach ($provider in $providers) {
     Write-Host "  Registering $provider..." -ForegroundColor Gray
     az provider register --namespace $provider --wait --output none
@@ -130,6 +130,7 @@ $sqlServerFqdn = $outputs.sqlServerFqdn.value
 $sqlDbName = $outputs.sqlDatabaseName.value
 $storageAccountName = $outputs.storageAccountName.value
 $keyVaultName = $outputs.keyVaultName.value
+$emailSenderAddress = $outputs.emailSenderAddress.value
 
 Write-Host "`n================ Deployment Completed ================" -ForegroundColor Green
 Write-Host "Web App Name:         $webAppName"
@@ -138,6 +139,7 @@ Write-Host "Azure SQL Server:     $sqlServerFqdn"
 Write-Host "Azure SQL Database:   $sqlDbName"
 Write-Host "Storage Account:      $storageAccountName"
 Write-Host "Key Vault:            $keyVaultName"
+Write-Host "Email Sender:         $emailSenderAddress  (set the organiser address in Settings > Email Notifications)"
 Write-Host "======================================================"
 
 # 6. Configure GitHub Secrets if requested or `gh` is available

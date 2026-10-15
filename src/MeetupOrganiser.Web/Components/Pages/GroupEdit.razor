@@ -244,7 +244,7 @@
                                         </div>
                                         <div class="d-flex gap-2 mt-2">
                                             <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => CopySponsor(sponsor)"><i class="bi bi-files me-1"></i> Copy</button>
-                                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => group.Sponsors.Remove(sponsor)"><i class="bi bi-trash me-1"></i> Delete</button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSponsorAsync(sponsor)"><i class="bi bi-trash me-1"></i> Delete</button>
                                         </div>
                                     </div>
                                 </div>
@@ -338,7 +338,10 @@
     }
 </div>
 
+<ConfirmDialog @ref="confirmDialog" />
+
 @code {
+    private ConfirmDialog? confirmDialog;
     [Parameter] public Guid? Id { get; set; }
 
     private MeetupGroup? group;
@@ -435,6 +438,12 @@
 
     private void AddSponsor() =>
         group!.Sponsors.Add(new Sponsor { Name = "New Sponsor", SortOrder = group.Sponsors.Count });
+
+    private async Task DeleteSponsorAsync(Sponsor sponsor)
+    {
+        var name = string.IsNullOrWhiteSpace(sponsor.Name) ? "this sponsor" : $"\"{sponsor.Name}\"";
+        if (await confirmDialog!.ShowAsync($"Delete {name}? It is removed when you save the group.", "Delete sponsor?")) group.Sponsors.Remove(sponsor);
+    }
 
     private void CopySponsor(Sponsor source)
     {

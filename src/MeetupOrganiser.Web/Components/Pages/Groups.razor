@@ -110,7 +110,10 @@
     }
 </div>
 
+<ConfirmDialog @ref="confirmDialog" />
+
 @code {
+    private ConfirmDialog? confirmDialog;
     private List<MeetupGroup>? groups;
 
     protected override async Task OnInitializedAsync()
@@ -133,6 +136,8 @@
             // Do not delete group with active events
             return;
         }
+
+        if (!await confirmDialog!.ShowAsync($"Delete the group \"{group.Name}\"? This cannot be undone.", "Delete group?")) return;
 
         DbContext.MeetupGroups.Remove(group);
         await DbContext.SaveChangesAsync();

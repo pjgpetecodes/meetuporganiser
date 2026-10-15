@@ -25,5 +25,11 @@ window.meetupOrganiser = {
     selectFocused: function () {
         const el = document.activeElement;
         if (el && el.select) el.select();
+    },
+    showDialog: function (dialog) {
+        if (dialog && !dialog.open) dialog.showModal();
+    },
+    closeDialog: function (dialog) {
+        if (dialog && dialog.open) dialog.close();
     }
 };

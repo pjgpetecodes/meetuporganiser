@@ -8,6 +8,9 @@
 @inject IBlobStorageService BlobStorageService
 @inject AppDbContext DbContext
 @inject ILogger<SpeakerSubmit> Logger
+@inject IEmailService EmailService
+@inject ISettingsService SettingsService
+@inject NavigationManager Navigation
 
 <PageTitle>Speaker Session Portal - Meetup Organiser</PageTitle>
 
@@ -168,6 +171,10 @@
                         <InputText @bind-Value="speaker.FacebookUrl" class="form-control" placeholder="https://facebook.com/..." />
                     </div>
                     <div class="col-md-6">
+                        <label class="form-label small fw-semibold">GitHub</label>
+                        <InputText @bind-Value="speaker.GitHubHandle" class="form-control" placeholder="username or https://github.com/user/repo" />
+                    </div>
+                    <div class="col-md-6">
                         <label class="form-label small fw-semibold">Website</label>
                         <InputText @bind-Value="speaker.WebsiteUrl" class="form-control" placeholder="https://..." />
                     </div>
@@ -267,6 +274,23 @@
         }
     }
 
+    private async Task NotifyOrganiserAsync()
+    {
+        try
+        {
+            var to = await SettingsService.GetSettingAsync(SpeakerSubmittedEmail.OrganiserEmailSettingKey);
+            if (string.IsNullOrWhiteSpace(to) || meetupEvent == null) return;
+
+            var editUrl = Navigation.ToAbsoluteUri($"/events/edit/{meetupEvent.Id}").ToString();
+            var (subject, body) = SpeakerSubmittedEmail.Build(speaker.Name, talkTitle, meetupEvent.Title, editUrl);
+            await EmailService.SendAsync(to.Trim(), subject, body);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to send speaker-submitted notification email.");
+        }
+    }
+
     private async Task HandleSaveAsync()
     {
         if (tokenEntity == null || session == null) return;
@@ -300,6 +324,7 @@
 
             await DbContext.SaveChangesAsync();
             showSuccess = true;
+            await NotifyOrganiserAsync();
         }
         catch (Exception ex)
         {

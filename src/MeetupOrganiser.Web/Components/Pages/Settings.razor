@@ -323,6 +323,27 @@
                     </div>
                     <div class="accordion-item">
                         <h2 class="accordion-header">
+                            <button class="accordion-button @(openIntegration == "notifications" ? "" : "collapsed")" type="button" @onclick='() => ToggleIntegration("notifications")'>
+                                <i class="bi bi-envelope text-primary fs-4 me-3"></i>
+                                <span class="fw-bold me-auto">Email Notifications</span>
+                            </button>
+                        </h2>
+                        @if (openIntegration == "notifications")
+                        {
+                            <div class="accordion-collapse show">
+                                <div class="accordion-body">
+                                    <p class="small text-muted mb-3">Sends an email when a speaker completes their magic-link form. Delivery uses Azure Communication Services (configured by the Email app settings).</p>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold small">Organiser email address</label>
+                                        <input type="email" class="form-control" placeholder="organiser@example.com"
+                                               @bind="model.OrganiserEmail" />
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
                             <button class="accordion-button @(openIntegration == "sessionize" ? "" : "collapsed")" type="button" @onclick='() => ToggleIntegration("sessionize")'>
                                 <i class="bi bi-mic text-warning fs-4 me-3"></i>
                                 <span class="fw-bold me-auto">Sessionize</span>

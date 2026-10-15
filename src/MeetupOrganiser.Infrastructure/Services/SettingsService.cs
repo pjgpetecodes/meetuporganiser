@@ -139,6 +139,7 @@ public class SettingsService : ISettingsService
                 ?? "http://localhost:5107/integrations/meetup/callback",
             MeetupOAuthConnected = !string.IsNullOrWhiteSpace(
                 await GetSettingAsync("Integrations:Meetup:OAuthTokenSet", cancellationToken)),
+            OrganiserEmail = await GetSettingAsync("Notifications:OrganiserEmail", cancellationToken),
             SessionizeDefaultEventId = await GetSettingAsync("Integrations:Sessionize:DefaultEventId", cancellationToken),
             BioPreference = await GetSettingAsync("Integrations:Bio:Preference", cancellationToken) ?? "ThirdPerson",
             TwitterApiKey = await GetSettingAsync("Integrations:Twitter:ApiKey", cancellationToken),
@@ -169,6 +170,7 @@ public class SettingsService : ISettingsService
             ["Integrations:Meetup:ClientId"] = model.MeetupClientId,
             ["Integrations:Meetup:ClientSecret"] = model.MeetupClientSecret,
             ["Integrations:Meetup:RedirectUri"] = model.MeetupRedirectUri,
+            ["Notifications:OrganiserEmail"] = model.OrganiserEmail,
             ["Integrations:Sessionize:DefaultEventId"] = model.SessionizeDefaultEventId,
             ["Integrations:Bio:Preference"] = model.BioPreference,
             ["Integrations:Twitter:ApiKey"] = model.TwitterApiKey,
@@ -205,6 +207,9 @@ public class SettingsService : ISettingsService
             new AppSetting { Key = "Integrations:Meetup:ClientSecret", Category = "Meetup", Description = "Meetup OAuth client secret", IsSecret = true },
             new AppSetting { Key = "Integrations:Meetup:RedirectUri", Category = "Meetup", Description = "Meetup OAuth callback URL", IsSecret = false },
             new AppSetting { Key = "Integrations:Meetup:OAuthTokenSet", Category = "Meetup", Description = "Protected Meetup OAuth access and refresh tokens", IsSecret = true },
+
+            // Notifications
+            new AppSetting { Key = "Notifications:OrganiserEmail", Category = "Notifications", Description = "Organiser email address notified when a speaker completes their magic-link form", IsSecret = false },
 
             // Sessionize
             new AppSetting { Key = "Integrations:Sessionize:DefaultEventId", Category = "Sessionize", Description = "Default Sessionize Event ID or Endpoint", IsSecret = false },

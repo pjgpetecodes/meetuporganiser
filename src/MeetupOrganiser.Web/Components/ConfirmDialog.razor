@@ -1,0 +1,42 @@
+@inject IJSRuntime JS
+
+<dialog @ref="dialog" class="confirm-dialog" @onclose="() => Resolve(false)">
+    <div class="confirm-dialog__body">
+        <div class="confirm-dialog__icon"><i class="bi bi-exclamation-triangle-fill"></i></div>
+        <h5 class="fw-bold mb-2">@title</h5>
+        <p class="text-secondary mb-4">@message</p>
+        <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" @onclick="() => Resolve(false)">Cancel</button>
+            <button type="button" class="btn btn-danger" @onclick="() => Resolve(true)">
+                <i class="bi bi-trash me-1"></i> @confirmText
+            </button>
+        </div>
+    </div>
+</dialog>
+
+@code {
+    private ElementReference dialog;
+    private TaskCompletionSource<bool>? pending;
+    private string title = "Are you sure?";
+    private string message = string.Empty;
+    private string confirmText = "Delete";
+
+    public async Task<bool> ShowAsync(string message, string title = "Are you sure?", string confirmText = "Delete")
+    {
+        pending?.TrySetResult(false);
+        this.message = message;
+        this.title = title;
+        this.confirmText = confirmText;
+        pending = new TaskCompletionSource<bool>();
+        StateHasChanged();
+        await JS.InvokeVoidAsync("meetupOrganiser.showDialog", dialog);
+        return await pending.Task;
+    }
+
+    private async Task Resolve(bool result)
+    {
+        if (pending == null || pending.Task.IsCompleted) return;
+        pending.TrySetResult(result);
+        await JS.InvokeVoidAsync("meetupOrganiser.closeDialog", dialog);
+    }
+}
