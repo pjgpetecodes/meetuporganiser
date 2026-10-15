@@ -15,7 +15,8 @@ When a speaker completes their magic-link form, the organiser gets an email (spe
 - If the speaker entered a contact email, they also receive a confirmation (organiser on cc) with the meetup details and an `.ics` calendar invite attached.
 - Beside the **Copy** button, the magic-link flows have an **Email link** option that emails the link to the speaker.
 - **Azure:** `infra/modules/email.bicep` provisions the service with an Azure-managed sender domain, and the App Service managed identity is granted send access (`Email__Endpoint`, `Email__SenderAddress`).
-- **Local development:** set `Email:ConnectionString` and `Email:SenderAddress` (e.g. via user secrets). If email isn't configured, a warning is logged and the speaker's submission still saves.
+- **Local development:** run `scripts/configure-local-email.ps1` (or `setup-azure.ps1 -ConfigureLocalEmail`) to store `Email:ConnectionString` and `Email:SenderAddress` in user secrets. If email isn't configured, a warning is logged and the speaker's submission still saves.
+- **Custom sender domain (optional):** run `setup-azure.ps1 -EmailCustomDomain example.com [-EmailSenderUsername noreply]`. Add the DNS records shown for the domain in the Azure portal (Email Communication Service → Provision domains) and verify them, then re-run with `-EmailCustomDomainVerified` to link it and send from `noreply@example.com`. Until then the Azure-managed sender is used.
 
 ## API integrations
 

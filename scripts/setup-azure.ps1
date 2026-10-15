@@ -36,6 +36,15 @@ param(
     [string]$EntraClientSecret = "",
 
     [Parameter(Mandatory = $false)]
+    [string]$EmailCustomDomain = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$EmailSenderUsername = "noreply",
+
+    [Parameter(Mandatory = $false)]
+    [switch]$EmailCustomDomainVerified,
+
+    [Parameter(Mandatory = $false)]
     [switch]$ConfigureLocalEmail,
 
     [Parameter(Mandatory = $false)]
@@ -113,6 +122,12 @@ if (-not [string]::IsNullOrWhiteSpace($EntraClientId)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($EntraClientSecret)) {
     $deploymentParams += "entraClientSecret=$EntraClientSecret"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($EmailCustomDomain)) {
+    $deploymentParams += "emailCustomDomain=$EmailCustomDomain"
+    $deploymentParams += "emailSenderUsername=$EmailSenderUsername"
+    $deploymentParams += "emailCustomDomainVerified=$($EmailCustomDomainVerified.IsPresent.ToString().ToLower())"
 }
 
 $deployJson = az deployment group create `

@@ -25,6 +25,15 @@ param entraClientId string = ''
 @secure()
 param entraClientSecret string = ''
 
+@description('Optional custom email sender domain (e.g. example.com). Leave empty to use the Azure-managed domain.')
+param emailCustomDomain string = ''
+
+@description('Set true once the custom email domain has been verified in Azure (DNS), to send from it.')
+param emailCustomDomainVerified bool = false
+
+@description('Local part of the sender address on the custom domain.')
+param emailSenderUsername string = 'noreply'
+
 var uniqueSuffix = uniqueString(resourceGroup().id)
 var storageAccountName = take('st${resourcePrefix}${uniqueSuffix}', 24)
 var sqlServerName = 'sql-${resourcePrefix}-${uniqueSuffix}'
@@ -80,6 +89,9 @@ module email 'modules/email.bicep' = {
   name: 'emailDeployment'
   params: {
     namePrefix: '${resourcePrefix}-${uniqueSuffix}'
+    customDomain: emailCustomDomain
+    customDomainVerified: emailCustomDomainVerified
+    senderUsername: emailSenderUsername
   }
 }
 

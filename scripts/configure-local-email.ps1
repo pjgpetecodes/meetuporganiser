@@ -9,7 +9,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$ResourceGroupName = "rg-meetuporganiser"
+    [string]$ResourceGroupName = "rg-meetuporganiser",
+    [string]$SenderAddress = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,8 +26,9 @@ $domainId = az resource list -g $ResourceGroupName --resource-type Microsoft.Com
 $sender = az resource show --ids $domainId --query properties.mailFromSenderDomain -o tsv
 if (-not $sender) { throw "Could not resolve the managed sender domain." }
 
+if (-not $SenderAddress) { $SenderAddress = "DoNotReply@$sender" }
 dotnet user-secrets init --project $webProject | Out-Null
 dotnet user-secrets set "Email:ConnectionString" $connectionString --project $webProject | Out-Null
-dotnet user-secrets set "Email:SenderAddress" "DoNotReply@$sender" --project $webProject | Out-Null
+dotnet user-secrets set "Email:SenderAddress" $SenderAddress --project $webProject | Out-Null
 
-Write-Host "Local email configured. Sender: DoNotReply@$sender" -ForegroundColor Green
+Write-Host "Local email configured. Sender: $SenderAddress" -ForegroundColor Green
