@@ -1,4 +1,9 @@
 # meetuporganiser
+## Deploying to Azure from scratch
+
+1. `az login`, then run `./scripts/setup-azure.ps1` (add `-EmailCustomDomain`, `-SkipSmtpInvites`, `-ConfigureLocalEmail` as needed). It registers providers, creates the Entra sign-in app (and registers its `https://<app>/signin-oidc` redirect URI) and the SMTP app, deploys `infra/main.bicep` (App Service, SQL, Storage, Key Vault, App Insights, Communication Services + RBAC). The database schema is applied automatically on first app start.
+2. For CI/CD, run `./scripts/setup-github-credentials.ps1` (creates `AZURE_CREDENTIALS`) and `./scripts/setup-azure.ps1 -ConfigureGitHubSecrets` (sets the workflow variables/secrets, including the publish profile). The deploy workflow re-passes the Entra/SMTP/custom-domain parameters, so a CI redeploy keeps them.
+
 ## File storage
 
 Uploaded logos, speaker photos and PPTX templates live in Azure Blob Storage (containers `logos` and `speaker-photos` public read; `templates` private).
