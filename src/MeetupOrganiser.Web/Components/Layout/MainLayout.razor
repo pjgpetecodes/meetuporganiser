@@ -8,17 +8,17 @@
             </div>
 
             <main>
-                <div class="top-row px-4 d-flex justify-content-between align-items-center">
-                    <div>
+                <div class="top-row organizer-top-row d-flex px-3 justify-content-between align-items-center">
+                    <div class="organizer-mode">
                         <span class="badge bg-success-subtle text-success border border-success-subtle">
                             <i class="bi bi-person-check-fill me-1"></i> Organizer Mode
                         </span>
                     </div>
-                    <div class="d-flex align-items-center gap-3">
-                        <span class="text-secondary small">
+                    <div class="organizer-account d-flex align-items-center gap-2">
+                        <span class="organizer-name text-secondary small">
                             <i class="bi bi-person-circle me-1"></i> @context.User.Identity?.Name
                         </span>
-                        <a href="/logout" class="btn btn-sm btn-outline-danger">
+                        <a href="/logout" class="organizer-signout btn btn-sm btn-outline-danger">
                             <i class="bi bi-box-arrow-right me-1"></i> Sign Out
                         </a>
                     </div>
@@ -31,12 +31,12 @@
         </Authorized>
         <NotAuthorized>
             <div class="w-100">
-                <nav class="navbar navbar-expand navbar-light bg-white border-bottom px-4">
+                <nav class="navbar navbar-expand navbar-light bg-white border-bottom public-navbar px-4">
                     <div class="container-fluid">
                         <a class="navbar-brand fw-bold text-primary" href="/">
                             <img src="logo.svg" alt="" width="28" height="28" class="me-2" /> Meetup Organiser
                         </a>
-                        <div class="d-flex gap-2">
+                        <div class="public-navbar-actions d-flex gap-2">
                             <a href="/MicrosoftIdentity/Account/SignIn" class="btn btn-outline-primary btn-sm">
                                 <i class="bi bi-microsoft me-1"></i> Entra Sign In
                             </a>
@@ -60,4 +60,3 @@
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
-

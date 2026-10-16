@@ -20,8 +20,8 @@
 
 <PageTitle>@(IsNew ? "New Event" : "Edit Event") - Meetup Organiser</PageTitle>
 
-<div class="container-fluid py-2">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="container-fluid py-2 event-edit-page">
+    <div class="d-flex justify-content-between align-items-center mb-4 page-heading">
         <div>
             <h1 class="h3 fw-bold mb-1">@(IsNew ? "Create Meetup Event" : "Edit Meetup Event")</h1>
             <p class="text-secondary mb-0">Configure event details, speakers, talks, and cloud integrations.</p>
@@ -57,7 +57,7 @@
     {
         @if (!IsNew)
         {
-            <ul class="nav nav-tabs mb-4">
+            <ul class="nav nav-tabs mb-4 page-tabs">
                 <li class="nav-item">
                     <button type="button" class="nav-link @(activeTab == "edit" ? "active" : "")" @onclick='() => activeTab = "edit"'>
                         <i class="bi bi-pencil me-1"></i> Edit
@@ -230,7 +230,7 @@
             <!-- Right Column: Speakers & Sessions -->
             <div class="col-lg-7 order-first order-lg-1">
                 <div class="card border-0 shadow-sm p-4 mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3 speaker-session-heading">
                         <h5 class="fw-bold mb-0"><i class="bi bi-people-fill me-2 text-primary"></i>Speakers &amp; Sessions</h5>
                         <div class="btn-group btn-group-sm" role="group">
                             <input type="radio" class="btn-check" name="speakerCount" id="btnradio1" autocomplete="off" checked="@(speakerCount == 1)" @onchange="() => SetSpeakerCount(1)">
@@ -243,7 +243,7 @@
 
                     <!-- Speaker 1 Session -->
                     <div class="border rounded p-3 mb-3 bg-white">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-2 integration-heading">
                             <span class="badge bg-primary">Speaker 1</span>
                             @if (session1 != null)
                             {
@@ -327,7 +327,7 @@
                     @if (speakerCount >= 2)
                     {
                         <div class="border rounded p-3 mb-3 bg-white">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="d-flex justify-content-between align-items-center mb-2 integration-heading">
                                 <span class="badge bg-info text-dark">Speaker 2</span>
                                 @if (session2 != null)
                                 {
@@ -427,6 +427,37 @@
         </div>
     }
 </div>
+
+<style>
+    .event-edit-page .page-heading { gap: 1rem; }
+    .event-edit-page .page-tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
+    .event-edit-page .page-tabs .nav-link { white-space: nowrap; }
+    .event-edit-page .input-group { min-width: 0; }
+    .event-edit-page .input-group > .form-control { min-width: 0; }
+    .event-edit-page .card h5 { overflow-wrap: anywhere; }
+    .event-edit-page .speaker-session-heading { flex-wrap: wrap; gap: .5rem; }
+    .event-edit-page .integration-heading { flex-wrap: wrap; gap: .5rem; }
+    @@media (max-width: 575.98px) {
+        .event-edit-page .page-heading { flex-direction: column; align-items: flex-start !important; }
+        .event-edit-page .page-heading > div:last-child,
+        .event-edit-page .page-heading > div:last-child .btn { width: auto; }
+        .event-edit-page .card { padding: 1rem !important; }
+        .event-edit-page .speaker-session-heading,
+        .event-edit-page .integration-heading { align-items: flex-start !important; }
+        .event-edit-page .speaker-session-heading > h5 { flex: 1 1 100%; }
+        .event-edit-page .input-group { flex-wrap: wrap; }
+        .event-edit-page .input-group > .form-control { flex: 1 1 100%; width: 100%; border-radius: var(--bs-border-radius) !important; }
+        .event-edit-page .input-group > .btn,
+        .event-edit-page .input-group > .input-group-text { flex: 1 1 100%; width: 100%; justify-content: center; border-radius: var(--bs-border-radius) !important; }
+        .event-edit-page .btn-group { flex-wrap: wrap; }
+        .event-edit-page .btn-group > .btn { flex: 1 1 auto; }
+        .event-edit-page .alert .input-group { gap: .5rem; }
+        .event-edit-page .alert .d-flex { flex-wrap: wrap; }
+        .event-edit-page .alert .d-flex > .form-control { flex: 1 1 100%; width: 100%; }
+        .event-edit-page .alert .d-flex > .btn { flex: 1 1 100%; }
+        .event-edit-page .speaker-session-heading > .btn-group { width: 100%; }
+    }
+</style>
 
 @code {
     [Parameter]

@@ -14,7 +14,7 @@
 
 <PageTitle>Speaker Session Portal - Meetup Organiser</PageTitle>
 
-<div class="container py-5" style="max-width: 860px;">
+<div class="container py-5 speaker-submit-page" style="max-width: 860px;">
     @if (isLoading)
     {
         <div class="text-center py-5">
@@ -24,7 +24,7 @@
     }
     else if (tokenEntity == null || (!tokenEntity.IsValid && !showSuccess))
     {
-        <div class="card border-0 shadow-sm p-5 text-center">
+        <div class="card border-0 shadow-sm p-5 text-center invalid-link-card">
             <i class="bi bi-exclamation-triangle-fill text-warning display-3 mb-3"></i>
             <h3 class="fw-bold">Invalid or Expired Link</h3>
             <p class="text-secondary mx-auto" style="max-width: 500px;">
@@ -38,8 +38,8 @@
     }
     else
     {
-        <div class="card border-0 shadow-sm p-4 p-md-5">
-            <div class="d-flex align-items-center justify-content-between border-bottom pb-3 mb-4">
+        <div class="card border-0 shadow-sm p-4 p-md-5 submission-card">
+            <div class="d-flex align-items-center justify-content-between border-bottom pb-3 mb-4 portal-heading">
                 <div>
                     <span class="badge bg-primary-subtle text-primary border border-primary-subtle mb-2">
                         Speaker Self-Service Portal
@@ -137,7 +137,7 @@
                 <!-- Photo Upload -->
                 <div class="mb-4">
                     <label class="form-label fw-semibold">Speaker Photo / Headshot</label>
-                    <div class="d-flex align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-3 photo-upload">
                         @if (!string.IsNullOrWhiteSpace(previewPhotoUrl))
                         {
                             <img src="@previewPhotoUrl" class="rounded-circle border" style="width: 80px; height: 80px; object-fit: cover;" alt="Preview" />
@@ -180,7 +180,7 @@
                     </div>
                 </div>
 
-                <div class="d-flex justify-content-end gap-2">
+                <div class="d-flex justify-content-end gap-2 submit-actions">
                     <button type="submit" class="btn btn-primary btn-lg px-4" disabled="@isSaving">
                         @if (isSaving)
                         {
@@ -199,6 +199,26 @@
         </div>
     }
 </div>
+
+<style>
+    .speaker-submit-page .portal-heading { gap: 1rem; }
+    .speaker-submit-page .portal-heading > div { min-width: 0; }
+    .speaker-submit-page .photo-upload > div { min-width: 0; }
+    .speaker-submit-page .form-control { min-width: 0; }
+    @@media (max-width: 575.98px) {
+        .speaker-submit-page { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+        .speaker-submit-page .submission-card,
+        .speaker-submit-page .invalid-link-card { padding: 1rem !important; }
+        .speaker-submit-page .portal-heading { align-items: flex-start !important; }
+        .speaker-submit-page .portal-heading h2 { font-size: 1.35rem; overflow-wrap: anywhere; }
+        .speaker-submit-page .portal-heading > img { flex: 0 0 52px; width: 52px !important; height: 52px !important; }
+        .speaker-submit-page .photo-upload { align-items: flex-start !important; flex-wrap: wrap; }
+        .speaker-submit-page .photo-upload > div { flex: 1 1 100%; width: 100%; }
+        .speaker-submit-page input[type="file"] { font-size: .875rem; }
+        .speaker-submit-page .submit-actions { display: grid !important; }
+        .speaker-submit-page .submit-actions .btn { width: 100%; }
+    }
+</style>
 
 @code {
     [Parameter]

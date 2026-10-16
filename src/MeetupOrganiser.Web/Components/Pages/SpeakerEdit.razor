@@ -17,8 +17,8 @@
 
 <PageTitle>@(isNew ? "Add Speaker" : $"Edit {speaker.Name}") - Meetup Organiser</PageTitle>
 
-<div class="container-fluid py-2">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="container-fluid py-2 speaker-edit-page">
+    <div class="d-flex justify-content-between align-items-center mb-4 page-heading">
         <div>
             <h1 class="h3 fw-bold mb-1">@(isNew ? "Add New Speaker" : "Edit Speaker Profile")</h1>
             @if (!isNew)
@@ -44,7 +44,7 @@
     }
     else
     {
-        <ul class="nav nav-tabs mb-4">
+        <ul class="nav nav-tabs mb-4 page-tabs">
             <li class="nav-item">
                 <button type="button" class="nav-link @(activeTab == "details" ? "active" : "")" @onclick='() => activeTab = "details"'><i class="bi bi-person me-1"></i> Details</button>
             </li>
@@ -115,7 +115,7 @@
                         <textarea @bind="speaker.Bio" class="form-control" rows="3" placeholder="Speaker bio, credentials, and achievements..."></textarea>
                     </div>
                     <div class="col-12">
-                        <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex justify-content-between align-items-center bio-heading">
                             <label class="form-label fw-semibold mb-1">Third-person bio (used for Meetup descriptions)</label>
                             <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RegenerateThirdPersonBio">
                                 <i class="bi bi-arrow-repeat me-1"></i> Regenerate
@@ -158,7 +158,7 @@
                         <input @bind="speaker.WebsiteUrl" class="form-control" placeholder="https://..." />
                     </div>
                 </div>
-                <div class="d-flex gap-2 mt-4">
+                <div class="d-flex gap-2 mt-4 page-actions">
                     <button type="button" class="btn btn-primary" @onclick="SaveSpeakerAsync" disabled="@isSaving">Save Speaker</button>
                     <a href="/speakers" class="btn btn-outline-secondary">Cancel</a>
                 </div>
@@ -276,6 +276,27 @@
         }
     }
 </div>
+
+<style>
+    .speaker-edit-page .page-heading { gap: 1rem; }
+    .speaker-edit-page .page-tabs { flex-wrap: wrap; }
+    .speaker-edit-page .nav-link { white-space: nowrap; }
+    .speaker-edit-page .input-group { min-width: 0; }
+    .speaker-edit-page .input-group > .form-control { min-width: 0; }
+    .speaker-edit-page .bio-heading { gap: .5rem; }
+    @@media (max-width: 575.98px) {
+        .speaker-edit-page .page-heading { align-items: stretch !important; }
+        .speaker-edit-page .page-heading > a { width: 100%; }
+        .speaker-edit-page .card { padding: 1rem !important; }
+        .speaker-edit-page .input-group { flex-wrap: wrap; }
+        .speaker-edit-page .input-group > .form-control { flex: 1 1 100%; width: 100%; border-radius: var(--bs-border-radius) !important; }
+        .speaker-edit-page .input-group > .btn { flex: 1 1 100%; width: 100%; border-radius: var(--bs-border-radius) !important; }
+        .speaker-edit-page .bio-heading { align-items: flex-start !important; flex-wrap: wrap; }
+        .speaker-edit-page .page-actions { display: grid !important; grid-template-columns: 1fr; }
+        .speaker-edit-page .page-actions .btn { width: 100%; }
+        .speaker-edit-page .list-group-item > div { min-width: 0; }
+    }
+</style>
 
 @code {
     [Parameter] public Guid? Id { get; set; }
