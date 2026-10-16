@@ -12,6 +12,46 @@ a, .btn-link {
     border-color: #1861ac;
 }
 
+.events-action-dropdown {
+    position: relative;
+    display: inline-block;
+    margin-left: auto;
+}
+
+.events-action-dropdown > summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.events-action-dropdown > summary::-webkit-details-marker {
+    display: none;
+}
+
+.events-action-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 1000;
+    display: none;
+    min-width: 13rem;
+    padding: 0.5rem 0;
+    color: var(--bs-body-color);
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 15%);
+}
+
+.events-action-dropdown[open] > .events-action-dropdown-menu {
+    display: block;
+}
+
+.events-action-dropdown-menu .dropdown-item {
+    width: 100%;
+    padding: 0.375rem 1rem;
+    text-align: left;
+}
+
 .btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
   box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
 }

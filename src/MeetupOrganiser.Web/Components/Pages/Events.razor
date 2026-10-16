@@ -19,53 +19,31 @@
             <h1 class="h3 fw-bold mb-1">Meetup Events</h1>
             <p class="text-secondary mb-0">Create, schedule, clone, and manage community meetup events.</p>
         </div>
-        <div class="events-desktop-actions d-flex gap-2">
-            <button class="btn btn-outline-danger" @onclick="SyncPastMeetupEventsAsync" disabled="@(!Guid.TryParse(selectedGroupId, out _) || isSyncingMeetup || pendingMeetupImport != null)">
-                @if (isSyncingMeetup)
-                {
-                    <span class="spinner-border spinner-border-sm me-1"></span>
-                    <span>Loading...</span>
-                }
-                else
-                {
-                    <i class="bi bi-cloud-download me-1"></i>
-                    <span>Sync Past Meetup Events</span>
-                }
-            </button>
-            <a href="/events/invite" class="btn btn-outline-primary">
-                <i class="bi bi-send me-1"></i> Quick Invite
-            </a>
-            <a href="/events/new" class="btn btn-primary">
-                <i class="bi bi-plus-circle me-1"></i> New Event
-            </a>
-        </div>
-        <div class="events-compact-actions d-flex align-items-center gap-2">
-            <details class="events-action-dropdown">
-                <summary class="btn btn-outline-secondary">
-                    <i class="bi bi-three-dots me-1"></i> More
-                </summary>
-                <div class="events-action-dropdown-menu">
-                    <button type="button" class="dropdown-item text-danger" @onclick="SyncPastMeetupEventsAsync" disabled="@(!Guid.TryParse(selectedGroupId, out _) || isSyncingMeetup || pendingMeetupImport != null)">
-                        @if (isSyncingMeetup)
-                        {
-                            <span class="spinner-border spinner-border-sm me-1"></span>
-                            <span>Loading...</span>
-                        }
-                        else
-                        {
-                            <i class="bi bi-cloud-download me-1"></i>
-                            <span>Sync Past Meetup Events</span>
-                        }
-                    </button>
-                    <a href="/events/invite" class="dropdown-item text-primary">
-                        <i class="bi bi-send me-1"></i> Quick Invite
-                    </a>
-                </div>
-            </details>
-            <a href="/events/new" class="btn btn-primary">
-                <i class="bi bi-plus-circle me-1"></i> New Event
-            </a>
-        </div>
+        <details class="events-action-dropdown">
+            <summary class="btn btn-primary dropdown-toggle">
+                <i class="bi bi-plus-circle me-1"></i> Create Event
+            </summary>
+            <div class="events-action-dropdown-menu">
+                <a href="/events/new" class="dropdown-item">
+                    <i class="bi bi-plus-circle me-2"></i> New Event
+                </a>
+                <a href="/events/invite" class="dropdown-item">
+                    <i class="bi bi-send me-2"></i> Quick Invite
+                </a>
+                <button type="button" class="dropdown-item text-danger" @onclick="SyncPastMeetupEventsAsync" disabled="@(!Guid.TryParse(selectedGroupId, out _) || isSyncingMeetup || pendingMeetupImport != null)">
+                    @if (isSyncingMeetup)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        <span>Loading...</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-cloud-download me-2"></i>
+                        <span>Sync Past Meetup Events</span>
+                    }
+                </button>
+            </div>
+        </details>
     </div>
 
     @if (statusMessage != null)

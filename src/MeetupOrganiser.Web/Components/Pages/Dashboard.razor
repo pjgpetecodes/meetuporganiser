@@ -18,9 +18,19 @@
             <p class="text-secondary mb-0">Overview of upcoming meetups, slide decks, and speaker assets.</p>
         </div>
         <div class="d-flex gap-2">
-            <a href="/events/new" class="btn btn-primary shadow-sm">
-                <i class="bi bi-plus-circle me-1"></i> New Event
-            </a>
+            <details class="events-action-dropdown">
+                <summary class="btn btn-primary dropdown-toggle shadow-sm">
+                    <i class="bi bi-plus-circle me-1"></i> Create Event
+                </summary>
+                <div class="events-action-dropdown-menu">
+                    <a href="/events/new" class="dropdown-item">
+                        <i class="bi bi-plus-circle me-2"></i> New Event
+                    </a>
+                    <a href="/events/invite" class="dropdown-item">
+                        <i class="bi bi-send me-2"></i> Quick Invite
+                    </a>
+                </div>
+            </details>
             <a href="/speakers" class="btn btn-outline-secondary">
                 <i class="bi bi-person-plus me-1"></i> Add Speaker
             </a>
