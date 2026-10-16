@@ -154,25 +154,40 @@ public static partial class PptxTokens
     private const int HeaderLineCapacity = 28;
     private const float MinHeaderScale = 0.5f;
 
+    // The social slides author their header line at this size; next-event slides that leave it inherited use the same.
+    private const int HeaderBaseSize = 4000;
+
     public static void ApplyToSlide(Slide slide, IReadOnlyDictionary<string, string> replacements)
     {
         var venueParagraphs = slide.Descendants<D.Paragraph>()
             .Where(p => string.Concat(p.Descendants<D.Text>().Select(t => t.Text)) is var t
                 && VenueTokens.Any(v => t.Contains(v, StringComparison.OrdinalIgnoreCase)))
+            .Select(p => (Paragraph: p, Next: string.Concat(p.Descendants<D.Text>().Select(t => t.Text)).Contains("{{NextEvent", StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
         ReplaceTokens(slide, replacements);
 
-        foreach (var paragraph in venueParagraphs) FitParagraph(paragraph);
+        foreach (var (paragraph, next) in venueParagraphs) FitParagraph(paragraph, next);
     }
 
     // Shrinks a header line that is longer than the box can hold, e.g. a long location.
-    private static void FitParagraph(D.Paragraph paragraph)
+    private static void FitParagraph(D.Paragraph paragraph, bool next)
     {
         var length = string.Concat(paragraph.Descendants<D.Text>().Select(t => t.Text)).Trim().Length;
-        if (length <= HeaderLineCapacity) return;
+        var scale = length <= HeaderLineCapacity ? 1f : Math.Max(MinHeaderScale, HeaderLineCapacity / (float)length);
 
-        var scale = Math.Max(MinHeaderScale, HeaderLineCapacity / (float)length);
+        if (next && !paragraph.Descendants<D.RunProperties>().Any(r => r.FontSize?.Value > 0))
+        {
+            foreach (var run in paragraph.Elements<D.Run>())
+            {
+                run.RunProperties ??= new D.RunProperties();
+                run.RunProperties.FontSize = (int)(HeaderBaseSize * scale);
+            }
+
+            return;
+        }
+
+        if (length <= HeaderLineCapacity) return;
         var sized = false;
         foreach (var rp in paragraph.Descendants<D.RunProperties>().Where(r => r.FontSize?.Value > 0))
         {
