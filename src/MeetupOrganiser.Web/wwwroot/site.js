@@ -1,6 +1,13 @@
 document.addEventListener('click', event => {
     if (!(event.target instanceof Element)) return;
 
+    document.querySelectorAll('details.organizer-account-menu[open]')
+        .forEach(menu => {
+            if (!menu.contains(event.target) || event.target.closest('.organizer-account-links a')) {
+                menu.open = false;
+            }
+        });
+
     document.querySelectorAll('details.events-action-dropdown[open]')
         .forEach(menu => {
             if (!menu.contains(event.target)) {
@@ -11,6 +18,12 @@ document.addEventListener('click', event => {
 
 document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
+
+    document.querySelectorAll('details.organizer-account-menu[open]').forEach(menu => {
+        const restoreFocus = menu.contains(document.activeElement);
+        menu.open = false;
+        if (restoreFocus) menu.querySelector('summary').focus();
+    });
 
     document.querySelectorAll('details.events-action-dropdown[open]').forEach(menu => {
         const restoreFocus = menu.contains(document.activeElement);

@@ -21,7 +21,7 @@
 
             <AuthorizeView>
                 <Authorized>
-                    <div class="d-flex justify-content-center gap-3">
+                    <div class="d-flex justify-content-center gap-3 hero-actions">
                         <a href="/dashboard" class="btn btn-primary btn-lg px-4 shadow-sm">
                             <i class="bi bi-speedometer2 me-2"></i> Open Organizer Dashboard
                         </a>
@@ -31,7 +31,7 @@
                     </div>
                 </Authorized>
                 <NotAuthorized>
-                    <div class="d-flex justify-content-center gap-3">
+                    <div class="d-flex justify-content-center gap-3 hero-actions">
                         <a href="/MicrosoftIdentity/Account/SignIn" class="btn btn-primary btn-lg px-4 shadow-sm">
                             <i class="bi bi-microsoft me-2"></i> Sign In with Microsoft Entra
                         </a>
@@ -150,5 +150,15 @@
     .hero-section {
         padding: 5rem 1rem;
         background: radial-gradient(circle at 50% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+    }
+    @@media (max-width: 575.98px) {
+        .hero-section { padding: 2.5rem .75rem !important; }
+        .hero-section .display-4 { font-size: clamp(2rem, 9vw, 2.75rem); line-height: 1.12; }
+        .hero-section .lead { font-size: 1rem; }
+        .hero-actions { flex-direction: column; align-items: stretch; gap: .75rem !important; }
+        .hero-actions .btn { width: 100%; white-space: normal; }
+        .features-section .card { padding: 1.25rem !important; }
+        .features-section h2 { font-size: 1.5rem; }
+        .landing-container { overflow-wrap: anywhere; }
     }
 </style>

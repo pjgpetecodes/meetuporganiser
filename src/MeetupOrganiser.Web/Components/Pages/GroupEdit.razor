@@ -15,8 +15,8 @@
 
 <PageTitle>@(IsNew ? "New Group" : "Edit Group") - Meetup Organiser</PageTitle>
 
-<div class="container-fluid py-2">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="container-fluid py-2 group-edit-page">
+    <div class="d-flex justify-content-between align-items-center mb-4 page-heading">
         <div>
             <h1 class="h3 fw-bold mb-1">@(IsNew ? "Create Meetup Group" : "Edit Meetup Group")</h1>
             <p class="text-secondary mb-0">Configure branding, social post template, logo and presentation template.</p>
@@ -54,7 +54,7 @@
     }
     else
     {
-        <ul class="nav nav-tabs mb-4">
+        <ul class="nav nav-tabs mb-4 page-tabs">
             <li class="nav-item">
                 <button type="button" class="nav-link @(activeTab == "details" ? "active" : "")" @onclick='() => activeTab = "details"'><i class="bi bi-people me-1"></i> Group Details</button>
             </li>
@@ -309,14 +309,14 @@
                                 {
                                     var filled = s.Tokens.Count > 0;
                                     var hidden = IsHidden(s);
-                                    <div class="card" style="width: 300px; @(!filled || hidden ? "opacity:.45;" : "")">
+                                    <div class="card template-slide-card" style="width: 300px; @(!filled || hidden ? "opacity:.45;" : "")">
                                         @if (filled)
                                         {
-                                            <img src="/api/templates/@Uri.EscapeDataString(templateFile)/slides/@s.Number/filled.png?speakers=@previewSpeakers&w=600" class="card-img-top" loading="lazy" alt="Slide @s.Number" />
+                                            <img src="/api/templates/@Uri.EscapeDataString(templateFile)/slides/@s.Number/filled.png?speakers=@previewSpeakers&w=600" class="card-img-top template-slide-preview" loading="lazy" alt="Slide @s.Number" />
                                         }
                                         else
                                         {
-                                            <img src="/api/templates/@Uri.EscapeDataString(templateFile)/slides/@(s.Number).png?w=600" class="card-img-top" loading="lazy" alt="Slide @s.Number" style="filter: grayscale(1);" />
+                                            <img src="/api/templates/@Uri.EscapeDataString(templateFile)/slides/@(s.Number).png?w=600" class="card-img-top template-slide-preview" loading="lazy" alt="Slide @s.Number" style="filter: grayscale(1);" />
                                         }
                                         <div class="card-body p-2">
                                             <div class="small fw-semibold text-truncate" title="@s.Caption">@s.Number. @s.Caption</div>
@@ -336,12 +336,37 @@
             </div>
         </div>
 
-        <div class="d-flex justify-content-end gap-2 mt-4">
+        <div class="d-flex justify-content-end gap-2 mt-4 page-actions">
             <a href="/groups" class="btn btn-secondary">Cancel</a>
             <button type="button" class="btn btn-primary" @onclick="SaveGroupAsync" disabled="@saving">Save Group</button>
         </div>
     }
 </div>
+
+<style>
+    .group-edit-page .page-heading { gap: 1rem; }
+    .group-edit-page .page-heading > div:last-child { flex-wrap: wrap; }
+    .group-edit-page .page-tabs { flex-wrap: wrap; }
+    .group-edit-page .nav-link { white-space: nowrap; }
+    .group-edit-page .input-group { min-width: 0; }
+    .group-edit-page .input-group > .form-control { min-width: 0; }
+    .group-edit-page .template-slide-card { flex: 0 1 300px; max-width: 100%; }
+    .group-edit-page .template-slide-preview { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #f8f9fa; }
+    @@media (max-width: 575.98px) {
+        .group-edit-page .page-heading { align-items: stretch !important; }
+        .group-edit-page .page-heading > div:last-child { display: grid !important; grid-template-columns: 1fr; }
+        .group-edit-page .page-heading > div:last-child .btn { width: 100%; }
+        .group-edit-page .card { padding: 1rem !important; }
+        .group-edit-page .page-tabs { gap: .25rem; }
+        .group-edit-page .page-tabs .nav-link { padding: .45rem .6rem; }
+        .group-edit-page .input-group { flex-wrap: wrap; }
+        .group-edit-page .input-group > .form-control { flex: 1 1 100%; width: 100%; border-radius: var(--bs-border-radius) !important; }
+        .group-edit-page .input-group > .btn { flex: 1 1 100%; width: 100%; border-radius: var(--bs-border-radius) !important; }
+        .group-edit-page .page-actions { display: grid !important; grid-template-columns: 1fr; }
+        .group-edit-page .page-actions .btn { width: 100%; }
+        .group-edit-page .template-slide-card { flex-basis: min(100%, 300px); }
+    }
+</style>
 
 <ConfirmDialog @ref="confirmDialog" />
 

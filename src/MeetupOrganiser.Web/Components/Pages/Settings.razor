@@ -9,8 +9,8 @@
 
 <PageTitle>API Integrations &amp; Settings - Meetup Organiser</PageTitle>
 
-<div class="container-fluid py-2">
-    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+<div class="container-fluid py-2 settings-page">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2 page-heading">
         <div>
             <h1 class="h3 fw-bold mb-1">
                 <i class="bi bi-sliders text-primary me-2"></i>API Integrations &amp; Settings
@@ -60,7 +60,7 @@
     }
     else
     {
-        <ul class="nav nav-tabs mb-4">
+        <ul class="nav nav-tabs mb-4 page-tabs">
             <li class="nav-item">
                 <button type="button" class="nav-link @(activeTab == "general" ? "active" : "")" @onclick='() => activeTab = "general"'>
                     <i class="bi bi-gear me-1"></i> General
@@ -528,6 +528,35 @@
         </div>
     }
 </div>
+
+<style>
+    .settings-page .page-heading { gap: 1rem; }
+    .settings-page .page-tabs { flex-wrap: wrap; }
+    .settings-page .nav-link { white-space: nowrap; }
+    .settings-page .accordion-button { min-width: 0; gap: .5rem; }
+    .settings-page .accordion-button > span { min-width: 0; }
+    .settings-page .accordion-button > span:last-child { margin-right: 0 !important; }
+    .settings-page .input-group { min-width: 0; }
+    .settings-page .input-group > .form-control { min-width: 0; }
+    @@media (max-width: 575.98px) {
+        .settings-page .page-heading { align-items: stretch !important; }
+        .settings-page .page-heading > div:last-child,
+        .settings-page .page-heading > div:last-child .btn { width: 100%; }
+        .settings-page .card-header { padding: 1rem 1rem 0 !important; }
+        .settings-page .card-body { padding: 1rem !important; }
+        .settings-page .accordion-button { flex-wrap: wrap; padding: .9rem .75rem; }
+        .settings-page .accordion-button > span:nth-child(2) { flex: 1 1 calc(100% - 3.5rem); }
+        .settings-page .accordion-button > span:last-child { flex: 1 1 100%; margin-left: 2.75rem; }
+        .settings-page .accordion-button .badge { white-space: normal; text-align: left; }
+        .settings-page .accordion-body { padding: 1rem; }
+        .settings-page .input-group { flex-wrap: nowrap; }
+        .settings-page .input-group > .form-control { width: 1%; }
+        .settings-page .input-group > .btn { flex: 0 0 auto; }
+        .settings-page .column-count-2 { column-count: 1; }
+        .settings-page .mt-4.text-end { display: grid; }
+        .settings-page .mt-4.text-end .btn { width: 100%; justify-content: center; }
+    }
+</style>
 
 @code {
     private IntegrationSettingsModel model = new();

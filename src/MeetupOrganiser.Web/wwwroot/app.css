@@ -2,6 +2,20 @@ html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
+html {
+    min-height: 100%;
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    min-width: 320px;
+    min-height: 100%;
+}
+
+main, .content {
+    min-width: 0;
+}
+
 a, .btn-link {
     color: #006bb7;
 }

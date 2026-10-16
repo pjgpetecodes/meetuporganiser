@@ -13,7 +13,7 @@
 @inject ILogger<EventAssets> Logger
 @inject IJSRuntime JS
 
-<div>
+<div class="event-assets-page">
     @if (statusMessage != null)
     {
         <div class="alert @(isError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
@@ -40,7 +40,7 @@
             <div class="col-lg-6">
                 <!-- Social Image Preview Card -->
                 <div class="card border-0 shadow-sm p-4 mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3 asset-heading">
                         <h5 class="fw-bold mb-0">
                             <i class="bi bi-image me-2 text-primary"></i>1280x720 Social Card Preview
                         </h5>
@@ -83,7 +83,7 @@
 
                 <!-- Meetup.com Event Content Card -->
                 <div class="card border-0 shadow-sm p-4 mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3 asset-heading">
                         <h5 class="fw-bold mb-0">
                             <i class="bi bi-calendar-event me-2 text-danger"></i>Meetup.com Publication
                         </h5>
@@ -129,7 +129,7 @@
             <div class="col-lg-6">
                 <!-- LinkedIn Activation -->
                 <div class="card border-0 shadow-sm p-4 mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-2 asset-heading">
                         <h5 class="fw-bold mb-0">
                             <i class="bi bi-linkedin me-2 text-primary"></i>LinkedIn
                         </h5>
@@ -152,7 +152,7 @@
                         <input id="linkedin-attach-image" type="checkbox" class="form-check-input" @bind="attachLinkedInImage" />
                         <label class="form-check-label" for="linkedin-attach-image">Attach social card image</label>
                     </div>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-center asset-meta">
                         <small class="text-muted">Includes event title, speaker tags, and registration link.</small>
                         <span class="badge bg-light text-secondary border">LinkedIn Posts API</span>
                     </div>
@@ -160,7 +160,7 @@
 
                 <!-- X / Twitter Activation -->
                 <div class="card border-0 shadow-sm p-4 mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-2 asset-heading">
                         <h5 class="fw-bold mb-0">
                             <i class="bi bi-twitter-x me-2 text-dark"></i>X (Twitter)
                         </h5>
@@ -183,7 +183,7 @@
                         <input id="twitter-attach-image" type="checkbox" class="form-check-input" @bind="attachTwitterImage" />
                         <label class="form-check-label" for="twitter-attach-image">Attach social card image</label>
                     </div>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-center asset-meta">
                         <small class="text-muted">Character count: @(twitterText?.Length ?? 0) / 280. Web Intent does not attach the image.</small>
                         <span class="badge bg-light text-secondary border">X API + Web Intent</span>
                     </div>
@@ -191,7 +191,7 @@
 
                 <!-- BlueSky Activation -->
                 <div class="card border-0 shadow-sm p-4 mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-2 asset-heading">
                         <h5 class="fw-bold mb-0">
                             <i class="bi bi-cloud me-2 text-info"></i>BlueSky (AT Protocol)
                         </h5>
@@ -211,7 +211,7 @@
                         <input id="bluesky-attach-image" type="checkbox" class="form-check-input" @bind="attachBlueSkyImage" />
                         <label class="form-check-label" for="bluesky-attach-image">Attach social card image</label>
                     </div>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-center asset-meta">
                         <small class="text-muted">Character count: @(blueSkyText?.Length ?? 0) / 300. The web intent can't attach the image; download the PNG and add it manually.</small>
                         <span class="badge bg-light text-secondary border">AT Protocol</span>
                     </div>
@@ -220,6 +220,31 @@
         </div>
     }
 </div>
+
+<style>
+    .event-assets-page .asset-heading { gap: .75rem; }
+    .event-assets-page .asset-heading h5 { min-width: 0; }
+    .event-assets-page .asset-heading .btn-group { flex-wrap: wrap; justify-content: flex-end; }
+    .event-assets-page .asset-meta { gap: .75rem; }
+    .event-assets-page .input-group { min-width: 0; }
+    .event-assets-page .input-group > .form-control { min-width: 0; }
+    @@media (max-width: 575.98px) {
+        .event-assets-page .card { padding: 1rem !important; }
+        .event-assets-page .asset-heading { align-items: flex-start !important; flex-wrap: wrap; }
+        .event-assets-page .asset-heading h5 { flex: 1 1 100%; }
+        .event-assets-page .asset-heading > .btn,
+        .event-assets-page .asset-heading > .btn-group { width: 100%; }
+        .event-assets-page .asset-heading > .btn-group { display: flex; }
+        .event-assets-page .asset-heading > .btn-group > .btn { flex: 1 1 auto; white-space: normal; }
+        .event-assets-page .asset-meta { align-items: flex-start !important; flex-wrap: wrap; }
+        .event-assets-page .asset-meta > * { max-width: 100%; overflow-wrap: anywhere; }
+        .event-assets-page .card .d-flex.gap-2 > .btn { min-width: 0; }
+        .event-assets-page .input-group { flex-wrap: wrap; gap: .5rem; }
+        .event-assets-page .input-group > .form-control { flex: 1 1 100%; width: 100%; border-radius: var(--bs-border-radius) !important; }
+        .event-assets-page .input-group > .btn { flex: 1 1 100%; width: 100%; border-radius: var(--bs-border-radius) !important; }
+        .event-assets-page .ratio { max-width: 100%; }
+    }
+</style>
 
 @code {
     [Parameter, EditorRequired]

@@ -3,13 +3,19 @@
         <a class="navbar-brand fw-bold" href="/dashboard">
             <img src="logo.svg" alt="" width="28" height="28" class="me-2" /> Meetup Organiser
         </a>
+        <button type="button"
+                class="navbar-toggler"
+                aria-label="Toggle navigation menu"
+                aria-controls="primary-navigation"
+                aria-expanded="@_isNavMenuOpen"
+                @onclick="ToggleNavMenu">
+            <span class="navbar-toggler-icon" aria-hidden="true"></span>
+        </button>
     </div>
 </div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
-
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
+<div id="primary-navigation" class="nav-scrollable @(_isNavMenuOpen ? "open" : null)">
+    <nav class="nav flex-column" @onclick="CloseNavMenu">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
                 <span class="bi bi-house" aria-hidden="true"></span>
@@ -52,6 +58,31 @@
             </NavLink>
         </div>
     </nav>
+
+    @if (_isNavMenuOpen)
+    {
+        <AuthorizeView Context="auth">
+            <div class="mobile-account">
+                <span class="badge bg-success-subtle text-success border border-success-subtle">
+                    <i class="bi bi-person-check-fill me-1" aria-hidden="true"></i> Organizer Mode
+                </span>
+                <div class="mobile-account-profile">
+                    <i class="bi bi-person-circle" aria-hidden="true"></i>
+                    <span>@auth.User.Identity?.Name</span>
+                </div>
+                <a href="/logout" class="mobile-account-signout">
+                    <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+                    <span>Sign Out</span>
+                </a>
+            </div>
+        </AuthorizeView>
+    }
 </div>
 
+@code {
+    private bool _isNavMenuOpen;
 
+    private void ToggleNavMenu() => _isNavMenuOpen = !_isNavMenuOpen;
+
+    private void CloseNavMenu() => _isNavMenuOpen = false;
+}
