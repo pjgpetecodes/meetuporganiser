@@ -10,7 +10,7 @@ using SkiaSharp;
 
 namespace MeetupOrganiser.Infrastructure.Services;
 
-public record PptxSlideInfo(int Number, string Caption, IReadOnlyList<string> Tokens, PptxTokens.SlideKind Kind);
+public record PptxSlideInfo(int Number, string Caption, IReadOnlyList<string> Tokens, PptxTokens.SlideKind Kind, bool NextEventOnly = false);
 
 public interface IPptxPreviewService
 {
@@ -56,7 +56,8 @@ public class PptxPreviewService : IPptxPreviewService
                 .Select(p => string.Concat(p.Descendants<D.Text>().Select(t => t.Text)).Trim())
                 .FirstOrDefault(t => t.Length > 0) ?? "(no text)";
             var tokens = part.Slide == null ? [] : PptxTokens.DetectTokens(part.Slide);
-            result.Add(new PptxSlideInfo(number, caption.Length > 60 ? caption[..60] + "..." : caption, tokens, PptxTokens.Classify(tokens)));
+            var nextOnly = PptxTokens.UsesOnlyNextEventTokens(tokens);
+            result.Add(new PptxSlideInfo(number, caption.Length > 60 ? caption[..60] + "..." : caption, tokens, nextOnly ? PptxTokens.ClassifyNextEvent(tokens) : PptxTokens.Classify(tokens), nextOnly));
         }
 
         return result;
@@ -76,7 +77,7 @@ public class PptxPreviewService : IPptxPreviewService
     public async Task<byte[]?> RenderFilledSlideAsync(string fileName, int slideNumber, int speakerCount, int width, CancellationToken cancellationToken = default)
     {
         var deck = await GetDeckAsync(fileName, cancellationToken);
-        return deck == null ? null : await RenderAsync(deck, slideNumber, width, SampleEvent(speakerCount), SampleNextEvent(), cancellationToken);
+        return deck == null ? null : await RenderAsync(deck, slideNumber, width, SampleEvent(speakerCount), SampleNextEvent(speakerCount), cancellationToken);
     }
 
     public async Task<byte[]?> RenderEventSocialSlideAsync(string fileName, MeetupEvent meetupEvent, MeetupEvent? nextEvent, int width, CancellationToken cancellationToken = default)
@@ -117,13 +118,13 @@ public class PptxPreviewService : IPptxPreviewService
         return evt;
     }
 
-    private static MeetupEvent SampleNextEvent()
+    private static MeetupEvent SampleNextEvent(int speakerCount)
     {
-        var next = SampleEvent(1);
+        var next = SampleEvent(speakerCount);
         next.Title = "Next Sample Meetup";
         next.EventDateTimeUtc = next.EventDateTimeUtc.AddMonths(1);
-        next.Sessions.Clear();
-        next.Sessions.Add(new EventSpeakerSession { OrderIndex = 0, TalkTitle = "Next Month's Talk", Speaker = new Speaker { Name = "Speaker One" } });
+        next.Sessions.First().TalkTitle = "Next Month's Talk";
+        if (speakerCount > 1) next.Sessions.Last().TalkTitle = "Next Month's Other Talk";
         return next;
     }
 

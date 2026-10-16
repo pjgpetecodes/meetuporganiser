@@ -86,6 +86,35 @@ public class PptxGeneratorServiceTests
     }
 
     [Fact]
+    public async Task GenerateEventDeckAsync_BuiltInDeck_ShowsAndFillsUpcomingSlideOnlyWithNextEvent()
+    {
+        var service = new PptxGeneratorService(NullLogger<PptxGeneratorService>.Instance);
+        var evt = CreateEventWithSpeakers(1);
+        var next = CreateEventWithSpeakers(1);
+        next.EventDateTimeUtc = new DateTime(2026, 11, 17, 18, 30, 0, DateTimeKind.Utc);
+        next.Sessions.First().Speaker!.Name = "Next Speaker";
+        next.Sessions.First().TalkTitle = "Next Talk";
+
+        (bool Shown, string Text) Upcoming(byte[] bytes)
+        {
+            using var doc = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(new MemoryStream(bytes), false);
+            var pres = doc.PresentationPart!;
+            var ids = pres.Presentation.SlideIdList!.Elements<DocumentFormat.OpenXml.Presentation.SlideId>().ToList();
+            var slide = ((DocumentFormat.OpenXml.Packaging.SlidePart)pres.GetPartById(ids[8].RelationshipId!)).Slide!;
+            return (slide.Show?.Value != false, string.Concat(slide.Descendants<DocumentFormat.OpenXml.Drawing.Text>().Select(t => t.Text)));
+        }
+
+        var with = Upcoming(await service.GenerateEventDeckAsync(evt, next));
+        Assert.True(with.Shown);
+        Assert.Contains("Next Speaker", with.Text);
+        Assert.Contains("Next Talk", with.Text);
+        Assert.Contains("17TH NOVEMBER 2026", with.Text);
+        Assert.DoesNotContain("Luce Carter", with.Text);
+
+        Assert.False(Upcoming(await service.GenerateEventDeckAsync(evt)).Shown);
+    }
+
+    [Fact]
     public async Task GenerateEventDeckAsync_SingleSpeaker_ReturnsValidPptxBytes()
     {
         // Arrange

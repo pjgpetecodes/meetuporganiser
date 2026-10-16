@@ -92,6 +92,61 @@ public static partial class PptxTokens
         replacements["{{NextEventTalk2Title}}"] = Or(second?.TalkTitle);
     }
 
+    private static string SlideText(Slide slide) =>
+        string.Concat(slide.Descendants<D.Text>().Select(t => t.Text));
+
+    // The built-in decks' "Upcoming meetups" divider slide and the upcoming-event slide that follows it.
+    public static bool IsUpcomingTitleSlide(Slide slide) =>
+        SlideText(slide).Replace(" ", "").Equals("Upcomingmeetups", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsUpcomingEventSlide(Slide slide)
+    {
+        var text = SlideText(slide);
+        return text.Contains("Special Workshop Edition", StringComparison.OrdinalIgnoreCase)
+            && !text.Contains("TONIGHT", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Fills the built-in upcoming-event slide paragraph by paragraph, since its sample date is split across runs.
+    public static void ApplyUpcomingEventSlide(Slide slide, MeetupEvent next)
+    {
+        var sessions = next.Sessions.OrderBy(s => s.OrderIndex).ToList();
+        var speakers = string.Join(" & ", sessions.Select(s => s.Speaker?.Name).Where(n => !string.IsNullOrWhiteSpace(n)));
+        var talks = string.Join(" / ", sessions.Select(s => s.TalkTitle).Where(n => !string.IsNullOrWhiteSpace(n)));
+        var url = next.ShortBitlyUrl ?? next.MeetupEventUrl ?? string.Empty;
+
+        foreach (var paragraph in slide.Descendants<D.Paragraph>().ToList())
+        {
+            var texts = paragraph.Descendants<D.Text>().ToList();
+            if (texts.Count == 0) continue;
+            var joined = string.Concat(texts.Select(t => t.Text));
+
+            string? value = null;
+            if (joined.Contains("Luce Carter")) value = string.IsNullOrEmpty(speakers) ? NextEventPlaceholder : speakers;
+            else if (joined.Contains("SQL to MongoDB")) value = string.IsNullOrEmpty(talks) ? next.Title : talks;
+            else if (joined.Contains("bit.ly")) value = url;
+            else if (joined.Contains("Monday")) value = EventHeader.DateLine(next);
+            else if (joined.Contains("at CGI only")) value = EventHeader.VenueLine(next);
+            else if (joined.Contains("Special Workshop")) value = EventHeader.Subtitle(next) ?? string.Empty;
+            if (value == null) continue;
+
+            texts[0].Text = value;
+            foreach (var extra in texts.Skip(1)) extra.Text = string.Empty;
+        }
+    }
+
+    // Next-event slides carry their own speaker count: Speaker2/Talk2 tokens mean two speakers, other speaker/talk tokens one.
+    public static SlideKind ClassifyNextEvent(IReadOnlyList<string> tokens)
+    {
+        var names = tokens.Select(t => Normalise(t).Trim('{', '}')).ToList();
+        if (names.Any(n => n.Equals("NextEventSpeaker2Name", StringComparison.OrdinalIgnoreCase) || n.Equals("NextEventTalk2Title", StringComparison.OrdinalIgnoreCase))) return SlideKind.TwoSpeakers;
+        return names.Any(n => n.StartsWith("NextEventSpeaker", StringComparison.OrdinalIgnoreCase) && !n.Equals("NextEventSpeakers", StringComparison.OrdinalIgnoreCase)
+            || n.StartsWith("NextEventTalk", StringComparison.OrdinalIgnoreCase)) ? SlideKind.OneSpeaker : SlideKind.Always;
+    }
+
+    // True when every token on the slide is a next-event token.
+    public static bool UsesOnlyNextEventTokens(IReadOnlyList<string> tokens) =>
+        tokens.Count > 0 && tokens.All(t => Normalise(t).StartsWith("{{NextEvent", StringComparison.OrdinalIgnoreCase));
+
     private static readonly string[] VenueTokens =
         ["{{Venue}}", "{{EventTime}}", "{{EventVenueLine}}", "{{NextEventVenue}}", "{{NextEventTime}}", "{{NextEventVenueLine}}"];
 
@@ -175,6 +230,29 @@ public static partial class PptxTokens
     }
 
     private static readonly string[] DateTokens = ["{{EventDate}}", "{{EventDateLine}}"];
+
+    // The "Social Images" divider and the date slides after it are only for generating social cards, so the deck hides them.
+    public static HashSet<int> FindSocialSection(IReadOnlyList<(string Text, IReadOnlyList<string> Tokens)> slides)
+    {
+        var result = new HashSet<int>();
+        var start = -1;
+        for (var i = 0; i < slides.Count && start < 0; i++)
+        {
+            if (slides[i].Tokens.Count == 0 && slides[i].Text.Replace(" ", "").Equals("SocialImages", StringComparison.OrdinalIgnoreCase)) start = i;
+        }
+
+        if (start < 0) return result;
+
+        result.Add(start);
+        for (var i = start + 1; i < slides.Count; i++)
+        {
+            if (slides[i].Tokens.Any(t => DateTokens.Contains(Normalise(t), StringComparer.OrdinalIgnoreCase))) result.Add(i);
+        }
+
+        return result;
+    }
+
+    public static string TextOf(Slide slide) => SlideText(slide);
 
     // The social slide is the one showing this event's date; prefer the one matching the speaker count and carrying speaker details.
     public static int? FindSocialSlide(IReadOnlyList<(int Number, IReadOnlyList<string> Tokens)> slides, int speakerCount)

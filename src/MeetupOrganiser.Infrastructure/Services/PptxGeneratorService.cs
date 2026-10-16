@@ -33,11 +33,25 @@ public class PptxGeneratorService : IPptxGeneratorService
     }
 
     // Slides containing {{tokens}} are filled; slides for the other speaker count are hidden; the rest are untouched.
-    private byte[]? GenerateFromGroupTemplate(MeetupEvent meetupEvent, MeetupEvent? nextEvent, byte[] templateBytes, int speakerCount)
+    private async Task<byte[]?> GenerateFromGroupTemplateAsync(MeetupEvent meetupEvent, MeetupEvent? nextEvent, byte[] templateBytes, int speakerCount, CancellationToken cancellationToken)
     {
         using var memoryStream = new MemoryStream();
         memoryStream.Write(templateBytes);
         memoryStream.Position = 0;
+
+        var currentSessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
+        var nextSessions = nextEvent?.Sessions.OrderBy(s => s.OrderIndex).ToList() ?? [];
+        var nextCount = nextSessions.Count;
+        IReadOnlyList<byte[]> currentPhotos =
+        [
+            await PptxSpeakerPhotos.LoadAsync(currentSessions.ElementAtOrDefault(0)?.Speaker, cancellationToken),
+            await PptxSpeakerPhotos.LoadAsync(currentSessions.ElementAtOrDefault(1)?.Speaker, cancellationToken)
+        ];
+        IReadOnlyList<byte[]> nextPhotos = nextEvent == null ? [] :
+        [
+            await PptxSpeakerPhotos.LoadAsync(nextSessions.ElementAtOrDefault(0)?.Speaker, cancellationToken),
+            await PptxSpeakerPhotos.LoadAsync(nextSessions.ElementAtOrDefault(1)?.Speaker, cancellationToken)
+        ];
 
         using (var presentationDoc = PresentationDocument.Open(memoryStream, true))
         {
@@ -45,7 +59,12 @@ public class PptxGeneratorService : IPptxGeneratorService
             var slideParts = (presentationPart?.Presentation.SlideIdList?.Elements<SlideId>() ?? [])
                 .Select(id => (SlidePart)presentationPart!.GetPartById(id.RelationshipId!))
                 .Where(p => p.Slide != null)
-                .Select(p => (Part: p, Kind: PptxTokens.Classify(PptxTokens.DetectTokens(p.Slide!)), HasTokens: PptxTokens.DetectTokens(p.Slide!).Count > 0))
+                .Select(p =>
+                {
+                    var tokens = PptxTokens.DetectTokens(p.Slide!);
+                    var nextOnly = PptxTokens.UsesOnlyNextEventTokens(tokens);
+                    return (Part: p, Kind: nextOnly ? PptxTokens.ClassifyNextEvent(tokens) : PptxTokens.Classify(tokens), HasTokens: tokens.Count > 0, NextOnly: nextOnly);
+                })
                 .ToList();
 
             if (!slideParts.Any(s => s.HasTokens))
@@ -55,16 +74,27 @@ public class PptxGeneratorService : IPptxGeneratorService
             }
 
             var replacements = PptxTokens.BuildReplacements(meetupEvent, includeSampleLiterals: false, nextEvent);
-            var hasTwoSpeakerSlides = slideParts.Any(s => s.Kind == PptxTokens.SlideKind.TwoSpeakers);
-            foreach (var (part, kind, hasTokens) in slideParts)
+            var socialSection = PptxTokens.FindSocialSection(slideParts.Select(s => (PptxTokens.TextOf(s.Part.Slide!), (IReadOnlyList<string>)PptxTokens.DetectTokens(s.Part.Slide!))).ToList());
+            var hasTwoSpeakerSlides = slideParts.Any(s => !s.NextOnly && s.Kind == PptxTokens.SlideKind.TwoSpeakers);
+            var hasTwoNextSlides = slideParts.Any(s => s.NextOnly && s.Kind == PptxTokens.SlideKind.TwoSpeakers);
+            var slideIndex = -1;
+            foreach (var (part, kind, hasTokens, nextOnly) in slideParts)
             {
+                slideIndex++;
                 if (hasTokens) PptxTokens.ApplyToSlide(part.Slide!, replacements);
 
-                var hide = speakerCount > 1
-                    ? kind == PptxTokens.SlideKind.OneSpeaker && hasTwoSpeakerSlides
+                var count = nextOnly ? nextCount : speakerCount;
+                var twoSlidesExist = nextOnly ? hasTwoNextSlides : hasTwoSpeakerSlides;
+                var hide = count > 1
+                    ? kind == PptxTokens.SlideKind.OneSpeaker && twoSlidesExist
                     : kind == PptxTokens.SlideKind.TwoSpeakers;
+                if (nextEvent == null && nextOnly) hide = true;
+                if (socialSection.Contains(slideIndex)) hide = true;
                 // Keep slides the template author already hid; only add hiding for the other speaker count.
                 if (hide) part.Slide!.Show = false;
+                else if (nextOnly) part.Slide!.Show = null;
+
+                if (hasTokens) PptxSpeakerPhotos.Apply(part, kind, nextOnly ? nextPhotos : currentPhotos);
                 part.Slide!.Save();
 
                 foreach (var imagePart in part.ImageParts.Where(i => i.ContentType is "image/jpeg" or "image/png").Distinct())
@@ -85,7 +115,7 @@ public class PptxGeneratorService : IPptxGeneratorService
 
         if (await TryLoadGroupTemplateAsync(meetupEvent, cancellationToken) is { } custom)
         {
-            var deck = GenerateFromGroupTemplate(meetupEvent, nextEvent, custom, sessions.Count);
+            var deck = await GenerateFromGroupTemplateAsync(meetupEvent, nextEvent, custom, sessions.Count, cancellationToken);
             if (deck != null) return deck;
         }
 
@@ -141,6 +171,19 @@ public class PptxGeneratorService : IPptxGeneratorService
                     if (slidePart?.Slide == null) continue;
 
                     var kind = PptxTokens.Classify(PptxTokens.DetectTokens(slidePart.Slide));
+
+                    if (PptxTokens.IsUpcomingEventSlide(slidePart.Slide))
+                    {
+                        if (nextEvent != null)
+                        {
+                            PptxTokens.ApplyUpcomingEventSlide(slidePart.Slide, nextEvent);
+                            slidePart.Slide.Show = null;
+                        }
+                        slidePart.Slide.Save();
+                        continue;
+                    }
+
+                    if (PptxTokens.IsUpcomingTitleSlide(slidePart.Slide) && nextEvent != null) slidePart.Slide.Show = null;
                     PptxTokens.ApplyToSlide(slidePart.Slide, replacements);
                     PptxSpeakerPhotos.Apply(slidePart, kind, photos);
                     slidePart.Slide.Save();

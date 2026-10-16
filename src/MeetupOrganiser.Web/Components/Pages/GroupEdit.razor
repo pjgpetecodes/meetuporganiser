@@ -278,7 +278,7 @@
                     {
                         <div class="text-danger small">@templateError</div>
                     }
-                    <small class="text-secondary d-block">Upload a full deck with <code>{{placeholders}}</code> on the slides to fill (e.g. {{SpeakerName}}, {{TalkTitle}}, {{Speaker2Name}}, {{Talk2Title}}, {{EventDateLine}}, {{EventVenueLine}}, {{EventSubtitle}}, {{ShortUrl}}). Next-event versions use a NextEvent prefix (e.g. {{NextEventSpeakers}}, {{NextEventTalkTitle}}, {{NextEventDate}}) and show TBC until the next event exists. Slides with placeholders are filled; slides using {{Speaker2Name}}/{{Talk2Title}} are hidden for 1-speaker events and speaker-1-only slides are hidden for 2-speaker events. Other slides are left as uploaded. Leave a token off a slide to leave that text alone. To place speaker headshots, set a picture's alt text (Format Picture &gt; Alt Text) to <code>{{Speaker1Photo}}</code> or <code>{{Speaker2Photo}}</code>; without those markers the large square pictures on speaker slides are used. Fonts that aren't installed on the server fall back to a default unless the .ttf is added to Resources/fonts (Baloo 2 is bundled). Re-upload if the preview isn't right.</small>
+                    <small class="text-secondary d-block">Upload a full deck with <code>{{placeholders}}</code> on the slides to fill (e.g. {{SpeakerName}}, {{TalkTitle}}, {{Speaker2Name}}, {{Talk2Title}}, {{EventDateLine}}, {{EventVenueLine}}, {{EventSubtitle}}, {{ShortUrl}}). Next-event versions use a NextEvent prefix (e.g. {{NextEventSpeakers}}, {{NextEventTalkTitle}}, {{NextEventDate}}) and show TBC until the next event exists. Slides with placeholders are filled; slides using {{Speaker2Name}}/{{Talk2Title}} are hidden for 1-speaker events and speaker-1-only slides are hidden for 2-speaker events.                     other slides are left as uploaded. Slides using only NextEvent tokens follow the next event: they are hidden when there is no next event, and {{NextEventSpeaker2Name}}/{{NextEventTalk2Title}} slides are used only for 2-speaker next events (set picture alt text to <code>{{NextEventSpeaker1Photo}}</code> / <code>{{NextEventSpeaker2Photo}}</code> to place the next speakers' headshots). Leave a token off a slide to leave that text alone. To place speaker headshots, set a picture's alt text (Format Picture &gt; Alt Text) to <code>{{Speaker1Photo}}</code> or <code>{{Speaker2Photo}}</code>; without those markers the large square pictures on speaker slides are used. Fonts that aren't installed on the server fall back to a default unless the .ttf is added to Resources/fonts (Baloo 2 is bundled). Re-upload if the preview isn't right.</small>
 
                     @if (TemplateFileName is { } templateFile && !templateUploading)
                     {
@@ -305,10 +305,10 @@
                             </div>
 
                             <div class="d-flex flex-wrap gap-2 py-2">
-                                @foreach (var s in slides)
+                                @foreach (var s in slides.Where(x => !IsHidden(x)))
                                 {
                                     var filled = s.Tokens.Count > 0;
-                                    var hidden = IsHidden(s);
+                                    var hidden = false;
                                     <div class="card template-slide-card" style="width: 300px; @(!filled || hidden ? "opacity:.45;" : "")">
                                         @if (filled)
                                         {
@@ -458,10 +458,13 @@
         _ => "Always shown"
     };
 
-    private bool IsHidden(PptxSlideInfo s) =>
-        previewSpeakers > 1
-            ? s.Kind == PptxTokens.SlideKind.OneSpeaker && slides.Any(x => x.Kind == PptxTokens.SlideKind.TwoSpeakers)
+    private bool IsHidden(PptxSlideInfo s)
+    {
+        var twoExist = slides.Any(x => x.NextEventOnly == s.NextEventOnly && x.Kind == PptxTokens.SlideKind.TwoSpeakers);
+        return previewSpeakers > 1
+            ? s.Kind == PptxTokens.SlideKind.OneSpeaker && twoExist
             : s.Kind == PptxTokens.SlideKind.TwoSpeakers;
+    }
 
     private string? logoError;
     private string? sponsorError;

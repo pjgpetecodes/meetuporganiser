@@ -45,7 +45,7 @@ internal static class PptxSpeakerPhotos
             .ToList();
 
         var chosen = kind == PptxTokens.SlideKind.TwoSpeakers
-            ? slots.OrderBy(item => item.X).Take(2).ToList()
+            ? slots.OrderByDescending(item => item.W * item.H).Take(2).OrderBy(item => item.X).ToList()
             : slots.OrderByDescending(item => item.W * item.H).Take(1).ToList();
 
         for (var index = 0; index < chosen.Count && index < photos.Count; index++)
@@ -62,8 +62,11 @@ internal static class PptxSpeakerPhotos
             var normalised = text?.Replace(" ", string.Empty).Trim();
             if (string.IsNullOrEmpty(normalised)) continue;
             if (normalised.Equals("{{Speaker1Photo}}", StringComparison.OrdinalIgnoreCase)
-                || normalised.Equals("{{SpeakerPhoto}}", StringComparison.OrdinalIgnoreCase)) return 0;
-            if (normalised.Equals("{{Speaker2Photo}}", StringComparison.OrdinalIgnoreCase)) return 1;
+                || normalised.Equals("{{SpeakerPhoto}}", StringComparison.OrdinalIgnoreCase)
+                || normalised.Equals("{{NextEventSpeaker1Photo}}", StringComparison.OrdinalIgnoreCase)
+                || normalised.Equals("{{NextEventSpeakerPhoto}}", StringComparison.OrdinalIgnoreCase)) return 0;
+            if (normalised.Equals("{{Speaker2Photo}}", StringComparison.OrdinalIgnoreCase)
+                || normalised.Equals("{{NextEventSpeaker2Photo}}", StringComparison.OrdinalIgnoreCase)) return 1;
         }
 
         return null;
