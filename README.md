@@ -1,31 +1,76 @@
-# meetuporganiser
-## Deploying to Azure from scratch
+# Meetup Organiser
 
-1. `az login`, then run `./scripts/setup-azure.ps1` (add `-EmailCustomDomain`, `-SkipSmtpInvites`, `-ConfigureLocalEmail` as needed). It registers providers, creates the Entra sign-in app (and registers its `https://<app>/signin-oidc` redirect URI) and the SMTP app, deploys `infra/main.bicep` (App Service, SQL, Storage, Key Vault, App Insights, Communication Services + RBAC). The database schema is applied automatically on first app start.
-2. For CI/CD, run `./scripts/setup-github-credentials.ps1` (creates `AZURE_CREDENTIALS`) and `./scripts/setup-azure.ps1 -ConfigureGitHubSecrets` (sets the workflow variables/secrets, including the publish profile). The deploy workflow re-passes the Entra/SMTP/custom-domain parameters, so a CI redeploy keeps them.
+Meetup Organiser is a meetup coordination app built with **ASP.NET Core Blazor Web App (.NET 10)**, SQL Server, and Azure Blob Storage. Organisers can manage multiple groups, collect speaker details through single-use links, import Sessionize and Meetup data, generate PowerPoint decks and social images, and publish announcements.
 
-## File storage
+PowerPoint generation is headless: Microsoft Office is **not** required on the server. Decks use Open XML; image generation and approximate slide previews use SkiaSharp.
 
-Uploaded logos, speaker photos and PPTX templates live in Azure Blob Storage (containers `logos` and `speaker-photos` public read; `templates` private).
+## Documentation
 
-- **Azure:** the App Service uses its managed identity (`Storage__AccountUrl`, role Storage Blob Data Contributor). Shared-key access is disabled on the account.
-- **Local development:** run the Azurite emulator (`npm i -g azurite && azurite`). `Storage:ConnectionString` is `UseDevelopmentStorage=true`.
-- **Migrating existing local uploads** (`wwwroot/storage`, ignored by git): `./scripts/migrate-storage.ps1 -AccountName <account> -SqlConnectionString "<conn>"` (or `-UseAzurite`). It uploads the files and rewrites the `/storage/...` URLs in the database. Use `-WhatIf` to preview.
+| Guide | Contents |
+| --- | --- |
+| [Quickstarts and script reference](docs/QUICKSTARTS.md) | Copyable local/Azure/CI/email/migration recipes and every setup script's parameters |
+| [Local setup](docs/LOCAL-SETUP.md) | Prerequisites, SQL Server/LocalDB, Azurite, configuration, first run, email, builds, and database migrations |
+| [Azure setup and deployment](docs/AZURE-SETUP.md) | Permissions, infrastructure, Entra sign-in, publishing the app, GitHub Actions, email domains, and production checks |
+| [Application user guide](docs/USER-GUIDE.md) | Every main screen, groups, sponsors, speakers, events, invitations, imports, publishing, and downloads |
+| [PPTX template authoring](docs/PPTX-TEMPLATES.md) | Creating and uploading a deck, all supported tokens, headshots, one/two-speaker layouts, next-event slides, and social cards |
+| [Double-curly-brace parameters](docs/TEMPLATE-PARAMETERS.md) | Complete `{{...}}` lists for PPTX text/photos, Meetup descriptions, and social announcements |
+| [API integrations](docs/API-INTEGRATIONS.md) | BlueSky, X, LinkedIn, Meetup OAuth, Zoom, and Sessionize credentials and fallbacks |
+| [Configuration reference](docs/CONFIGURATION.md) | Configuration precedence, connection strings, authentication, storage, email, notification, and integration keys |
+| [Operations and troubleshooting](docs/OPERATIONS.md) | Backups, upgrades, migrations, storage moves, logs, common problems, and current limitations |
 
-## Speaker submission emails
+**Start here:** choose a [quickstart](docs/QUICKSTARTS.md), or follow the detailed [local](docs/LOCAL-SETUP.md) / [Azure](docs/AZURE-SETUP.md) setup, then the [first-event walkthrough](docs/USER-GUIDE.md#first-event-walkthrough).
 
-When a speaker completes their magic-link form, the organiser gets an email (speaker, talk, event and an edit link) sent through Azure Communication Services Email.
+> **Before public production use:** read the [production access checklist](docs/AZURE-SETUP.md#production-access-checklist). The current implementation includes developer sign-in, broad authenticated-user access, and public asset download routes. Provisioning Azure resources is not, by itself, production hardening.
 
-- Set the recipient in **Settings → General → Email Notifications**, or per group under **Group Details → Organiser Email**.
-- If the speaker entered a contact email, they also receive a confirmation (organiser on cc) with the meetup details and an `.ics` calendar invite attached.
-- Beside the **Copy** button, the magic-link flows have an **Email link** option that emails the link to the speaker.
-- **Azure:** `infra/modules/email.bicep` provisions the service with an Azure-managed sender domain, and the App Service managed identity is granted send access (`Email__Endpoint`, `Email__SenderAddress`).
-- **Local development:** run `scripts/configure-local-email.ps1` (or `setup-azure.ps1 -ConfigureLocalEmail`) to store `Email:ConnectionString` and `Email:SenderAddress` in user secrets. If email isn't configured, a warning is logged and the speaker's submission still saves.
-- **Calendar invites (RSVP):** the speaker's confirmation is sent through ACS SMTP (`smtp.azurecomm.net`, MailKit) with an inline `text/calendar; method=REQUEST` part, so Outlook/Gmail/Apple Mail show Accept/Decline buttons; the `.ics` is also attached and the email has Google/Outlook "add to calendar" links as a fallback. SMTP is used only when `Email:Smtp:Username` / `Email:Smtp:Password` are set (and the organiser email is known); otherwise, or on any SMTP failure, it falls back to the Email API with the attachment.
-  - `setup-azure.ps1` creates the `MeetupOrganiser-Smtp` Entra app, grants it **Communication and Email Service Owner** on the Communication Service (`email-rbac.bicep`), stores its secret in Key Vault (`SmtpPassword`) and sets `Email__Smtp__Username` (`<acs-name>.<app-client-id>.<tenant-id>`) / `Email__Smtp__Password`. Use `-SkipSmtpInvites` to opt out. Each run rotates the app's secret.
-  - `configure-local-email.ps1` appends a separate local credential and stores the SMTP settings in user secrets.
-- **Custom sender domain (optional):** run `setup-azure.ps1 -EmailCustomDomain example.com [-EmailSenderUsername noreply]`. Add the DNS records shown for the domain in the Azure portal (Email Communication Service → Provision domains) and verify them, then re-run with `-EmailCustomDomainVerified` to link it and send from `noreply@example.com`. Until then the Azure-managed sender is used.
+## Local quick start
 
-## API integrations
+Install the .NET 10 SDK, SQL Server Express with an instance named `SQLEXPRESS` (or configure another SQL Server), and Node.js/npm for Azurite. Run these PowerShell commands from the repository root:
 
-Setup instructions for BlueSky, X, LinkedIn, Meetup, Zoom, and Sessionize are in the [API integrations guide](docs/API-INTEGRATIONS.md).
+```powershell
+dotnet restore .\MeetupOrganiser.slnx
+dotnet dev-certs https --trust
+npm install --global azurite
+```
+
+Run `azurite` in a separate terminal, then:
+
+```powershell
+dotnet run --project .\src\MeetupOrganiser.Web --launch-profile https
+```
+
+Open <https://localhost:7225>. With the checked-in placeholder Entra client ID, sign-in uses the local developer account. Startup applies database migrations and seeds demonstration data; the SQL login must be able to create/update the database. See [local setup](docs/LOCAL-SETUP.md) for connection overrides and failure diagnosis.
+
+## What the app does
+
+- Manage groups, sponsor records, logos, description templates, and per-group PPTX decks.
+- Maintain a reusable speaker directory, including photos, social profiles, original bios, and editable third-person bios.
+- Plan one- or two-speaker events; collect profiles and talks through expiring, single-use magic links.
+- Read public Sessionize profiles/talks and import past Meetup events.
+- Generate PPTX decks and social PNGs on demand, with custom-template support.
+- Create Zoom meetings or reuse a fixed meeting link.
+- Publish through configured APIs, or prepare copyable text and web-compose fallbacks.
+- Email speaker links, organiser notifications, and speaker confirmations with calendar invites through Azure Communication Services.
+
+Posting and meeting creation are explicit actions, not a background scheduler. A Bitly-style short URL is suggested from a naming stem; the app does not create the redirect in Bitly.
+
+## Repository layout
+
+| Location | Purpose |
+| --- | --- |
+| `src\MeetupOrganiser.Core` | Domain entities, interfaces, DTOs, calendar/text formatting |
+| `src\MeetupOrganiser.Infrastructure` | EF Core, migrations, external clients, blob/email services, deck/image generation |
+| `src\MeetupOrganiser.Web` | Blazor screens, authentication, HTTP endpoints, configuration |
+| `tests\MeetupOrganiser.Tests` | xUnit tests |
+| `pptx` | Bundled fallback decks, copied into build/publish output |
+| `infra` | Modular Bicep infrastructure; deploy `main.bicep` |
+| `scripts` | Azure provisioning, GitHub deployment credentials, local email, legacy upload migration |
+| `docs` | Setup, user, template, and operations guides |
+
+## Build and test
+
+```powershell
+dotnet build .\MeetupOrganiser.slnx --configuration Release
+dotnet test .\tests\MeetupOrganiser.Tests\MeetupOrganiser.Tests.csproj --configuration Release --no-build
+```
+
+See [LICENSE](LICENSE) for the repository licence.

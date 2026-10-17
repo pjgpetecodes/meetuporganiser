@@ -1,5 +1,7 @@
 # API integrations setup
 
+[Documentation home](../README.md) | [Local setup](LOCAL-SETUP.md) | [Azure setup](AZURE-SETUP.md) | [User guide](USER-GUIDE.md)
+
 Configure integrations in the app at **Settings → API Integrations**. Save the settings before using **Connect Meetup** or trying to publish. The integration panels show whether API credentials are present and which fallback is available.
 
 You can also provide settings through ASP.NET Core configuration. The matching environment-variable names use double underscores, for example `Integrations__BlueSky__Handle`. A non-empty value saved in the Settings page takes precedence over configuration. Settings entered in the app are stored in its SQL database; restrict access to Settings and prefer Azure Key Vault or environment variables for production secrets.
@@ -10,7 +12,7 @@ BlueSky posting uses the AT Protocol directly. No developer API key or app regis
 
 1. In BlueSky, open **Settings → Privacy and security → App passwords** and create an app password.
 2. In the app's BlueSky panel, enter your handle and app password, then save.
-3. On the event's social-posting page, select **Attach social card image** if desired and choose **Post**.
+3. Open the saved event's **Social & Slides** tab, select **Attach social card image** if desired, and choose the BlueSky post button.
 
 Enter a domain-verified handle as a domain, such as `petecodes.co.uk`—without an `@` prefix, spaces, or profile URL. Use the generated app password, not your BlueSky account password. The web-intent button remains available as a manual fallback; it cannot attach an image.
 
@@ -65,14 +67,18 @@ Configuration keys:
 
 ## Meetup.com
 
-Meetup OAuth enables event publishing and importing past events.
+Meetup OAuth enables event publishing and importing past events. Public-page import can be attempted when API access is unavailable, but may be incomplete or blocked.
 
-1. Register an OAuth client with Meetup and set its redirect URL to the exact callback URL used by this deployment. For local development, the default is `http://localhost:5107/integrations/meetup/callback`.
+1. Register an OAuth client with Meetup and set its redirect URL to the exact callback URL used by this deployment. For local development, the default is `http://localhost:5107/integrations/meetup/callback`; use `https://localhost:7225/integrations/meetup/callback` when browsing the HTTPS launch profile. In Azure use `https://<your-app-host>/integrations/meetup/callback`.
 2. In the Meetup panel in Settings, enter the OAuth client ID, client secret, redirect URL, and default group URL name. Save.
 3. Choose **Connect Meetup** and authorize the app in Meetup.
 4. If a group uses a different URL name, set its slug in that group's settings; it overrides the default.
 
 The app stores its OAuth access and refresh token set protected with ASP.NET Core Data Protection and refreshes access tokens when needed. A legacy manually supplied access token is available as an optional fallback; the OAuth connection is preferred.
+
+Preserve the Data Protection keys when moving/restoring an environment, or reconnect Meetup. The current OAuth connection is global, not per group, and a usable OAuth token takes priority even over a group-specific legacy token override.
+
+**Publication caveats:** the event's **Publish to Meetup** button uses the saved event/template, not edits made only in the copyable preview textboxes. Without a token it returns the group's manual `/events/create` URL, which does not mean an event was created despite the UI success label. With credentials it creates a new event, not an update of an existing one. Save the real returned event URL back on the local event manually and avoid repeat clicks that could create duplicates.
 
 Configuration keys:
 
@@ -89,6 +95,8 @@ Configuration keys:
 To create scheduled meetings through Zoom, create a **Server-to-Server OAuth** app in the [Zoom App Marketplace](https://marketplace.zoom.us/). Grant the app the meeting-creation permission required by your Zoom account, activate it, and enter its Account ID, Client ID, and Client Secret in the Zoom panel in Settings.
 
 If you do not have API access, enter a fixed default meeting URL and optional passcode instead. The app uses that link when API credentials are not configured; it does not create unique Zoom meetings in this mode.
+
+If neither API credentials nor a fixed URL are configured, generation returns an error rather than inventing a meeting link. Save the event after generating/applying the link. Check the actual Zoom scheduled time: the current editor uses server-local date/time conversion, while the API request is formatted as UTC. Later local edits do not automatically update or cancel external meetings.
 
 Configuration keys:
 
@@ -108,6 +116,10 @@ Sessionize speaker and session data is read from its public REST view endpoint; 
 2. Copy the event ID or a full **View Speakers / Sessions** endpoint URL into the Sessionize panel in Settings, then save.
 
 When given an event ID, the app requests the public `view/Speakers` and `view/Sessions` endpoints. A supplied endpoint URL is used directly.
+
+For **Event editor > Pull Sessions**, use an event ID rather than one full URL, because that action requests both response types. It fills the first two sessions and the first speaker from each, not an entire multi-track programme.
+
+Public speaker-profile lookup is a separate flow: use **Find on Sessionize** in the speaker/event UI, search a name or paste a public profile URL, compare fields, and apply only the fields you want. It does not require the event API ID.
 
 Configuration key:
 
@@ -155,6 +167,14 @@ For local development, values can be supplied through user secrets or another lo
 ```
 
 Meetup's connected OAuth token set is managed by the app and should not be entered manually in configuration.
+
+## Using manual fallbacks
+
+In the event's **Social & Slides** tab, use the copy buttons for Meetup title/description, or the adjacent social **Web Share / Web Intent** controls. Download the PNG and attach it manually; compose links do not upload images.
+
+API post buttons use edited platform text, but X/LinkedIn fallback URLs are prepared from the original generated text. Copy revised text manually when using those fallbacks. BlueSky's intent reflects its current textarea. Changing a saved credential does not publish anything automatically.
+
+Credentials being present is not a live validation of permissions, account access, API subscription, or token freshness. Third-party plans/approval processes change; verify requirements in each provider's current developer portal.
 
 ## Troubleshooting
 
