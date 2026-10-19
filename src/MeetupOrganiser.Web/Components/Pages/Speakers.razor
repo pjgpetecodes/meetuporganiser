@@ -376,6 +376,8 @@
                 var speakerToDelete = await dbContext.Speakers.FindAsync(speaker.Id);
                 if (speakerToDelete == null) return;
 
+                var pendingInvitations = await dbContext.SpeakerBookingTokens.Where(t => t.SpeakerId == speaker.Id).ToListAsync();
+                dbContext.SpeakerBookingTokens.RemoveRange(pendingInvitations);
                 dbContext.Speakers.Remove(speakerToDelete);
                 await dbContext.SaveChangesAsync();
             }

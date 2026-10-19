@@ -140,6 +140,8 @@
 
         if (!await confirmDialog!.ShowAsync($"Delete the group \"{group.Name}\"? This cannot be undone.", "Delete group?")) return;
 
+        var bookingLinks = await DbContext.SpeakerBookingTokens.Where(t => t.MeetupGroupId == group.Id).ToListAsync();
+        DbContext.SpeakerBookingTokens.RemoveRange(bookingLinks);
         DbContext.MeetupGroups.Remove(group);
         await DbContext.SaveChangesAsync();
         await LoadGroupsAsync();

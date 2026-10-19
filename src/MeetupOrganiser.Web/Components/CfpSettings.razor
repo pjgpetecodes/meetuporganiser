@@ -1,0 +1,115 @@
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ILogger<CfpSettings> Logger
+
+<div class="card border-0 shadow-sm p-4">
+    <h2 class="h5 fw-bold">Public Call for Speakers</h2>
+    <p>Share one reusable link for this group. Speakers verify their email, choose an open draft date and submit their profile and talk.</p>
+    @if (loaded)
+    {
+        <div class="form-check form-switch mb-3">
+            <input id="cfp-enabled" class="form-check-input" type="checkbox" @bind="enabled" disabled="@busy" />
+            <label for="cfp-enabled" class="form-check-label">Enable public speaker bookings</label>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@busy">Save CFP settings</button>
+            <a href="@($"/events/upcoming?groupId={GroupId}&returnToCfp=true")" class="btn btn-outline-primary">Add upcoming dates</a>
+        </div>
+        @if (savedEnabled && key != null)
+        {
+            <label class="form-label" for="cfp-link">Public CFP link</label>
+            <div class="input-group mb-3">
+                <input id="cfp-link" class="form-control" readonly value="@PublicUrl" />
+                <button type="button" class="btn btn-outline-secondary" @onclick="CopyAsync" disabled="@busy">Copy</button>
+            </div>
+            <button type="button" class="btn btn-outline-danger" @onclick="RotateAsync" disabled="@busy">Revoke old link and create a new one</button>
+        }
+        <p class="form-text">Only future draft dates explicitly opened for bookings appear. Two assigned speakers fill a date, even without talk details. Disabling or rotating the link also invalidates outstanding public verification links.</p>
+    }
+    @if (message != null)
+    {
+        <div class="alert @(isError ? "alert-danger" : "alert-info") mt-3" role="status">@message</div>
+    }
+</div>
+<ConfirmDialog @ref="confirmDialog" />
+
+@code {
+    [Parameter] public Guid GroupId { get; set; }
+    private ConfirmDialog? confirmDialog;
+    private Guid loadedGroupId;
+    private bool enabled, savedEnabled, loaded, busy, isError;
+    private string? key, message;
+    private string PublicUrl => $"{Navigation.BaseUri.TrimEnd('/')}/cfp/{key}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedGroupId == GroupId && loaded) return;
+        loaded = false;
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            var group = await db.MeetupGroups.AsNoTracking().SingleAsync(g => g.Id == GroupId);
+            enabled = savedEnabled = group.CfpEnabled;
+            key = group.CfpKey;
+            loadedGroupId = GroupId;
+            loaded = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not load CFP settings for group {GroupId}.", GroupId);
+            message = "Unable to load CFP settings. Reload the page and try again.";
+            isError = true;
+        }
+    }
+
+    private Task SaveAsync() => PersistAsync(rotate: false);
+
+    private async Task RotateAsync()
+    {
+        if (!await confirmDialog!.ShowAsync("Existing public and verification links will stop working. Personal speaker invitations are unaffected.", "Replace public CFP link?", "Replace link")) return;
+        await PersistAsync(rotate: true);
+    }
+
+    private async Task PersistAsync(bool rotate)
+    {
+        busy = true;
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            var group = await db.MeetupGroups.SingleAsync(g => g.Id == GroupId);
+            if (rotate || group.CfpEnabled != enabled || string.IsNullOrEmpty(group.CfpKey))
+                group.CfpKey = Guid.NewGuid().ToString("N");
+            group.CfpEnabled = enabled;
+            group.UpdatedAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            key = group.CfpKey;
+            savedEnabled = enabled;
+            message = rotate ? "The previous public link has been revoked. Share the new link above." : "CFP settings saved.";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not save CFP settings for group {GroupId}.", GroupId);
+            message = "Unable to save CFP settings. Please try again.";
+            isError = true;
+        }
+        finally { busy = false; }
+    }
+
+    private async Task CopyAsync()
+    {
+        try
+        {
+            var copied = await JS.InvokeAsync<bool>("meetupOrganiser.copyText", PublicUrl);
+            message = copied ? "Public link copied." : "Couldn't copy automatically. Select the link and press Ctrl+C.";
+            isError = !copied;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not copy CFP link.");
+            message = "Couldn't copy automatically. Select the link and press Ctrl+C.";
+            isError = true;
+        }
+    }
+}

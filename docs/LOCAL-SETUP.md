@@ -177,7 +177,7 @@ Restart the app after changing host authentication configuration. A non-empty cl
 
 ## 6. Optional email
 
-Email is not needed to save events or speaker submissions. There is no local mail-catcher implementation: configured local email sends **real messages** through Azure Communication Services (ACS).
+Email is not needed to save events or submit through a personalised invitation, but **public CFP applicants must receive an email verification link before booking**. There is no local mail-catcher implementation: configured local email sends **real messages** through Azure Communication Services (ACS).
 
 After provisioning ACS with the [Azure setup](AZURE-SETUP.md):
 
@@ -220,6 +220,18 @@ dotnet test .\tests\MeetupOrganiser.Tests\MeetupOrganiser.Tests.csproj --configu
 ```
 
 There is no separate frontend dependency restore. The bundled decks and fonts are copied by MSBuild.
+
+### SQL booking integration tests
+
+Capacity races and migration preservation need real SQL Server rather than EF's in-memory provider. Set a test-server connection with permission to create databases:
+
+```powershell
+$env:MEETUP_BOOKING_TEST_SQL_SERVER = 'Server=.\SQLEXPRESS;Integrated Security=True;TrustServerCertificate=True'
+dotnet test .\tests\MeetupOrganiser.Tests\MeetupOrganiser.Tests.csproj --configuration Release --filter "FullyQualifiedName~SpeakerBookingSqlTests"
+Remove-Item Env:\MEETUP_BOOKING_TEST_SQL_SERVER
+```
+
+These tests create and delete uniquely named `MeetupBookingTests_*` databases, not the application's database. Without the environment variable the SQL-specific tests are skipped; a passing in-memory test suite alone does not validate concurrency.
 
 ## Database migrations for contributors
 

@@ -20,7 +20,7 @@ public sealed class SpeakerPhotoInterceptor(IServiceScopeFactory scopeFactory, I
     public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
         DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
     {
-        if (eventData.Context is { } context)
+        if (eventData.Context is { } context && context is not AppDbContext { SkipSpeakerPhotoLocalization: true })
         {
             await LocalizeAsync(context, cancellationToken);
         }

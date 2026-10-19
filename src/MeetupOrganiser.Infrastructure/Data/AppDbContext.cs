@@ -5,8 +5,11 @@ namespace MeetupOrganiser.Infrastructure.Data;
 
 public class AppDbContext : DbContext
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+    private readonly SpeakerPhotoInterceptor? _photoInterceptor;
+
+    public AppDbContext(DbContextOptions<AppDbContext> options, SpeakerPhotoInterceptor? photoInterceptor = null) : base(options)
     {
+        _photoInterceptor = photoInterceptor;
     }
 
     public DbSet<MeetupGroup> MeetupGroups => Set<MeetupGroup>();
@@ -17,10 +20,125 @@ public class AppDbContext : DbContext
     public DbSet<SocialPostTemplate> SocialPostTemplates => Set<SocialPostTemplate>();
     public DbSet<GeneratedAsset> GeneratedAssets => Set<GeneratedAsset>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<SpeakerBookingToken> SpeakerBookingTokens => Set<SpeakerBookingToken>();
+    public bool SkipSpeakerPhotoLocalization { get; set; }
+    public bool AllowBookedDateChange { get; set; }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) =>
+        SaveChangesAsync(acceptAllChangesOnSuccess).GetAwaiter().GetResult();
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
+        SaveChangesAsync(true, cancellationToken);
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        if (!SkipSpeakerPhotoLocalization && _photoInterceptor is not null)
+        {
+            await _photoInterceptor.LocalizeAsync(this, cancellationToken);
+            SkipSpeakerPhotoLocalization = true;
+            try
+            {
+                return await SaveWithCapacityGuardAsync(acceptAllChangesOnSuccess, cancellationToken);
+            }
+            finally
+            {
+                SkipSpeakerPhotoLocalization = false;
+            }
+        }
+        return await SaveWithCapacityGuardAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private async Task<int> SaveWithCapacityGuardAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken)
+    {
+        ChangeTracker.DetectChanges();
+        var eventIds = ChangeTracker.Entries<EventSpeakerSession>()
+            .Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .SelectMany(e => e.State == EntityState.Modified
+                ? new[] { e.Entity.MeetupEventId, e.OriginalValues.GetValue<Guid>(nameof(EventSpeakerSession.MeetupEventId)) }
+                : new[] { e.Entity.MeetupEventId })
+            .Concat(ChangeTracker.Entries<MeetupEvent>()
+                .Where(e => e.State is EntityState.Added or EntityState.Modified)
+                .Select(e => e.Entity.Id)).Distinct().Order().ToArray();
+
+        if (eventIds.Length == 0)
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+
+        async Task<int> SaveGuardedAsync()
+        {
+            foreach (var id in eventIds)
+            {
+                await LockEventAsync(id, cancellationToken);
+                var stored = await MeetupEvents.AsNoTracking().Where(e => e.Id == id)
+                    .Select(e => new { e.IsOpenForBookings }).SingleOrDefaultAsync(cancellationToken);
+                var tracked = ChangeTracker.Entries<MeetupEvent>().FirstOrDefault(e => e.Entity.Id == id);
+                if (stored is not null && tracked is not null && tracked.State == EntityState.Modified &&
+                    tracked.Property(e => e.EventDateTimeUtc).IsModified && !AllowBookedDateChange &&
+                    await EventSpeakerSessions.AsNoTracking().AnyAsync(s => s.MeetupEventId == id, cancellationToken))
+                    throw new InvalidOperationException("This date has assigned speakers. Reload the event and acknowledge the date change before saving.");
+                var bookingFlagChanged = tracked is not null && (tracked.State == EntityState.Added ||
+                    tracked.Property(e => e.IsOpenForBookings).IsModified);
+                var isOpen = bookingFlagChanged ? tracked!.Entity.IsOpenForBookings : stored?.IsOpenForBookings ?? false;
+                if (!isOpen)
+                    continue;
+
+                var assigned = await EventSpeakerSessions.AsNoTracking()
+                    .Where(s => s.MeetupEventId == id).Select(s => new { s.Id, s.SpeakerId }).ToListAsync(cancellationToken);
+                var places = assigned.ToDictionary(s => s.Id, s => s.SpeakerId);
+                foreach (var entry in ChangeTracker.Entries<EventSpeakerSession>()
+                    .Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
+                {
+                    places.Remove(entry.Entity.Id);
+                    if (entry.State != EntityState.Deleted && entry.Entity.MeetupEventId == id)
+                        places[entry.Entity.Id] = entry.Entity.SpeakerId;
+                }
+                if (places.Count > 2 || places.Values.Distinct().Count() != places.Count)
+                    throw new InvalidOperationException("An open meetup date has two places and cannot assign the same speaker twice.");
+            }
+            return await base.SaveChangesAsync(false, cancellationToken);
+        }
+
+        if (!Database.IsRelational() || Database.CurrentTransaction is not null)
+        {
+            var count = await SaveGuardedAsync();
+            if (acceptAllChangesOnSuccess) ChangeTracker.AcceptAllChanges();
+            return count;
+        }
+
+        var result = await Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
+            var count = await SaveGuardedAsync();
+            await transaction.CommitAsync(cancellationToken);
+            return count;
+        });
+        if (acceptAllChangesOnSuccess) ChangeTracker.AcceptAllChanges();
+        return result;
+    }
+
+    public async Task LockEventAsync(Guid eventId, CancellationToken cancellationToken = default)
+    {
+        if (Database.IsSqlServer())
+            await Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT [Id] FROM [MeetupEvents] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {eventId}", cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<SpeakerBookingToken>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+            entity.Property(t => t.TokenHash).IsRequired().HasMaxLength(64);
+            entity.Property(t => t.Email).HasMaxLength(250);
+            entity.Property(t => t.PublicKey).HasMaxLength(64);
+            entity.HasIndex(t => t.TokenHash).IsUnique();
+            entity.HasIndex(t => new { t.MeetupGroupId, t.Email, t.CreatedAtUtc });
+            entity.HasIndex(t => t.BookedSessionId).IsUnique();
+            entity.HasOne(t => t.MeetupGroup).WithMany().HasForeignKey(t => t.MeetupGroupId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(t => t.Speaker).WithMany().HasForeignKey(t => t.SpeakerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(t => t.BookedSession).WithMany().HasForeignKey(t => t.BookedSessionId).OnDelete(DeleteBehavior.SetNull);
+        });
 
         // MeetupGroup
         modelBuilder.Entity<MeetupGroup>(entity =>

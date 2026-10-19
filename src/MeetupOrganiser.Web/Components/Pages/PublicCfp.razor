@@ -1,0 +1,92 @@
+@page "/cfp/{Key}"
+@inject ISpeakerBookingService BookingService
+@inject NavigationManager Navigation
+@inject ILogger<PublicCfp> Logger
+
+<PageTitle>Call for Speakers - Meetup Organiser</PageTitle>
+<div class="container py-4" style="max-width: 860px;">
+    <h1 class="h3 fw-bold">Call for Speakers</h1>
+    @if (loading)
+    {
+        <p role="status">Loading speaking opportunities...</p>
+    }
+    else if (group == null)
+    {
+        <div class="alert alert-warning">This call for speakers is unavailable or has been closed by the organiser.</div>
+        @if (message != null)
+        {
+            <div class="alert alert-danger" role="alert">@message</div>
+        }
+    }
+    else
+    {
+        <h2 class="h4">@group.Name</h2>
+        <p>@group.Description</p>
+        <p>Choose an upcoming date and submit your talk. First, verify your email to receive your private submission link.</p>
+        <AvailableDatePicker Dates="dates" @bind-SelectedDateId="selectedDateId" Disabled="busy" />
+        @if (dates.Count > 0)
+        {
+            <EditForm Model="this" OnValidSubmit="RequestVerificationAsync">
+                <div class="mb-3 mt-3">
+                    <label class="form-label" for="cfp-email">Your email address</label>
+                    <input id="cfp-email" type="email" class="form-control" @bind="email" required maxlength="250" disabled="@busy" />
+                </div>
+                <button type="submit" class="btn btn-primary" disabled="@busy">@(busy ? "Sending..." : "Email my verification link")</button>
+                <p class="form-text">Your date choice will be included in your verification link. It does not reserve a place; availability is checked when you submit your talk.</p>
+            </EditForm>
+        }
+        @if (message != null)
+        {
+            <div class="alert @(isError ? "alert-danger" : "alert-info") mt-3" role="status">@message</div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string Key { get; set; } = string.Empty;
+    private PublicCfpGroup? group;
+    private IReadOnlyList<AvailableMeetupDate> dates = [];
+    private Guid? selectedDateId;
+    private string email = string.Empty;
+    private string? message;
+    private bool loading = true, busy, isError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        group = null;
+        selectedDateId = null;
+        message = null;
+        try
+        {
+            group = await BookingService.GetPublicGroupAsync(Key);
+            if (group != null) dates = await BookingService.GetAvailableDatesAsync(group.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not load public speaking opportunities.");
+            message = "Unable to load speaking opportunities. Please try again later.";
+            isError = true;
+        }
+        finally { loading = false; }
+    }
+
+    private async Task RequestVerificationAsync()
+    {
+        if (busy) return;
+        busy = true;
+        try
+        {
+            var result = await BookingService.RequestVerificationAsync(Key, email, Navigation.BaseUri, selectedDateId);
+            message = result.Message;
+            isError = !result.Success;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not request CFP email verification.");
+            message = "Unable to send verification. Please try again later.";
+            isError = true;
+        }
+        finally { busy = false; }
+    }
+}

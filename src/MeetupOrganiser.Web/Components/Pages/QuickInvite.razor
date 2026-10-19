@@ -7,6 +7,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbContextFactory
 @inject IMagicLinkService MagicLinkService
+@inject ISpeakerBookingService BookingService
 @inject NavigationManager NavManager
 @inject IJSRuntime JS
 @inject ILogger<QuickInvite> Logger
@@ -40,10 +41,27 @@
                 </select>
             </div>
 
+            <div class="form-check form-switch mb-3">
+                <input id="choose-invite-date" class="form-check-input" type="checkbox" @bind="chooseDate" disabled="@ChooseDate" />
+                <label for="choose-invite-date" class="form-check-label fw-semibold">Let each speaker choose an upcoming date</label>
+            </div>
+            @if (chooseDate)
+            {
+                <div class="alert alert-info">
+                    Each invitation allows one speaker to choose an open draft date for this group. No place is reserved until they submit.
+                    The selected date supplies the time, venue and format.
+                </div>
+                @if (!groupsWithDates.Contains(groupId))
+                {
+                    <div class="alert alert-warning">This group has no open dates with available places. <a href="@($"/events/upcoming?groupId={groupId}")">Plan upcoming dates</a> to create drafts open for bookings.</div>
+                }
+            }
+            else
+            {
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                    <label class="form-label fw-semibold">Date &amp; Start Time (Local)</label>
-                    <input type="datetime-local" class="form-control" @bind="localEventDateTime" />
+                    <label class="form-label fw-semibold">Date &amp; Start Time (UK)</label>
+                    <MeetupDateTimePicker @bind-Value="localEventDateTime" />
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Event Format</label>
@@ -65,6 +83,7 @@
                     <input type="text" class="form-control" @bind="location" />
                 </div>
             </div>
+            }
 
             <div class="mb-4">
                 <label class="form-label fw-semibold d-block">Speakers</label>
@@ -127,7 +146,7 @@
 
             <div>
                 <button type="button" class="btn btn-primary btn-lg" @onclick="CreateInviteAsync" disabled="@isSaving">
-                    <i class="bi bi-link-45deg me-1"></i> Create event &amp; speaker links
+                    <i class="bi bi-link-45deg me-1"></i> @(chooseDate ? "Create date-choice invitations" : "Create event & speaker links")
                 </button>
             </div>
         </div>
@@ -135,7 +154,14 @@
     else
     {
         <div class="card border-0 shadow-sm p-4">
-            <p class="mb-3">Draft event <strong>@createdTitle</strong> created. Share each link with its speaker. Each link works once; they can review and edit their prefilled profile and enter their talk details.</p>
+            @if (chooseDate)
+            {
+                <p class="mb-3">Invitations for <strong>@createdTitle</strong> created. No event or place has been reserved. Each speaker can choose an available date and edit their profile while submitting their talk.</p>
+            }
+            else
+            {
+                <p class="mb-3">Draft event <strong>@createdTitle</strong> created. Share each link with its speaker. Each link works once; they can review and edit their prefilled profile and enter their talk details.</p>
+            }
             @for (var i = 0; i < links.Count; i++)
             {
                 var url = links[i];
@@ -148,11 +174,14 @@
                         <button type="button" class="btn btn-outline-dark" @onclick="() => CopyAsync(url)">@(copiedLink == url ? "Copied!" : "Copy")</button>
                     </div>
                     <EmailLinkForm Link="@url" AutoSend="true" SpeakerId="@speakerIds[index]" SpeakerName="@speakerLabels[index]" InitialEmail="@speakerEmailsSaved[index]"
-                                   EventTitle="@createdTitle" EventDateUtc="@createdEventUtc" />
+                                   EventTitle="@createdTitle" EventDateUtc="@createdEventUtc" ChooseDate="chooseDate" />
                 </div>
             }
             <div class="d-flex gap-2">
-                <a href="/events/edit/@createdEventId" class="btn btn-primary">Open event</a>
+                @if (!chooseDate)
+                {
+                    <a href="/events/edit/@createdEventId" class="btn btn-primary">Open event</a>
+                }
                 <a href="/events" class="btn btn-outline-secondary">Back to Events</a>
             </div>
         </div>
@@ -178,10 +207,13 @@
 </style>
 
 @code {
+    [Parameter] public bool ChooseDate { get; set; }
+    private bool chooseDate;
+    private HashSet<Guid> groupsWithDates = [];
     private List<MeetupGroup> groups = [];
     private List<Speaker> speakers = [];
     private Guid groupId;
-    private DateTime localEventDateTime = DateTime.Now.AddDays(14).Date.AddHours(18).AddMinutes(30);
+    private DateTime localEventDateTime = EventHeader.ToUkTime(DateTime.UtcNow).AddDays(14).Date.AddHours(18).AddMinutes(30);
     private EventFormat format = EventFormat.Hybrid;
     private string? venueName = "CGI";
     private string? location = "CGI, King Street Nottingham & Online";
@@ -225,11 +257,14 @@
 
     protected override async Task OnInitializedAsync()
     {
+        chooseDate = ChooseDate;
         await using var db = await DbContextFactory.CreateDbContextAsync();
         groups = await db.MeetupGroups.OrderBy(g => g.Name).ToListAsync();
         speakers = await db.Speakers.AsNoTracking()
             .Where(s => s.Name != Speaker.PlaceholderName).OrderBy(s => s.Name).ToListAsync();
         groupId = groups.FirstOrDefault()?.Id ?? Guid.Empty;
+        groupsWithDates = (await db.MeetupEvents.Where(e => e.Status == EventStatus.Draft && e.IsOpenForBookings
+            && e.EventDateTimeUtc > DateTime.UtcNow && e.Sessions.Count < 2).Select(e => e.MeetupGroupId).Distinct().ToListAsync()).ToHashSet();
     }
 
     private void ApplyProfile(int slot, (SessionizeProfile Profile, SessionizeProfileFields Fields) result)
@@ -279,7 +314,7 @@
             {
                 MeetupGroupId = groupId,
                 Title = EventTitles.Placeholder(group.Name, localEventDateTime),
-                EventDateTimeUtc = localEventDateTime.ToUniversalTime(),
+                EventDateTimeUtc = chooseDate ? DateTime.UtcNow : MeetupDateTime.ToUtc(localEventDateTime),
                 Format = format,
                 VenueName = format == EventFormat.Online ? null : venueName,
                 LocationOrPlatform = location,
@@ -305,28 +340,42 @@
                     db.Speakers.Add(speaker);
                 }
                 invitedSpeakers.Add(speaker);
-                var session = new EventSpeakerSession { MeetupEventId = evt.Id, SpeakerId = speaker.Id, OrderIndex = i };
-                evt.Sessions.Add(session);
-                sessions.Add(session);
+                if (!chooseDate)
+                {
+                    var session = new EventSpeakerSession { MeetupEventId = evt.Id, SpeakerId = speaker.Id, OrderIndex = i };
+                    evt.Sessions.Add(session);
+                    sessions.Add(session);
+                }
             }
-            db.MeetupEvents.Add(evt);
+            if (!chooseDate) db.MeetupEvents.Add(evt);
             await db.SaveChangesAsync();
 
             var baseUrl = NavManager.BaseUri.TrimEnd('/');
             var urls = new List<string>();
-            foreach (var session in sessions)
+            if (chooseDate)
             {
-                var (rawToken, _) = await MagicLinkService.CreateTokenAsync(session.SpeakerId, session.Id);
-                urls.Add($"{baseUrl}/speaker/submit/{rawToken}");
+                foreach (var speaker in invitedSpeakers)
+                {
+                    var token = await BookingService.CreateInvitationAsync(groupId, speaker.Id);
+                    urls.Add($"{baseUrl}/speaker/choose/{token}");
+                }
+            }
+            else
+            {
+                foreach (var session in sessions)
+                {
+                    var (rawToken, _) = await MagicLinkService.CreateTokenAsync(session.SpeakerId, session.Id);
+                    urls.Add($"{baseUrl}/speaker/submit/{rawToken}");
+                }
             }
 
             links = urls;
-            speakerIds = sessions.Select(s => s.SpeakerId).ToList();
+            speakerIds = invitedSpeakers.Select(s => s.Id).ToList();
             speakerLabels = invitedSpeakers.Select(s => s.IsPlaceholder ? null : s.Name).ToList();
             speakerEmailsSaved = invitedSpeakers.Select(s => s.Email).ToList();
-            createdEventUtc = evt.EventDateTimeUtc;
-            createdTitle = evt.Title;
-            createdEventId = evt.Id;
+            createdEventUtc = chooseDate ? null : evt.EventDateTimeUtc;
+            createdTitle = chooseDate ? group.Name : evt.Title;
+            createdEventId = chooseDate ? Guid.Empty : evt.Id;
             statusMessage = null;
         }
         catch (Exception ex)
