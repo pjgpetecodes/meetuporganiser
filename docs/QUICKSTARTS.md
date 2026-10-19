@@ -4,7 +4,7 @@
 
 All commands below are **PowerShell**, run from the repository root. Replace angle-bracket placeholders with your values. Use PowerShell 7 for `Read-Host -MaskInput`.
 
-There are four setup/maintenance scripts in `scripts`. There is **no all-in-one local bootstrap script**: SQL Server and Azurite must be installed/configured separately.
+SQL Server and Azurite must be installed/configured separately. The VS Code development debug configuration automatically starts the Azurite blob service using `scripts\start-azurite.ps1`.
 
 ## Quickstart: run locally
 
@@ -14,7 +14,7 @@ Prerequisites: .NET 10 SDK, Node.js/npm, and a running SQL Server Express instan
 dotnet restore .\MeetupOrganiser.slnx
 dotnet dev-certs https --trust
 npm install --global azurite
-azurite
+.\scripts\start-azurite.ps1
 ```
 
 Leave Azurite running. In a **second terminal**, from the repository root:

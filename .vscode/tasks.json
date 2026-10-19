@@ -2,6 +2,42 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "start-azurite",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-File",
+        "${workspaceFolder}\\scripts\\start-azurite.ps1"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "azurite",
+        "pattern": {
+          "regexp": "^(.+):(\\d+):(\\d+): (.+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^Checking local Azurite blob service",
+          "endsPattern": "Azurite Blob service is successfully listening|Azurite blob service ready"
+        }
+      },
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "prepare-local-dev",
+      "dependsOn": ["build-web", "start-azurite"],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
       "label": "build-web",
       "type": "process",
       "command": "dotnet",

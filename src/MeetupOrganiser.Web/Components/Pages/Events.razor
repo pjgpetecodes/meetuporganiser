@@ -198,11 +198,11 @@
             <div class="col-md-5">
                 <div class="input-group">
                     <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-                    <input type="text" class="form-control border-start-0" placeholder="Search events by title or speaker..." @bind="searchQuery" @bind:event="oninput" />
+                    <input type="text" class="form-control border-start-0" placeholder="Search events by title or speaker..." @bind="searchQuery" @bind:event="oninput" @bind:after="ResetPage" />
                 </div>
             </div>
             <div class="col-md-4">
-                <select class="form-select" @bind="selectedGroupId">
+                <select class="form-select" @bind="selectedGroupId" @bind:after="ResetPage">
                     <option value="">All Groups</option>
                     @if (groups != null)
                     {
@@ -214,7 +214,7 @@
                 </select>
             </div>
             <div class="col-md-3">
-                <select class="form-select" @bind="selectedStatus">
+                <select class="form-select" @bind="selectedStatus" @bind:after="ResetPage">
                     <option value="">All Statuses</option>
                     <option value="Draft">Draft</option>
                     <option value="Scheduled">Scheduled</option>
@@ -251,6 +251,9 @@
     }
     else
     {
+        <div class="small text-secondary mb-3" role="status">
+            Showing @((CurrentPage - 1) * PageSize + 1)-@(Math.Min(CurrentPage * PageSize, EventCount)) of @EventCount events
+        </div>
         <div class="card border-0 shadow-sm">
             <div class="table-responsive events-table-view">
                 <table class="table table-hover align-middle mb-0">
@@ -265,9 +268,9 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var evt in filteredEvents)
+                        @foreach (var evt in PagedEvents)
                         {
-                            <tr>
+                            <tr @key="evt.Id">
                                 <td style="min-width: 140px;">
                                     <div class="fw-bold">@evt.EventDateTimeUtc.ToString("MMM dd, yyyy")</div>
                                     <div class="small text-secondary">@evt.EventDateTimeUtc.ToString("HH:mm UTC")</div>
@@ -411,7 +414,7 @@
                 </table>
             </div>
             <div class="event-card-list">
-                @foreach (var evt in filteredEvents)
+                @foreach (var evt in PagedEvents)
                 {
                     <article class="event-card" @key="evt.Id">
                         <div class="event-card-heading">
@@ -535,6 +538,14 @@
                 }
             </div>
         </div>
+        @if (PageCount > 1)
+        {
+            <nav class="d-flex justify-content-between align-items-center gap-2 mt-4" aria-label="Event list pages">
+                <button type="button" class="btn btn-outline-secondary" @onclick="() => page = CurrentPage - 1" disabled="@(CurrentPage == 1)">Previous</button>
+                <span class="small text-secondary">Page @CurrentPage of @PageCount</span>
+                <button type="button" class="btn btn-outline-secondary" @onclick="() => page = CurrentPage + 1" disabled="@(CurrentPage == PageCount)">Next</button>
+            </nav>
+        }
     }
 </div>
 
@@ -547,6 +558,16 @@
     private string searchQuery = string.Empty;
     private string selectedGroupId = string.Empty;
     private string selectedStatus = string.Empty;
+    private const int PageSize = 12;
+    private int page = 1;
+    private int EventCount => filteredEvents?.Count() ?? 0;
+    private int PageCount => Math.Max(1, (EventCount + PageSize - 1) / PageSize);
+    private int CurrentPage => Math.Min(page, PageCount);
+    private IEnumerable<MeetupEvent> PagedEvents => (filteredEvents ?? [])
+        .Skip((CurrentPage - 1) * PageSize).Take(PageSize);
+
+    private void ResetPage() => page = 1;
+
     private string? statusMessage;
     private bool isError;
     private bool isSyncingMeetup;
@@ -625,7 +646,9 @@
             .Include(e => e.Sessions)
                 .ThenInclude(s => s.Speaker)
             .OrderByDescending(e => e.EventDateTimeUtc)
+            .ThenBy(e => e.Id)
             .ToListAsync();
+        page = CurrentPage;
     }
 
     private async Task RefreshAttendanceAsync(MeetupEvent evt, bool showStatus = true)

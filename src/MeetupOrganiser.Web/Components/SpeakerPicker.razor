@@ -1,0 +1,115 @@
+<div class="speaker-picker">
+    <div class="row g-2 mb-3">
+        <div class="col-sm-8">
+            <input type="search" class="form-control form-control-sm" aria-label="Search speakers"
+                   placeholder="Search by name, bio, or email..." @bind="SearchQuery" @bind:event="oninput" disabled="@Disabled" />
+        </div>
+        <div class="col-sm-4">
+            <select class="form-select form-select-sm" aria-label="Filter speakers by email" @bind="EmailFilter" disabled="@Disabled">
+                <option value="all">All speakers</option>
+                <option value="with-email">With email</option>
+                <option value="without-email">Without email</option>
+            </select>
+        </div>
+    </div>
+
+    @if (Speakers.FirstOrDefault(s => s.Id == SelectedSpeakerId) is { } selected)
+    {
+        <div class="border border-primary rounded p-2 mb-3 d-flex align-items-center gap-2">
+            <SpeakerAvatar Speaker="selected" />
+            <div class="flex-grow-1" style="min-width: 0; overflow-wrap: anywhere;">
+                <div class="small text-primary fw-semibold">Selected speaker</div>
+                <strong>@selected.Name</strong>
+                <div class="small text-secondary">@selected.Email</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SelectedSpeakerIdChanged.InvokeAsync((Guid?)null)" disabled="@Disabled">Clear</button>
+        </div>
+    }
+
+    @{
+        var results = FilteredSpeakers;
+        var pageCount = Math.Max(1, (results.Count + PageSize - 1) / PageSize);
+        var currentPage = Math.Min(page, pageCount);
+    }
+    <div class="small text-secondary mb-2" role="status">@results.Count speaker(s) found</div>
+    @if (results.Count == 0)
+    {
+        <p class="small text-secondary">No speakers match. Try another search or filter.</p>
+    }
+    else
+    {
+        <div class="row g-2">
+            @foreach (var speaker in results.Skip((currentPage - 1) * PageSize).Take(PageSize))
+            {
+                <div class="col-md-6" @key="speaker.Id">
+                    <div class="card h-100 @(speaker.Id == SelectedSpeakerId ? "border-primary" : "")">
+                        <div class="card-body p-3 d-flex flex-column">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <SpeakerAvatar Speaker="speaker" />
+                                <div style="min-width: 0; overflow-wrap: anywhere;">
+                                    <div class="fw-semibold">@speaker.Name</div>
+                                    <div class="small text-secondary">@(string.IsNullOrWhiteSpace(speaker.Email) ? "No email provided" : speaker.Email)</div>
+                                </div>
+                            </div>
+                            <p class="small text-secondary flex-grow-1" style="overflow-wrap: anywhere;">
+                                @(string.IsNullOrWhiteSpace(speaker.Bio) ? "No bio provided." : speaker.Bio.Length > 160 ? speaker.Bio[..157] + "..." : speaker.Bio)
+                            </p>
+                            <button type="button" class="btn btn-sm @(speaker.Id == SelectedSpeakerId ? "btn-primary" : "btn-outline-primary")"
+                                    aria-label="@($"Select {speaker.Name}")" aria-pressed="@(speaker.Id == SelectedSpeakerId ? "true" : "false")"
+                                    @onclick="() => SelectedSpeakerIdChanged.InvokeAsync((Guid?)speaker.Id)" disabled="@Disabled">
+                                @(speaker.Id == SelectedSpeakerId ? "Selected" : "Select speaker")
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+        @if (pageCount > 1)
+        {
+            <nav class="d-flex justify-content-between align-items-center gap-2 mt-3" aria-label="Speaker results pages">
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => page = currentPage - 1" disabled="@(Disabled || currentPage == 1)">Previous</button>
+                <span class="small text-secondary">Page @currentPage of @pageCount</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => page = currentPage + 1" disabled="@(Disabled || currentPage == pageCount)">Next</button>
+            </nav>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<Speaker> Speakers { get; set; } = [];
+    [Parameter] public Guid? SelectedSpeakerId { get; set; }
+    [Parameter] public EventCallback<Guid?> SelectedSpeakerIdChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private const int PageSize = 6;
+    private int page = 1;
+    private string searchQuery = string.Empty;
+    private string emailFilter = "all";
+
+    private string SearchQuery
+    {
+        get => searchQuery;
+        set { searchQuery = value; page = 1; }
+    }
+
+    private string EmailFilter
+    {
+        get => emailFilter;
+        set { emailFilter = value; page = 1; }
+    }
+
+    private List<Speaker> FilteredSpeakers => Speakers
+        .Where(s => string.IsNullOrWhiteSpace(searchQuery)
+            || s.Name.Contains(searchQuery.Trim(), StringComparison.OrdinalIgnoreCase)
+            || (s.Bio?.Contains(searchQuery.Trim(), StringComparison.OrdinalIgnoreCase) ?? false)
+            || (s.Email?.Contains(searchQuery.Trim(), StringComparison.OrdinalIgnoreCase) ?? false))
+        .Where(s => emailFilter switch
+        {
+            "with-email" => !string.IsNullOrWhiteSpace(s.Email),
+            "without-email" => string.IsNullOrWhiteSpace(s.Email),
+            _ => true
+        })
+        .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(s => s.Id)
+        .ToList();
+}

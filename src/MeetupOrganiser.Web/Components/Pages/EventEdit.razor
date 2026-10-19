@@ -287,16 +287,8 @@
                         {
                         <div class="mb-2">
                             <label class="form-label small fw-semibold">Select Speaker</label>
-                            <select class="form-select form-select-sm" @bind="session1SpeakerId">
-                                <option value="">-- Choose or create speaker --</option>
-                                @if (speakers != null)
-                                {
-                                    @foreach (var s in speakers)
-                                    {
-                                        <option value="@s.Id.ToString()">@(s.IsPlaceholder ? "Speaker TBC (awaiting speaker details)" : $"{s.Name} ({s.Email})")</option>
-                                    }
-                                }
-                            </select>
+                            <SpeakerPicker Speakers="@(speakers ?? [])" SelectedSpeakerId="@SelectedSpeaker(session1SpeakerId)?.Id"
+                                           SelectedSpeakerIdChanged="id => session1SpeakerId = id?.ToString() ?? string.Empty" Disabled="isSaving" />
                             @if (SelectedSpeaker(session1SpeakerId) is { } sp1)
                             {
                                 <div class="mt-2"><SessionizeTalkPicker @key="sp1.Id" Speaker="sp1" OnPick="s => OnTalkPicked(session1, sp1, s)" OnNewTalk="() => OnNewTalk(session1)" /></div>
@@ -371,16 +363,8 @@
                             {
                             <div class="mb-2">
                                 <label class="form-label small fw-semibold">Select Speaker</label>
-                                <select class="form-select form-select-sm" @bind="session2SpeakerId">
-                                    <option value="">-- Choose or create speaker --</option>
-                                    @if (speakers != null)
-                                    {
-                                        @foreach (var s in speakers)
-                                        {
-                                            <option value="@s.Id.ToString()">@(s.IsPlaceholder ? "Speaker TBC (awaiting speaker details)" : $"{s.Name} ({s.Email})")</option>
-                                        }
-                                    }
-                                </select>
+                                <SpeakerPicker Speakers="@(speakers ?? [])" SelectedSpeakerId="@SelectedSpeaker(session2SpeakerId)?.Id"
+                                               SelectedSpeakerIdChanged="id => session2SpeakerId = id?.ToString() ?? string.Empty" Disabled="isSaving" />
                                 @if (SelectedSpeaker(session2SpeakerId) is { } sp2)
                                 {
                                     <div class="mt-2"><SessionizeTalkPicker @key="sp2.Id" Speaker="sp2" OnPick="s => OnTalkPicked(session2, sp2, s)" OnNewTalk="() => OnNewTalk(session2)" /></div>

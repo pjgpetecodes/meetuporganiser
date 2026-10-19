@@ -17,7 +17,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4 page-heading">
         <div>
             <h1 class="h3 fw-bold mb-1">Quick Speaker Invite</h1>
-            <p class="text-secondary mb-0">Set the date, place and format, then send each speaker a link to fill in their profile and talk details.</p>
+            <p class="text-secondary mb-0">Set the date, place and format, choose your speakers, then send each a link to review their profile and add their talk details.</p>
         </div>
         <a href="/events" class="btn btn-outline-secondary">Back to Events</a>
     </div>
@@ -77,16 +77,52 @@
                 @for (var s = 0; s < speakerCount; s++)
                 {
                     var n = s;
-                    <div class="row g-2 mb-2">
-                        <div class="col-md-6">
-                            <input type="text" class="form-control" placeholder="@($"Speaker {n + 1} name (optional)")" @bind="speakerNames[n]" />
+                    <div class="border rounded p-3 mb-3">
+                        <div class="form-label fw-semibold">Speaker @(n + 1)</div>
+                        <div class="btn-group d-flex mb-3" role="group" aria-label="@($"Speaker {n + 1} source")">
+                            @foreach (var mode in Enum.GetValues<SpeakerInviteMode>())
+                            {
+                                <button type="button" class="btn btn-sm @(speakerModes[n] == mode ? "btn-primary" : "btn-outline-primary")"
+                                        aria-pressed="@(speakerModes[n] == mode ? "true" : "false")"
+                                        @onclick="() => ChangeSpeakerMode(n, mode)" disabled="@isSaving">
+                                    @SpeakerModeLabel(mode)
+                                </button>
+                            }
                         </div>
-                        <div class="col-md-6">
-                            <input type="email" class="form-control" placeholder="@($"Speaker {n + 1} email (optional)")" @bind="speakerEmails[n]" />
-                        </div>
+                        @if (speakerModes[n] == SpeakerInviteMode.Existing)
+                        {
+                            <SpeakerPicker Speakers="speakers" @bind-SelectedSpeakerId="selectedSpeakerIds[n]" Disabled="isSaving" />
+                        }
+                        else
+                        {
+                            <div class="row g-2 mb-3">
+                                <div class="col-md-6">
+                                    <input type="text" class="form-control" aria-label="@($"Speaker {n + 1} name")" placeholder="Name (optional)" maxlength="200" @bind="speakerDrafts[n].Name" />
+                                </div>
+                                <div class="col-md-6">
+                                    <input type="email" class="form-control" aria-label="@($"Speaker {n + 1} email")" placeholder="Email (optional)" maxlength="250" @bind="speakerDrafts[n].Email" />
+                                </div>
+                            </div>
+                            @if (speakerModes[n] == SpeakerInviteMode.Import)
+                            {
+                                <SessionizeProfileLookup Current="speakerDrafts[n]" InitialQuery="@speakerDrafts[n].Name"
+                                                         AllowProfileSelection="true" OnApply="result => ApplyProfile(n, result)" />
+                            }
+                            @if (!string.IsNullOrWhiteSpace(speakerDrafts[n].Bio) || !string.IsNullOrWhiteSpace(speakerDrafts[n].PhotoBlobUrl))
+                            {
+                                <div class="d-flex align-items-start gap-3 mt-3">
+                                    @if (!string.IsNullOrWhiteSpace(speakerDrafts[n].PhotoBlobUrl))
+                                    {
+                                        <img src="@speakerDrafts[n].PhotoBlobUrl" alt="@speakerDrafts[n].Name" class="rounded-circle" style="width: 64px; height: 64px; object-fit: cover;" />
+                                    }
+                                    <p class="small mb-0">@speakerDrafts[n].Bio</p>
+                                </div>
+                            }
+                        }
                     </div>
                 }
                 <div class="form-text">Add an email address to be able to email the link straight to the speaker.</div>
+                <div class="form-text">Their profile will be prefilled, and they can edit all their details while submitting their talk.</div>
             </div>
 
             <div>
@@ -99,7 +135,7 @@
     else
     {
         <div class="card border-0 shadow-sm p-4">
-            <p class="mb-3">Draft event <strong>@createdTitle</strong> created. Share each link with its speaker. Each link works once; they can create their profile and enter their talk details.</p>
+            <p class="mb-3">Draft event <strong>@createdTitle</strong> created. Share each link with its speaker. Each link works once; they can review and edit their prefilled profile and enter their talk details.</p>
             @for (var i = 0; i < links.Count; i++)
             {
                 var url = links[i];
@@ -143,6 +179,7 @@
 
 @code {
     private List<MeetupGroup> groups = [];
+    private List<Speaker> speakers = [];
     private Guid groupId;
     private DateTime localEventDateTime = DateTime.Now.AddDays(14).Date.AddHours(18).AddMinutes(30);
     private EventFormat format = EventFormat.Hybrid;
@@ -150,8 +187,10 @@
     private string? location = "CGI, King Street Nottingham & Online";
     private int speakerCount = 1;
 
-    private string?[] speakerNames = new string?[2];
-    private string?[] speakerEmails = new string?[2];
+    private Guid?[] selectedSpeakerIds = new Guid?[2];
+    private Speaker[] speakerDrafts = [new(), new()];
+    private SpeakerInviteMode[] speakerModes = new SpeakerInviteMode[2];
+    private bool[] hasImportedProfile = new bool[2];
     private List<string?> speakerLabels = [];
     private List<string?> speakerEmailsSaved = [];
     private List<string> links = [];
@@ -164,11 +203,45 @@
     private bool isError;
     private bool isSaving;
 
+    private enum SpeakerInviteMode { New, Import, Existing }
+
+    private static string SpeakerModeLabel(SpeakerInviteMode mode) => mode switch
+    {
+        SpeakerInviteMode.New => "New Speaker",
+        SpeakerInviteMode.Import => "Import from Sessionize",
+        SpeakerInviteMode.Existing => "Use Existing Speaker",
+        _ => throw new ArgumentOutOfRangeException(nameof(mode))
+    };
+
+    private void ChangeSpeakerMode(int slot, SpeakerInviteMode mode)
+    {
+        if (speakerModes[slot] == mode) return;
+
+        speakerModes[slot] = mode;
+        selectedSpeakerIds[slot] = null;
+        speakerDrafts[slot] = new();
+        hasImportedProfile[slot] = false;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await using var db = await DbContextFactory.CreateDbContextAsync();
         groups = await db.MeetupGroups.OrderBy(g => g.Name).ToListAsync();
+        speakers = await db.Speakers.AsNoTracking()
+            .Where(s => s.Name != Speaker.PlaceholderName).OrderBy(s => s.Name).ToListAsync();
         groupId = groups.FirstOrDefault()?.Id ?? Guid.Empty;
+    }
+
+    private void ApplyProfile(int slot, (SessionizeProfile Profile, SessionizeProfileFields Fields) result)
+    {
+        var speaker = new Speaker
+        {
+            Email = speakerDrafts[slot].Email,
+            Pronouns = speakerDrafts[slot].Pronouns
+        };
+        SessionizeSpeakerMapper.ApplyProfile(speaker, result.Profile, result.Fields);
+        speakerDrafts[slot] = speaker;
+        hasImportedProfile[slot] = true;
     }
 
     private async Task CreateInviteAsync()
@@ -178,6 +251,22 @@
             statusMessage = "Please create a meetup group first.";
             isError = true;
             return;
+        }
+
+        for (var i = 0; i < speakerCount; i++)
+        {
+            if (speakerModes[i] == SpeakerInviteMode.Existing && selectedSpeakerIds[i] == null)
+            {
+                statusMessage = $"Select an existing speaker for Speaker {i + 1}.";
+                isError = true;
+                return;
+            }
+            if (speakerModes[i] == SpeakerInviteMode.Import && !hasImportedProfile[i])
+            {
+                statusMessage = $"Choose a Sessionize profile for Speaker {i + 1}, or switch to New Speaker.";
+                isError = true;
+                return;
+            }
         }
 
         try
@@ -199,16 +288,23 @@
             evt.ShortBitlyUrl = ShortUrl.ForEvent(group.ShortUrlStem, evt.EventDateTimeUtc);
 
             var sessions = new List<EventSpeakerSession>();
+            var invitedSpeakers = new List<Speaker>();
             for (var i = 0; i < speakerCount; i++)
             {
-                var name = speakerNames[i]?.Trim();
-                var email = speakerEmails[i]?.Trim();
-                var speaker = new Speaker
+                Speaker speaker;
+                if (selectedSpeakerIds[i] is { } selectedId)
                 {
-                    Name = string.IsNullOrWhiteSpace(name) ? Speaker.PlaceholderName : name,
-                    Email = string.IsNullOrWhiteSpace(email) ? null : email
-                };
-                db.Speakers.Add(speaker);
+                    speaker = await db.Speakers.FindAsync(selectedId)
+                        ?? throw new InvalidOperationException("The selected speaker no longer exists. Reload the page and select another speaker.");
+                }
+                else
+                {
+                    speaker = speakerDrafts[i];
+                    speaker.Name = string.IsNullOrWhiteSpace(speaker.Name) ? Speaker.PlaceholderName : speaker.Name.Trim();
+                    speaker.Email = string.IsNullOrWhiteSpace(speaker.Email) ? null : speaker.Email.Trim();
+                    db.Speakers.Add(speaker);
+                }
+                invitedSpeakers.Add(speaker);
                 var session = new EventSpeakerSession { MeetupEventId = evt.Id, SpeakerId = speaker.Id, OrderIndex = i };
                 evt.Sessions.Add(session);
                 sessions.Add(session);
@@ -226,8 +322,8 @@
 
             links = urls;
             speakerIds = sessions.Select(s => s.SpeakerId).ToList();
-            speakerLabels = Enumerable.Range(0, speakerCount).Select(i => speakerNames[i]?.Trim()).ToList();
-            speakerEmailsSaved = Enumerable.Range(0, speakerCount).Select(i => speakerEmails[i]?.Trim()).ToList();
+            speakerLabels = invitedSpeakers.Select(s => s.IsPlaceholder ? null : s.Name).ToList();
+            speakerEmailsSaved = invitedSpeakers.Select(s => s.Email).ToList();
             createdEventUtc = evt.EventDateTimeUtc;
             createdTitle = evt.Title;
             createdEventId = evt.Id;
