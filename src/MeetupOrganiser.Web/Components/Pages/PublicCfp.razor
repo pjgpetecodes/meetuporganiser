@@ -1,10 +1,17 @@
 @page "/cfp/{Key}"
+@using MeetupOrganiser.Core.Services
 @inject ISpeakerBookingService BookingService
 @inject NavigationManager Navigation
 @inject ILogger<PublicCfp> Logger
 
 <PageTitle>Call for Speakers - Meetup Organiser</PageTitle>
 <div class="container py-4" style="max-width: 860px;">
+    @if (verificationSent)
+    {
+        <div class="alert alert-info" role="status">Check your email for a verification link.</div>
+    }
+    else
+    {
     <h1 class="h3 fw-bold">Call for Speakers</h1>
     @if (loading)
     {
@@ -20,8 +27,22 @@
     }
     else
     {
-        <h2 class="h4">@group.Name</h2>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            @if (HttpUrl(group.LogoUrl) is { } logo)
+            {
+                <img src="@logo" alt="@group.Name logo" class="rounded border" style="width: 72px; height: 72px; object-fit: contain;" />
+            }
+            <h2 class="h4 mb-0">@group.Name</h2>
+        </div>
         <p>@group.Description</p>
+        @if (!string.IsNullOrWhiteSpace(group.DefaultLocation))
+        {
+            <p><i class="bi bi-geo-alt me-1" aria-hidden="true"></i>@group.DefaultLocation</p>
+        }
+        @if (HttpUrl(group.WebsiteUrl) is { } website)
+        {
+            <p><a href="@website" target="_blank" rel="noopener noreferrer">Visit @group.Name's website <span class="visually-hidden">(opens in a new tab)</span></a></p>
+        }
         <p>Choose an upcoming date and submit your talk. First, verify your email to receive your private submission link.</p>
         <AvailableDatePicker Dates="dates" @bind-SelectedDateId="selectedDateId" Disabled="busy" />
         @if (dates.Count > 0)
@@ -39,6 +60,29 @@
         {
             <div class="alert @(isError ? "alert-danger" : "alert-info") mt-3" role="status">@message</div>
         }
+        @if (group.PreviousEvents.Count > 0)
+        {
+            <section class="mt-4" aria-labelledby="previous-meetups">
+                <h2 id="previous-meetups" class="h4">Previous meetups</h2>
+                <div class="row g-3">
+                    @foreach (var meetup in group.PreviousEvents)
+                    {
+                        <div class="col-md-6">
+                            <article class="card h-100 p-3">
+                                <h3 class="h6">@meetup.Title</h3>
+                                <p class="small mb-2">@MeetupDateTime.Display(meetup.EventDateTimeUtc)</p>
+                                <p class="small text-secondary">@EventHeader.FormatLabel(meetup.Format) · @meetup.DurationMinutes minutes · @meetup.VenueName @meetup.LocationOrPlatform</p>
+                                @if (MeetupUrl(meetup.MeetupEventUrl) is { } eventUrl)
+                                {
+                                    <a href="@eventUrl" target="_blank" rel="noopener noreferrer">View on Meetup <span class="visually-hidden">(opens in a new tab)</span></a>
+                                }
+                            </article>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
+    }
     }
 </div>
 
@@ -50,10 +94,18 @@
     private string email = string.Empty;
     private string? message;
     private bool loading = true, busy, isError;
+    private bool verificationSent;
+
+    private static string? HttpUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri.AbsoluteUri : null;
+
+    private static string? MeetupUrl(string? value) =>
+        HttpUrl(value) is { } url && SocialLinks.IsHost(url, "meetup.com") ? url : null;
 
     protected override async Task OnParametersSetAsync()
     {
         loading = true;
+        verificationSent = false;
         group = null;
         selectedDateId = null;
         message = null;
@@ -80,6 +132,7 @@
             var result = await BookingService.RequestVerificationAsync(Key, email, Navigation.BaseUri, selectedDateId);
             message = result.Message;
             isError = !result.Success;
+            verificationSent = result.Success;
         }
         catch (Exception ex)
         {

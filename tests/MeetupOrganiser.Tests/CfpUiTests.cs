@@ -17,15 +17,68 @@ namespace MeetupOrganiser.Tests;
 public class CfpUiTests
 {
     [Theory]
-    [InlineData(true, true)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public async Task Submission_ShowsDateSummaryWhenAvailableAndImportOnlyWithoutExistingProfile(bool available, bool existingProfile)
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PublicCfp_AfterEmailShowsOnlyConfirmationOnSuccessAndKeepsFormOnFailure(bool delivered)
     {
-        var booking = new BookingStub { HasExistingProfile = existingProfile };
+        using var services = new ServiceCollection().AddLogging()
+            .AddSingleton<ISpeakerBookingService>(new BookingStub { VerificationDelivered = delivered })
+            .AddSingleton<IBankHolidayService>(new BankHolidayStub())
+            .AddSingleton<NavigationManager, TestNavigationManager>().BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
+        var html = await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var output = await renderer.RenderComponentAsync<EmailRequestedCfp>();
+            return output.ToHtmlString();
+        });
+        Assert.Equal(delivered, html.Contains("Check your email for a verification link.", StringComparison.Ordinal));
+        Assert.Equal(!delivered, html.Contains("cfp-email", StringComparison.Ordinal));
+        Assert.Equal(!delivered, html.Contains("Previous meetups", StringComparison.Ordinal));
+        Assert.Equal(!delivered, html.Contains("Test group", StringComparison.Ordinal));
+        if (!delivered) Assert.Contains("Delivery failed", html);
+    }
+
+    [Fact]
+    public async Task PublicCfp_ShowsGroupInformationAndReadonlyPastMeetupCards()
+    {
+        using var services = new ServiceCollection().AddLogging()
+            .AddSingleton<ISpeakerBookingService>(new BookingStub())
+            .AddSingleton<IBankHolidayService>(new BankHolidayStub())
+            .AddSingleton<NavigationManager, TestNavigationManager>().BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
+        var html = await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var output = await renderer.RenderComponentAsync<PublicCfp>();
+            return output.ToHtmlString();
+        });
+        Assert.Contains("Group description", html);
+        Assert.Contains("Group location", html);
+        Assert.Contains("src=\"https://example.com/logo.png\"", html);
+        Assert.Contains("href=\"https://example.com/community\"", html);
+        Assert.Contains("Previous meetups", html);
+        var cards = html[html.IndexOf("<section", StringComparison.Ordinal)..];
+        Assert.Contains("Previous public meetup", cards);
+        Assert.Contains("href=\"https://www.meetup.com/group/events/123/\" target=\"_blank\" rel=\"noopener noreferrer\"", cards);
+        Assert.DoesNotContain("<input", cards);
+        Assert.DoesNotContain("<button", cards);
+        Assert.DoesNotContain("/events/edit", cards);
+    }
+
+    [Theory]
+    [InlineData(true, true, false, true)]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(true, true, true, true)]
+    [InlineData(true, true, false, false)]
+    public async Task Submission_ShowsDateSummaryWhenAvailableAndImportOnlyWithoutExistingProfile(bool available, bool existingProfile, bool bankHoliday, bool validBranding)
+    {
+        var booking = new BookingStub { HasExistingProfile = existingProfile, ValidBranding = validBranding };
+        var date = new DateTime(2027, 1, bankHoliday ? 1 : 25, 18, 30, 0, DateTimeKind.Utc);
+        booking.Dates = [new(booking.DateId, date, 90, EventFormat.Hybrid, "CGI", "Nottingham", 0)];
+        var holidays = new BankHolidayCalendar([new(new(2027, 1, 1), "New Year's Day")]);
         using var services = new ServiceCollection().AddLogging()
             .AddSingleton<ISpeakerBookingService>(booking)
-            .AddSingleton<IBankHolidayService>(new BankHolidayStub())
+            .AddSingleton<IBankHolidayService>(new BankHolidayStub(holidays))
             .AddSingleton(DispatchProxy.Create<IBlobStorageService, CfpOrganiserRenderingTests.UnusedService>())
             .AddSingleton(DispatchProxy.Create<ISessionizeProfileService, CfpOrganiserRenderingTests.UnusedService>())
             .AddSingleton(DispatchProxy.Create<Microsoft.JSInterop.IJSRuntime, CfpOrganiserRenderingTests.UnusedService>())
@@ -43,8 +96,45 @@ public class CfpUiTests
         Assert.Equal(available, html.Contains("Your selected meetup", StringComparison.Ordinal));
         Assert.Equal(!available, html.Contains("Choose your meetup date", StringComparison.Ordinal));
         Assert.Equal(!existingProfile, html.Contains("Find on Sessionize", StringComparison.Ordinal));
+        Assert.Equal(existingProfile, html.Contains("Create a new talk", StringComparison.Ordinal));
+        Assert.Equal(existingProfile, html.Contains("Your previous meetup talks", StringComparison.Ordinal));
+        Assert.Equal(existingProfile, html.Contains("Previous community talk", StringComparison.Ordinal));
         Assert.Contains("Talk Title", html);
         Assert.Contains("Confirm date and submit talk", html);
+        Assert.Contains("Speaker and talk submission", html);
+        Assert.Contains("Community branding description", html);
+        Assert.Contains("<h1 class=\"h3 fw-bold mb-1\">Test group</h1>", html);
+        Assert.Equal(validBranding, html.Contains("https://example.com/group-logo.png", StringComparison.Ordinal));
+        Assert.Equal(validBranding, html.Contains("Visit Test group", StringComparison.Ordinal));
+        Assert.Equal(validBranding, html.Contains("5px solid #123456", StringComparison.Ordinal));
+        Assert.Equal(validBranding, html.Contains("3px solid #abcdef", StringComparison.Ordinal));
+        Assert.DoesNotContain("javascript:", html);
+        Assert.DoesNotContain("url(", html);
+        if (available)
+        {
+            var summary = html[html.IndexOf("Your selected meetup", StringComparison.Ordinal)..];
+            summary = summary[..summary.IndexOf("</div>", StringComparison.Ordinal)];
+            Assert.Equal(bankHoliday, summary.Contains("public-holiday-badge", StringComparison.Ordinal));
+            Assert.Equal(bankHoliday, summary.Contains("Public holiday:", StringComparison.Ordinal));
+            Assert.DoesNotContain("Holiday dates remain selectable", summary);
+        }
+    }
+
+    [Fact]
+    public void PreviousMeetupTalkSelection_PrefillsEditableFieldsAndAllowsNewTalk()
+    {
+        var page = new SpeakerChooseDate();
+        SetField(page, "invitation", new SpeakerBookingInvitation(Guid.NewGuid(), "Group", new Speaker(), false, true, true)
+        {
+            PreviousTalks = [new("Previous talk", "Previous abstract", "Other group", DateTime.UtcNow.AddMonths(-1))]
+        });
+        var choose = typeof(SpeakerChooseDate).GetMethod("ChoosePreviousTalk", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        choose.Invoke(page, [new ChangeEventArgs { Value = "0" }]);
+        Assert.Equal("Previous talk", Field<string>(page, "talkTitle"));
+        Assert.Equal("Previous abstract", Field<string>(page, "talkDescription"));
+        choose.Invoke(page, [new ChangeEventArgs { Value = "new" }]);
+        Assert.Empty(Field<string>(page, "talkTitle"));
+        Assert.Empty(Field<string>(page, "talkDescription"));
     }
 
     [Fact]
@@ -54,13 +144,21 @@ public class CfpUiTests
         var speaker = new Speaker { Email = "verified@example.com" };
         SetField(page, "speaker", speaker);
         var profile = new SessionizeProfile("ada", "https://sessionize.com/ada", "Ada", null, null,
-            "I build things.", "https://sessionize.com/photo.png", [], []);
+            "I build things.", "https://sessionize.com/photo.png", [], [new("Existing talk", "Existing abstract", null)]);
         typeof(SpeakerChooseDate).GetMethod("ApplySessionizeProfile", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(page, [(profile, SessionizeProfileFields.All)]);
         Assert.Equal("verified@example.com", speaker.Email);
         Assert.Equal("Ada", speaker.Name);
         Assert.Equal(profile.Bio, speaker.Bio);
         Assert.Equal(profile.PhotoUrl, speaker.PhotoBlobUrl);
+        Assert.Same(profile, Field<SessionizeProfile>(page, "importedProfile"));
+        typeof(SpeakerChooseDate).GetMethod("ChooseTalk", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(page, [profile.Sessions[0]]);
+        Assert.Equal("Existing talk", Field<string>(page, "talkTitle"));
+        Assert.Equal("Existing abstract", Field<string>(page, "talkDescription"));
+        typeof(SpeakerChooseDate).GetMethod("NewTalk", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(page, null);
+        Assert.Empty(Field<string>(page, "talkTitle"));
+        Assert.Empty(Field<string>(page, "talkDescription"));
     }
 
     [Fact]
@@ -243,6 +341,8 @@ public class CfpUiTests
         public Guid? VerificationDateId { get; private set; }
         public bool VerificationFails { get; set; }
         public bool HasExistingProfile { get; set; }
+        public bool ValidBranding { get; set; } = true;
+        public bool VerificationDelivered { get; set; } = true;
         public IReadOnlyList<AvailableMeetupDate>? Dates { get; set; }
 
         public Task<IReadOnlyList<AvailableMeetupDate>> GetAvailableDatesAsync(Guid groupId, CancellationToken cancellationToken = default)
@@ -253,7 +353,17 @@ public class CfpUiTests
 
         public Task<SpeakerBookingInvitation?> GetInvitationAsync(string token, CancellationToken cancellationToken = default) =>
             Task.FromResult<SpeakerBookingInvitation?>(new(Guid.NewGuid(), "Test group",
-                new Speaker { Name = "Ada", Email = RequiresVerification ? null : "ada@example.com" }, RequiresVerification, true, HasExistingProfile));
+                new Speaker { Name = "Ada", Email = RequiresVerification ? null : "ada@example.com" }, RequiresVerification, true, HasExistingProfile)
+            {
+                GroupLogoUrl = ValidBranding ? "https://example.com/group-logo.png" : "javascript:alert(1)",
+                GroupDescription = "Community branding description",
+                GroupWebsiteUrl = ValidBranding ? "https://example.com/community" : "javascript:alert(1)",
+                GroupPrimaryColorHex = ValidBranding ? "#123456" : "red; background: url(https://example.com)",
+                GroupSecondaryColorHex = ValidBranding ? "#abcdef" : null,
+                PreviousTalks = HasExistingProfile && !RequiresVerification
+                    ? [new("Previous community talk", "Earlier abstract", "Other group", DateTime.UtcNow.AddMonths(-1))]
+                    : []
+            });
 
         public Task<BookingActionResult> VerifyEmailAsync(string token, CancellationToken cancellationToken = default)
         {
@@ -267,12 +377,18 @@ public class CfpUiTests
             Task.FromResult(new SpeakerBookingResult(false, "That date has filled. Please choose another."));
 
         public Task<PublicCfpGroup?> GetPublicGroupAsync(string key, CancellationToken cancellationToken = default) =>
-            Task.FromResult<PublicCfpGroup?>(new(Guid.NewGuid(), "Test group", null));
+            Task.FromResult<PublicCfpGroup?>(new(Guid.NewGuid(), "Test group", "Group description")
+            {
+                LogoUrl = "https://example.com/logo.png", WebsiteUrl = "https://example.com/community",
+                DefaultLocation = "Group location",
+                PreviousEvents = [new("Previous public meetup", DateTime.UtcNow.AddMonths(-1), 90,
+                    EventFormat.Online, null, "Zoom", "https://www.meetup.com/group/events/123/")]
+            });
         public Task<string> CreateInvitationAsync(Guid groupId, Guid speakerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<BookingActionResult> RequestVerificationAsync(string key, string email, string baseUrl, Guid? preferredDateId = null, CancellationToken cancellationToken = default)
         {
             VerificationDateId = preferredDateId;
-            return Task.FromResult(new BookingActionResult(true, "Sent"));
+            return Task.FromResult(new BookingActionResult(VerificationDelivered, VerificationDelivered ? "Sent" : "Delivery failed"));
         }
     }
 
@@ -285,5 +401,14 @@ public class CfpUiTests
     {
         public static Guid PreferredDate { get; set; }
         public RenderedBookingPage() => PreferredDateId = PreferredDate;
+    }
+
+    public sealed class EmailRequestedCfp : PublicCfp
+    {
+        protected override async Task OnParametersSetAsync()
+        {
+            await base.OnParametersSetAsync();
+            await (Task)typeof(PublicCfp).GetMethod("RequestVerificationAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(this, null)!;
+        }
     }
 }

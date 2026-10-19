@@ -7,9 +7,35 @@
 @inject NavigationManager Navigation
 @inject ILogger<SpeakerChooseDate> Logger
 
-<PageTitle>Choose a Speaking Date - Meetup Organiser</PageTitle>
+<PageTitle>@(invitation is null ? "Choose a Speaking Date - Meetup Organiser" : $"Submit your talk - {invitation.GroupName}")</PageTitle>
 <div class="container py-4" style="max-width: 860px;">
-    <h1 class="h3 fw-bold">Choose your speaking date</h1>
+    @if (!loading && invitation is not null)
+    {
+        <header class="rounded border p-3 mb-4" style="border-top: 5px solid @BrandColor(invitation.GroupPrimaryColorHex) !important; border-bottom: 3px solid @BrandColor(invitation.GroupSecondaryColorHex) !important;">
+            <div class="d-flex align-items-center gap-3">
+                @if (HttpUrl(invitation.GroupLogoUrl) is { } logo)
+                {
+                    <img src="@logo" alt="@invitation.GroupName logo" class="rounded flex-shrink-0" style="width: 88px; height: 88px; object-fit: contain;" />
+                }
+                <div>
+                    <h1 class="h3 fw-bold mb-1">@invitation.GroupName</h1>
+                    <p class="mb-0">Speaker and talk submission</p>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(invitation.GroupDescription))
+            {
+                <p class="mt-3 mb-0">@invitation.GroupDescription</p>
+            }
+            @if (HttpUrl(invitation.GroupWebsiteUrl) is { } website)
+            {
+                <a class="d-inline-block mt-2" href="@website" target="_blank" rel="noopener noreferrer">Visit @invitation.GroupName's website <span class="visually-hidden">(opens in a new tab)</span></a>
+            }
+        </header>
+    }
+    else
+    {
+        <h1 class="h3 fw-bold">Choose your speaking date</h1>
+    }
     @if (loading)
     {
         <p role="status">Loading your invitation...</p>
@@ -33,7 +59,6 @@
     }
     else
     {
-        <h2 class="h4">@invitation.GroupName</h2>
         @if (invitation.RequiresEmailVerification)
         {
             <p>We couldn't verify your email automatically. Retry to open the speaker and talk form.</p>
@@ -57,7 +82,7 @@
                             {
                                 <span class="small text-primary">You'll be sharing the event with one other speaker.</span>
                             }
-                            <BankHolidayLegend Calendar="HolidayCalendar" Years="@(new[] { EventHeader.ToUkTime(chosenDate.EventDateTimeUtc).Year })" />
+                            <BankHolidayLegend Calendar="HolidayCalendar" Years="@(new[] { EventHeader.ToUkTime(chosenDate.EventDateTimeUtc).Year })" ShowLegend="false" />
                         </div>
                     }
                     else
@@ -74,6 +99,26 @@
                         <div class="mb-3">
                             <p class="small text-secondary">Enter your speaker details below, or import your public profile from Sessionize.</p>
                             <SessionizeProfileLookup Current="speaker" InitialQuery="@speaker.Name" AllowProfileSelection="true" OnApply="ApplySessionizeProfile" />
+                        </div>
+                    }
+                    @if (importedProfile is not null || invitation.HasExistingProfile)
+                    {
+                        <SessionizeTalkPicker Speaker="speaker" Profile="importedProfile" OnPick="ChooseTalk" OnNewTalk="NewTalk" />
+                    }
+                    @if (invitation.PreviousTalks.Count > 0)
+                    {
+                        <div class="mb-3">
+                            <label for="previous-meetup-talk" class="form-label fw-semibold">Your previous meetup talks</label>
+                            <select id="previous-meetup-talk" class="form-select" @onchange="ChoosePreviousTalk">
+                                <option value="">-- Choose a previous talk --</option>
+                                @for (var i = 0; i < invitation.PreviousTalks.Count; i++)
+                                {
+                                    var talk = invitation.PreviousTalks[i];
+                                    <option value="@i">@talk.Title - @talk.GroupName (@EventHeader.ToUkTime(talk.EventDateTimeUtc).ToString("d MMM yyyy"))</option>
+                                }
+                                <option value="new">+ Create a new talk</option>
+                            </select>
+                            <div class="form-text">Reuse a talk from this or another meetup, then edit the title and abstract below.</div>
                         </div>
                     }
                     <div class="mb-3">
@@ -107,9 +152,17 @@
     private Guid? selectedDateId;
     private AvailableMeetupDate? SelectedDate => dates.FirstOrDefault(date => date.Id == selectedDateId);
     private string talkTitle = string.Empty;
+    private SessionizeProfile? importedProfile;
     private string? talkDescription, error;
     private MeetupEvent? bookedEvent;
     private bool loading = true, busy, notificationWarning, photoUploading;
+
+    private static string? HttpUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri.AbsoluteUri : null;
+
+    private static string BrandColor(string? value) =>
+        value is { Length: 7 } && value[0] == '#' && value.AsSpan(1).IndexOfAnyExcept("0123456789abcdefABCDEF") < 0
+            ? value : "transparent";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -120,6 +173,7 @@
         dates = [];
         selectedDateId = PreferredDateId;
         talkTitle = string.Empty;
+        importedProfile = null;
         talkDescription = null;
         notificationWarning = false;
         error = null;
@@ -212,6 +266,33 @@
         var verifiedEmail = speaker.Email;
         SessionizeSpeakerMapper.ApplyProfile(speaker, result.Profile, result.Fields);
         speaker.Email = verifiedEmail;
+        importedProfile = result.Profile;
+    }
+
+    private void ChooseTalk(SessionizeProfileSession talk)
+    {
+        talkTitle = talk.Title;
+        talkDescription = SpeakerBio.ResolveTalkDescription(talk.Summary, speaker);
+    }
+
+    private void NewTalk()
+    {
+        talkTitle = string.Empty;
+        talkDescription = string.Empty;
+    }
+
+    private void ChoosePreviousTalk(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (value == "new")
+            NewTalk();
+        else if (invitation is not null && int.TryParse(value, out var index) &&
+            index >= 0 && index < invitation.PreviousTalks.Count)
+        {
+            var talk = invitation.PreviousTalks[index];
+            talkTitle = talk.Title;
+            talkDescription = SpeakerBio.ResolveTalkDescription(talk.Description, speaker);
+        }
     }
 
     private async Task BookAsync()

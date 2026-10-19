@@ -166,9 +166,17 @@ Changing a booked date requires acknowledgement in the event editor. Notify the 
 
 Open an existing group's **Call for Speakers** tab, enable public bookings and choose **Save CFP settings**. These controls save separately from **Save Group**. Copy and share the public link.
 
+The public CFP page shows the group's logo, description, default location and website, plus up to three recent finished Published/Completed meetups as read-only cards. Where available, cards link to the event on Meetup.com in a new tab; no organiser editing controls or private speaker details are exposed. After a verification email is successfully sent, the page replaces its content with **Check your email for a verification link.** Delivery failures leave the form visible for retrying.
+
 Applicants see only that group's open dates and can select a date by clicking its card. They enter their email and receive a personal link that expires after 30 minutes. Opening the link automatically verifies the email and opens the speaker profile and talk form. Their preferred date appears as a summary, not another date picker; date choices appear only if no date was supplied or it is no longer available. There is no additional verification button unless verification fails and needs retrying. Opening the link does not book a place or create a speaker. A successful submission confirms the place immediately; there is no approval queue.
 
 After email verification, exactly one catalogue speaker with that email (matched ignoring case and surrounding spaces) is prefilled for editing. Submitting updates that existing profile. No catalogue details are disclosed before verification. If no unique match exists, the speaker can enter details or import a public Sessionize profile; submission creates a separate profile rather than choosing between duplicate catalogue records. Sessionize import preserves the verified email. Email verification alone does not create or update a speaker record or reserve a date. If email cannot be sent, the applicant sees an error and no booking is created.
+
+For an existing speaker, the form looks for public Sessionize talks. Importing a Sessionize profile uses that exact profile's talks. Choose a talk to prefill its title and abstract, then edit them if needed, or select **Create a new talk** to start with blank talk fields. If Sessionize is unavailable or no public talks are listed, you can still enter a new talk manually.
+
+Recognised speakers can also choose from their own previous talks recorded in this app, including talks at the same meetup group or other groups. The list shows the group and date, newest first, for finished Published/Completed meetups. Choosing a previous talk copies its title and abstract into the editable fields; it does not change the original talk. Public applicants only see this history after email verification and a unique catalogue match.
+
+The private submission page uses the invited meetup group's name, logo, description, website and brand-colour accents, so speakers can identify the community they are submitting to. Branding remains visible with the booking confirmation.
 
 Disable the CFP or choose **Revoke old link and create a new one** to invalidate the old public link and outstanding verification links. Existing confirmed bookings and personalised invitations are unaffected. Requests are rate-limited; repeated requests may require waiting before retrying.
 

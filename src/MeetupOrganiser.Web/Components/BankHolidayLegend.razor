@@ -1,7 +1,10 @@
-<p class="small text-secondary my-2">
-    <span class="public-holiday-badge" aria-hidden="true">PH</span>
-    Public holiday (England and Wales). Holiday dates remain selectable.
-</p>
+@if (ShowLegend)
+{
+    <p class="small text-secondary my-2">
+        <span class="public-holiday-badge" aria-hidden="true">PH</span>
+        Public holiday (England and Wales). Holiday dates remain selectable.
+    </p>
+}
 @if (Calendar is null)
 {
     <p class="small text-secondary" role="status">Loading public holiday information...</p>
@@ -17,6 +20,7 @@ else if (UnpublishedYears.Length > 0)
 
 @code {
     [Parameter] public BankHolidayCalendar? Calendar { get; set; }
+    [Parameter] public bool ShowLegend { get; set; } = true;
     [Parameter] public IEnumerable<int> Years { get; set; } = [];
     private int[] UnpublishedYears => Years.Distinct().Where(year => Calendar?.CoversYear(year) != true).Order().ToArray();
 }

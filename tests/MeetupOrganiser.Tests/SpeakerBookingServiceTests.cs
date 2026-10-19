@@ -10,6 +10,38 @@ namespace MeetupOrganiser.Tests;
 public class SpeakerBookingServiceTests
 {
     [Fact]
+    public async Task PublicGroup_ExposesOnlyRecentFinishedPublishedMeetupsFromSameGroup()
+    {
+        var f = await BookingFixture.CreateAsync();
+        await using (var db = f.Factory.CreateDbContext())
+        {
+            var group = await db.MeetupGroups.SingleAsync(g => g.Id == f.Group.Id);
+            group.LogoBlobUrl = "https://example.com/logo.png";
+            group.WebsiteUrl = "https://example.com/community";
+            group.DefaultLocation = "Town Hall";
+            for (var i = 1; i <= 5; i++)
+                db.MeetupEvents.Add(new MeetupEvent
+                {
+                    MeetupGroupId = group.Id, Title = $"Past {i}", Status = i % 2 == 0 ? EventStatus.Completed : EventStatus.Published,
+                    EventDateTimeUtc = DateTime.UtcNow.AddDays(-i), MeetupEventUrl = $"https://www.meetup.com/group/events/{i}/"
+                });
+            foreach (var status in new[] { EventStatus.Draft, EventStatus.Scheduled, EventStatus.Cancelled })
+                db.MeetupEvents.Add(new MeetupEvent { MeetupGroupId = group.Id, Title = "Private or cancelled", Status = status, EventDateTimeUtc = DateTime.UtcNow.AddHours(-3) });
+            db.MeetupEvents.Add(new MeetupEvent { MeetupGroupId = group.Id, Title = "Future", Status = EventStatus.Published });
+            db.MeetupEvents.Add(new MeetupEvent { MeetupGroupId = group.Id, Title = "In progress", Status = EventStatus.Published, EventDateTimeUtc = DateTime.UtcNow.AddMinutes(-5), DurationMinutes = 90 });
+            db.MeetupEvents.Add(new MeetupEvent { MeetupGroup = new MeetupGroup { Name = "Other" }, Title = "Other group", Status = EventStatus.Completed, EventDateTimeUtc = DateTime.UtcNow.AddHours(-3) });
+            await db.SaveChangesAsync();
+        }
+        var result = await f.Service.GetPublicGroupAsync(f.Group.CfpKey!);
+        Assert.NotNull(result);
+        Assert.Equal("https://example.com/logo.png", result.LogoUrl);
+        Assert.Equal("https://example.com/community", result.WebsiteUrl);
+        Assert.Equal("Town Hall", result.DefaultLocation);
+        Assert.Equal(new[] { "Past 1", "Past 2", "Past 3" }, result.PreviousEvents.Select(e => e.Title));
+        Assert.Null(await f.Service.GetPublicGroupAsync("invalid-key"));
+    }
+
+    [Fact]
     public async Task Availability_IsGroupScopedAndCountsBlankTalksAndPlaceholders()
     {
         var f = await BookingFixture.CreateAsync();
@@ -39,6 +71,13 @@ public class SpeakerBookingServiceTests
         var f = await BookingFixture.CreateAsync();
         var token = await f.Service.CreateInvitationAsync(f.Group.Id, f.Speaker.Id);
         await using var db = f.Factory.CreateDbContext();
+        var group = await db.MeetupGroups.SingleAsync();
+        group.LogoBlobUrl = "https://example.com/group-logo.png";
+        group.Description = "Our community";
+        group.WebsiteUrl = "https://example.com/community";
+        group.PrimaryColorHex = "#123456";
+        group.SecondaryColorHex = "#abcdef";
+        await db.SaveChangesAsync();
         var proof = await db.SpeakerBookingTokens.SingleAsync();
         Assert.NotEqual(token, proof.TokenHash);
         Assert.InRange(proof.ExpiresAtUtc, DateTime.UtcNow.AddDays(13), DateTime.UtcNow.AddDays(15));
@@ -46,6 +85,11 @@ public class SpeakerBookingServiceTests
         var invitation = await f.Service.GetInvitationAsync(token);
         Assert.NotNull(invitation);
         Assert.False(invitation.IsPublic);
+        Assert.Equal(group.LogoBlobUrl, invitation.GroupLogoUrl);
+        Assert.Equal(group.Description, invitation.GroupDescription);
+        Assert.Equal(group.WebsiteUrl, invitation.GroupWebsiteUrl);
+        Assert.Equal(group.PrimaryColorHex, invitation.GroupPrimaryColorHex);
+        Assert.Equal(group.SecondaryColorHex, invitation.GroupSecondaryColorHex);
         invitation.Speaker.Name = "Unsaved";
         Assert.Equal("Directory speaker", (await db.Speakers.SingleAsync()).Name);
     }
@@ -150,6 +194,51 @@ public class SpeakerBookingServiceTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task Invitation_OffersOnlyOwnFinishedTalksAcrossGroupsAfterIdentityEstablished(bool privateInvite)
+    {
+        var f = await BookingFixture.CreateAsync();
+        var otherGroup = new MeetupGroup { Name = "Another community" };
+        await using (var db = f.Factory.CreateDbContext())
+        {
+            db.Add(otherGroup);
+            MeetupEvent AddEvent(Guid groupId, EventStatus status, int daysAgo, string title, Guid speakerId)
+            {
+                var meetup = new MeetupEvent
+                {
+                    MeetupGroupId = groupId, Status = status, EventDateTimeUtc = DateTime.UtcNow.AddDays(-daysAgo),
+                    Sessions = [new() { SpeakerId = speakerId, TalkTitle = title, TalkDescription = title + " abstract" }]
+                };
+                db.Add(meetup);
+                return meetup;
+            }
+            AddEvent(f.Group.Id, EventStatus.Completed, 10, "Same meetup talk", f.Speaker.Id);
+            AddEvent(otherGroup.Id, EventStatus.Published, 5, "Other meetup talk", f.Speaker.Id);
+            AddEvent(f.Group.Id, EventStatus.Draft, 4, "Draft talk", f.Speaker.Id);
+            AddEvent(f.Group.Id, EventStatus.Cancelled, 3, "Cancelled talk", f.Speaker.Id);
+            AddEvent(f.Group.Id, EventStatus.Published, -5, "Future talk", f.Speaker.Id);
+            AddEvent(f.Group.Id, EventStatus.Completed, 2, "   ", f.Speaker.Id);
+            var otherSpeaker = new Speaker { Name = "Someone else" };
+            db.Add(otherSpeaker);
+            AddEvent(f.Group.Id, EventStatus.Completed, 1, "Someone else's talk", otherSpeaker.Id);
+            await db.SaveChangesAsync();
+        }
+        var token = privateInvite
+            ? await f.Service.CreateInvitationAsync(f.Group.Id, f.Speaker.Id)
+            : await f.RequestAsync();
+        if (!privateInvite)
+        {
+            Assert.Empty((await f.Service.GetInvitationAsync(token))!.PreviousTalks);
+            Assert.True((await f.Service.VerifyEmailAsync(token)).Success);
+        }
+        var invitation = (await f.Service.GetInvitationAsync(token))!;
+        Assert.Equal(["Other meetup talk", "Same meetup talk"], invitation.PreviousTalks.Select(t => t.Title));
+        Assert.Equal(["Another community", f.Group.Name], invitation.PreviousTalks.Select(t => t.GroupName));
+        Assert.Equal("Other meetup talk abstract", invitation.PreviousTalks[0].Description);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task PublicFlow_NoUniqueEmailMatchCreatesNewProfileAndIgnoresSubmittedSpeakerId(bool duplicate)
     {
         var f = await BookingFixture.CreateAsync();
@@ -164,6 +253,7 @@ public class SpeakerBookingServiceTests
         Assert.True((await f.Service.VerifyEmailAsync(token)).Success);
         var invitation = await f.Service.GetInvitationAsync(token);
         Assert.False(invitation!.HasExistingProfile);
+        Assert.Empty(invitation.PreviousTalks);
         Assert.Empty(invitation.Speaker.Name);
         var profile = f.Profile();
         profile.Id = f.Speaker.Id;

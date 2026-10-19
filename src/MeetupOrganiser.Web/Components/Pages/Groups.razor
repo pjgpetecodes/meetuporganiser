@@ -4,6 +4,9 @@
 @using MeetupOrganiser.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext DbContext
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ILogger<Groups> Logger
 
 <PageTitle>Meetup Groups - Meetup Organiser</PageTitle>
 
@@ -90,6 +93,22 @@
                             </div>
                         </div>
 
+                        @if (g.CfpEnabled && !string.IsNullOrWhiteSpace(g.CfpKey))
+                        {
+                            <div class="mb-3">
+                                <label for="@($"cfp-link-{g.Id}")" class="form-label small fw-semibold">Public CFP link</label>
+                                <div class="input-group input-group-sm">
+                                    <input id="@($"cfp-link-{g.Id}")" class="form-control" readonly value="@CfpUrl(g)" />
+                                    <button type="button" class="btn btn-outline-primary" aria-label="@($"Copy CFP link for {g.Name}")"
+                                            @onclick="() => CopyCfpLinkAsync(g)">Copy</button>
+                                </div>
+                                @if (copyMessageGroupId == g.Id)
+                                {
+                                    <div class="small mt-1 @(copyFailed ? "text-danger" : "text-success")" role="status">@copyMessage</div>
+                                }
+                            </div>
+                        }
+
                         <div class="d-flex justify-content-between align-items-center pt-2 border-top">
                             <span class="badge bg-light text-dark border">
                                 @g.Events.Count Event(s)
@@ -115,6 +134,28 @@
 @code {
     private ConfirmDialog? confirmDialog;
     private List<MeetupGroup>? groups;
+    private Guid? copyMessageGroupId;
+    private string? copyMessage;
+    private bool copyFailed;
+
+    private string CfpUrl(MeetupGroup group) => $"{Navigation.BaseUri.TrimEnd('/')}/cfp/{group.CfpKey}";
+
+    private async Task CopyCfpLinkAsync(MeetupGroup group)
+    {
+        copyMessageGroupId = group.Id;
+        try
+        {
+            var copied = await JS.InvokeAsync<bool>("meetupOrganiser.copyText", CfpUrl(group));
+            copyFailed = !copied;
+            copyMessage = copied ? "Public link copied." : "Couldn't copy automatically. Select the link and press Ctrl+C.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not copy CFP link for group {GroupId}.", group.Id);
+            copyFailed = true;
+            copyMessage = "Couldn't copy automatically. Select the link and press Ctrl+C.";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {

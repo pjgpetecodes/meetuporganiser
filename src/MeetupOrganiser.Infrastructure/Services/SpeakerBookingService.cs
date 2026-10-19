@@ -36,8 +36,22 @@ public sealed class SpeakerBookingService(
     {
         if (string.IsNullOrWhiteSpace(key)) return null;
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-        return await db.MeetupGroups.AsNoTracking().Where(g => g.CfpEnabled && g.CfpKey == key)
-            .Select(g => new PublicCfpGroup(g.Id, g.Name, g.Description)).SingleOrDefaultAsync(cancellationToken);
+        var group = await db.MeetupGroups.AsNoTracking().Where(g => g.CfpEnabled && g.CfpKey == key)
+            .Select(g => new PublicCfpGroup(g.Id, g.Name, g.Description)
+            {
+                LogoUrl = g.LogoBlobUrl, WebsiteUrl = g.WebsiteUrl, DefaultLocation = g.DefaultLocation
+            }).SingleOrDefaultAsync(cancellationToken);
+        if (group is null) return null;
+        var now = DateTime.UtcNow;
+        var previous = await db.MeetupEvents.AsNoTracking()
+            .Where(e => e.MeetupGroupId == group.Id &&
+                (e.Status == EventStatus.Published || e.Status == EventStatus.Completed) &&
+                e.EventDateTimeUtc.AddMinutes(e.DurationMinutes) <= now)
+            .OrderByDescending(e => e.EventDateTimeUtc).Take(3)
+            .Select(e => new PublicPastMeetup(e.Title, e.EventDateTimeUtc, e.DurationMinutes,
+                e.Format, e.VenueName, e.LocationOrPlatform, e.MeetupEventUrl))
+            .ToListAsync(cancellationToken);
+        return group with { PreviousEvents = previous };
     }
 
     public async Task<string> CreateInvitationAsync(Guid groupId, Guid speakerId, CancellationToken cancellationToken = default)
@@ -69,8 +83,31 @@ public sealed class SpeakerBookingService(
             ? matched is null ? new Speaker() : CopyProfile(matched)
             : proof.Speaker!;
         if (isPublic) profile.Email = proof.VerifiedAtUtc is not null ? proof.Email : null;
+        IReadOnlyList<PreviousSpeakerTalk> previousTalks = [];
+        if (!isPublic || matched is not null)
+        {
+            var now = DateTime.UtcNow;
+            var speakerId = isPublic ? matched!.Id : proof.SpeakerId!.Value;
+            previousTalks = await db.EventSpeakerSessions.AsNoTracking()
+                .Where(s => s.SpeakerId == speakerId && s.TalkTitle.Trim() != "" &&
+                    (s.MeetupEvent!.Status == EventStatus.Published || s.MeetupEvent.Status == EventStatus.Completed) &&
+                    s.MeetupEvent.EventDateTimeUtc.AddMinutes(s.MeetupEvent.DurationMinutes) <= now)
+                .OrderByDescending(s => s.MeetupEvent!.EventDateTimeUtc)
+                .ThenBy(s => s.Id)
+                .Select(s => new PreviousSpeakerTalk(s.TalkTitle, s.TalkDescription,
+                    s.MeetupEvent!.MeetupGroup!.Name, s.MeetupEvent.EventDateTimeUtc))
+                .ToListAsync(cancellationToken);
+        }
         return new(proof.MeetupGroupId, proof.MeetupGroup!.Name,
-            profile, isPublic && proof.VerifiedAtUtc is null, isPublic, !isPublic || matched is not null);
+            profile, isPublic && proof.VerifiedAtUtc is null, isPublic, !isPublic || matched is not null)
+        {
+            PreviousTalks = previousTalks,
+            GroupLogoUrl = proof.MeetupGroup.LogoBlobUrl,
+            GroupDescription = proof.MeetupGroup.Description,
+            GroupWebsiteUrl = proof.MeetupGroup.WebsiteUrl,
+            GroupPrimaryColorHex = proof.MeetupGroup.PrimaryColorHex,
+            GroupSecondaryColorHex = proof.MeetupGroup.SecondaryColorHex
+        };
     }
 
     public async Task<BookingActionResult> RequestVerificationAsync(string key, string email, string baseUrl, Guid? preferredDateId = null, CancellationToken cancellationToken = default)
