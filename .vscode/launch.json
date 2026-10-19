@@ -5,7 +5,7 @@
       "name": ".NET Notts Web (Development)",
       "type": "coreclr",
       "request": "launch",
-      "preLaunchTask": "build-web",
+      "preLaunchTask": "prepare-local-dev",
       "program": "${workspaceFolder}/src/MeetupOrganiser.Web/bin/Debug/net10.0/MeetupOrganiser.Web.dll",
       "args": [],
       "cwd": "${workspaceFolder}/src/MeetupOrganiser.Web",

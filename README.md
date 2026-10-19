@@ -32,7 +32,7 @@ dotnet dev-certs https --trust
 npm install --global azurite
 ```
 
-Run `azurite` in a separate terminal, then:
+Start the **.NET Notts Web (Development)** configuration in VS Code to automatically start Azurite and launch the app. For command-line development, run `.\scripts\start-azurite.ps1` in a separate PowerShell 7 terminal, then:
 
 ```powershell
 dotnet run --project .\src\MeetupOrganiser.Web --launch-profile https

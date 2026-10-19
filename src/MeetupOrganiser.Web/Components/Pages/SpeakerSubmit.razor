@@ -46,7 +46,7 @@
                     </span>
                     <h2 class="fw-bold mb-1">@(isNewProfile ? "Welcome!" : $"Welcome, {speaker.Name}!")</h2>
                     <p class="text-secondary mb-0">
-                        @(isNewProfile ? "Please create your speaker profile and enter your talk details for" : "Please confirm your talk details and speaker bio for")
+                        @(isNewProfile ? "Please create your speaker profile and enter your talk details for" : "Please review and edit your speaker profile and enter your talk details for")
                         <strong>@(meetupEvent?.Title ?? "the upcoming meetup")</strong>.
                     </p>
                 </div>

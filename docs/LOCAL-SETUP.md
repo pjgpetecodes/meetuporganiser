@@ -69,14 +69,21 @@ User secrets keep values out of the repository, but are not an encrypted secrets
 
 ## 2. Start local blob storage
 
-Install and run Azurite:
+Install Azurite once:
 
 ```powershell
 npm install --global azurite
-azurite
 ```
 
-Keep that terminal open. By default its blob endpoint is `http://127.0.0.1:10000/devstoreaccount1`. Start it consistently from the same working directory to reuse its data. Its default data files in this repository are ignored by Git.
+The VS Code **.NET Notts Web (Development)** debug configuration starts the Azurite blob service automatically before launching the app. It reuses a running Azurite instance and stores data in the repository root, preserving existing local uploads. Stop the `start-azurite` task explicitly when you no longer need it; stopping the debugger leaves it available for the next run.
+
+For command-line development, run this in a separate terminal before `dotnet run`:
+
+```powershell
+.\scripts\start-azurite.ps1
+```
+
+The script requires PowerShell 7 and runs the blob service in the foreground unless it is already running. Keep that terminal open. The blob endpoint is `http://127.0.0.1:10000/devstoreaccount1`. Its data files in this repository are ignored by Git. Startup fails with a clear error if Azurite is missing or another service occupies port 10000.
 
 The checked-in configuration already contains:
 

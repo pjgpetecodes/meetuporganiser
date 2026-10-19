@@ -98,7 +98,7 @@
         }
 
         <div class="d-flex gap-2">
-            <button type="button" class="btn btn-sm btn-primary" @onclick="ApplyAsync" disabled="@(!AnySelected)">Apply selected</button>
+            <button type="button" class="btn btn-sm btn-primary" @onclick="ApplyAsync" disabled="@(!AllowProfileSelection && !AnySelected)">@(AllowProfileSelection ? "Use profile" : "Apply selected")</button>
             <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Reset">Back</button>
         </div>
     }
@@ -107,6 +107,7 @@
 @code {
     [Parameter] public string? InitialQuery { get; set; }
     [Parameter] public Speaker? Current { get; set; }
+    [Parameter] public bool AllowProfileSelection { get; set; }
     [Parameter] public EventCallback<(SessionizeProfile Profile, SessionizeProfileFields Fields)> OnApply { get; set; }
 
     private string query = string.Empty;
