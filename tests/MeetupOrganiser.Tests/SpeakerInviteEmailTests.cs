@@ -5,6 +5,25 @@ namespace MeetupOrganiser.Tests;
 
 public class SpeakerInviteEmailTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CfpEmail_ExplainsDirectFormAccessExpiryAndBookingWithoutUnsafeMarkup(bool preferredDate)
+    {
+        var (subject, body) = SpeakerInviteEmail.BuildCfpVerification("<b>Group</b>\r\nName", "https://example.com/speaker/choose/abc?dateId=123&test=1", preferredDate);
+        Assert.DoesNotContain("\r", subject);
+        Assert.DoesNotContain("\n", subject);
+        Assert.Contains("complete your speaker profile and submit your talk", subject);
+        Assert.Contains("&lt;b&gt;Group&lt;/b&gt;", body);
+        Assert.DoesNotContain("<b>Group</b>", body);
+        Assert.Contains("dateId=123&amp;test=1", body);
+        Assert.Contains("takes you straight to the submission form", body);
+        Assert.Contains("30 minutes after it was requested", body);
+        Assert.Contains("Your place is not reserved by opening this link.", body);
+        Assert.Contains("If you didn't request this email", body);
+        Assert.Equal(preferredDate, body.Contains("Your preferred date is included", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Build_IncludesNameEventAndLink()
     {

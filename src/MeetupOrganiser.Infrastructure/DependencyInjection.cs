@@ -33,6 +33,7 @@ public static class DependencyInjection
         });
 
         services.AddHttpClient<ISessionizeService, SessionizeService>();
+        services.AddHttpClient<IBankHolidayService, BankHolidayService>();
         services.AddHttpClient<ISessionizeProfileService, SessionizeProfileService>();
         services.AddHttpClient("ZoomService");
         services.AddScoped<IZoomService>(serviceProvider => new ZoomService(
@@ -64,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<IPptxPreviewService, PptxPreviewService>();
         services.AddScoped<ISocialImageGeneratorService, SocialImageGeneratorService>();
         services.AddScoped<IMagicLinkService, MagicLinkService>();
+        services.AddScoped<ISpeakerBookingService, SpeakerBookingService>();
         services.AddScoped<AcsEmailService>();
         services.AddScoped<AcsSmtpEmailService>();
         services.AddScoped<IEmailService, EmailService>();

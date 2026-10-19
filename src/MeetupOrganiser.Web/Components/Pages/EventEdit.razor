@@ -55,6 +55,22 @@
     }
     else
     {
+        @if (IsNew)
+        {
+            <div class="card border-0 shadow-sm p-3 mb-4">
+                <div class="form-check form-switch">
+                    <input id="flexible-invite" class="form-check-input" type="checkbox" @bind="flexibleInvite" />
+                    <label class="form-check-label fw-semibold" for="flexible-invite">Let the speaker choose an upcoming date</label>
+                </div>
+                <div class="form-text">Creates group invitations instead of a new event. Each speaker can choose a different open draft date.</div>
+            </div>
+        }
+        @if (IsNew && flexibleInvite)
+        {
+            <QuickInvite ChooseDate="true" />
+        }
+        else
+        {
         @if (!IsNew)
         {
             <ul class="nav nav-tabs mb-4 page-tabs">
@@ -107,8 +123,8 @@
 
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Date &amp; Start Time (Local)</label>
-                            <input type="datetime-local" class="form-control" @bind="localEventDateTime" />
+                            <label class="form-label fw-semibold">Date &amp; Start Time (UK)</label>
+                            <MeetupDateTimePicker @bind-Value="localEventDateTime" />
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Duration (Mins)</label>
@@ -123,6 +139,28 @@
                                 <option value="@EventStatus.Completed">Completed</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div class="mb-3 border rounded p-3">
+                        <div class="form-check form-switch">
+                            <input id="open-bookings" type="checkbox" class="form-check-input" @bind="evt.IsOpenForBookings" disabled="@(evt.Status != EventStatus.Draft)" />
+                            <label for="open-bookings" class="form-check-label fw-semibold">Open this draft date for speaker bookings</label>
+                        </div>
+                        <div class="form-text">Future draft dates only. Assigned speakers reserve places even without talks; capacity is two.</div>
+                        @if (!IsNew)
+                        {
+                            <div class="small text-secondary mt-1">@evt.Sessions.Count/2 places assigned</div>
+                        }
+                        @if (originalEventDateUtc is { } original && evt.Sessions.Count > 0 && localEventDateTime != EventHeader.ToUkTime(original))
+                        {
+                            <div class="alert alert-warning mt-2 mb-0">
+                                This date has assigned speakers. Saving reschedules the event; notify them and update their calendars separately.
+                                <div class="form-check mt-2">
+                                    <input id="confirm-reschedule" class="form-check-input" type="checkbox" @bind="confirmReschedule" />
+                                    <label for="confirm-reschedule" class="form-check-label">I acknowledge this changes their booked date.</label>
+                                </div>
+                            </div>
+                        }
                     </div>
 
                     <div class="row g-3 mb-3">
@@ -409,6 +447,7 @@
                 </div>
             </div>
         </div>
+        }
     }
 </div>
 
@@ -450,10 +489,21 @@
     [SupplyParameterFromQuery(Name = "tab")]
     public string? Tab { get; set; }
 
+    [SupplyParameterFromQuery(Name = "upcoming")]
+    public bool Upcoming { get; set; }
+
+    private bool flexibleInvite;
+    private DateTime? originalEventDateUtc;
+    private bool confirmReschedule;
     private string activeTab = "edit";
 
     protected override void OnParametersSet()
     {
+        if (!Id.HasValue && Upcoming)
+        {
+            NavManager.NavigateTo("/events/upcoming", replace: true);
+            return;
+        }
         if (string.Equals(Tab, "assets", StringComparison.OrdinalIgnoreCase)) activeTab = "assets";
     }
 
@@ -465,7 +515,7 @@
     private List<MeetupGroup>? groups;
     private List<Speaker>? speakers;
 
-    private DateTime localEventDateTime = DateTime.Now.AddDays(14).Date.AddHours(18).AddMinutes(30);
+    private DateTime localEventDateTime = EventHeader.ToUkTime(DateTime.UtcNow).AddDays(14).Date.AddHours(18).AddMinutes(30);
     private int speakerCount = 1;
 
     private EventSpeakerSession session1 = new() { OrderIndex = 0 };
@@ -486,9 +536,11 @@
     private bool isGeneratingZoom;
     private bool isSyncingSessionize;
 
-    private string? SuggestedShortUrl => evt == null
+    private DateTime? PreviewDateUtc => MeetupDateTime.TryToUtc(localEventDateTime, out var utc) ? utc : null;
+
+    private string? SuggestedShortUrl => evt == null || PreviewDateUtc is not { } utc
         ? null
-        : ShortUrl.ForEvent(groups?.FirstOrDefault(g => g.Id == evt.MeetupGroupId)?.ShortUrlStem, localEventDateTime.ToUniversalTime());
+        : ShortUrl.ForEvent(groups?.FirstOrDefault(g => g.Id == evt.MeetupGroupId)?.ShortUrlStem, utc);
 
     private void ApplyShortUrlDefault()
     {
@@ -500,9 +552,10 @@
         get
         {
             if (evt == null) return string.Empty;
+            if (PreviewDateUtc is not { } utc) return "Choose a valid UK time outside the clock-change hour.";
             var preview = new MeetupEvent
             {
-                EventDateTimeUtc = localEventDateTime.ToUniversalTime(),
+                EventDateTimeUtc = utc,
                 Format = evt.Format,
                 VenueName = evt.VenueName,
                 Subtitle = evt.Subtitle
@@ -525,11 +578,17 @@
     private async Task PopulateEventDescriptionAsync()
     {
         if (evt == null) return;
+        if (PreviewDateUtc is not { } utc)
+        {
+            statusMessage = "Choose a valid UK start time before generating the description.";
+            isError = true;
+            return;
+        }
 
         var preview = new MeetupEvent
         {
             Title = evt.Title,
-            EventDateTimeUtc = localEventDateTime.ToUniversalTime(),
+            EventDateTimeUtc = utc,
             LocationOrPlatform = evt.LocationOrPlatform,
             ZoomMeetingUrl = evt.ZoomMeetingUrl,
             ZoomPasscode = evt.ZoomPasscode,
@@ -604,6 +663,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (!Id.HasValue && Upcoming) return;
         try
         {
             dbContext = await DbContextFactory.CreateDbContextAsync();
@@ -642,7 +702,8 @@
                     return;
                 }
 
-                localEventDateTime = evt.EventDateTimeUtc.ToLocalTime();
+                originalEventDateUtc = evt.EventDateTimeUtc;
+                localEventDateTime = EventHeader.ToUkTime(evt.EventDateTimeUtc);
                 var orderedSessions = evt.Sessions.OrderBy(s => s.OrderIndex).ToList();
                 if (orderedSessions.Count > 0)
                 {
@@ -683,6 +744,16 @@
     {
         if (evt == null) return false;
 
+        if (evt.MeetupGroupId == Guid.Empty)
+        {
+            statusMessage = "Select a meetup group before saving.";
+            isError = true;
+            return false;
+        }
+
+        if ((string.IsNullOrWhiteSpace(evt.Title) || EventTitles.IsPlaceholder(evt.Title)) && evt.Status == EventStatus.Draft)
+            evt.Title = EventTitles.Placeholder(groups?.FirstOrDefault(g => g.Id == evt.MeetupGroupId)?.Name, localEventDateTime);
+
         if (string.IsNullOrWhiteSpace(evt.Title))
         {
             statusMessage = "Please enter an event title.";
@@ -693,7 +764,16 @@
         try
         {
             isSaving = true;
-            evt.EventDateTimeUtc = localEventDateTime.ToUniversalTime();
+            evt.EventDateTimeUtc = MeetupDateTime.ToUtc(localEventDateTime);
+            if (originalEventDateUtc is { } original && evt.EventDateTimeUtc != original
+                && evt.Sessions.Count > 0 && !confirmReschedule)
+            {
+                statusMessage = "Acknowledge the date change for the assigned speakers before saving.";
+                isError = true;
+                return false;
+            }
+            if (evt.IsOpenForBookings && (evt.Status != EventStatus.Draft || evt.EventDateTimeUtc <= DateTime.UtcNow))
+                evt.IsOpenForBookings = false;
             evt.UpdatedAtUtc = DateTime.UtcNow;
 
             if (string.IsNullOrWhiteSpace(evt.ShortBitlyUrl)) ApplyShortUrlDefault();
@@ -715,6 +795,11 @@
                     evt.Sessions.Add(session1);
                 }
             }
+            else if (evt.Sessions.FirstOrDefault(s => s.Id == session1.Id) is { } removedS1)
+            {
+                evt.Sessions.Remove(removedS1);
+                DbContext.EventSpeakerSessions.Remove(removedS1);
+            }
 
             // Sync session 2
             if (speakerCount >= 2 && Guid.TryParse(session2SpeakerId, out var s2Id))
@@ -726,7 +811,7 @@
                     evt.Sessions.Add(session2);
                 }
             }
-            else if (speakerCount == 1 && session2.Id != Guid.Empty)
+            else if (session2.Id != Guid.Empty)
             {
                 var existingS2 = evt.Sessions.FirstOrDefault(s => s.Id == session2.Id);
                 if (existingS2 != null)
@@ -736,7 +821,17 @@
                 }
             }
 
-            await DbContext.SaveChangesAsync();
+            DbContext.AllowBookedDateChange = confirmReschedule;
+            try
+            {
+                await DbContext.SaveChangesAsync();
+            }
+            finally
+            {
+                DbContext.AllowBookedDateChange = false;
+            }
+            originalEventDateUtc = evt.EventDateTimeUtc;
+            confirmReschedule = false;
 
             statusMessage = "Event successfully saved!";
             isError = false;

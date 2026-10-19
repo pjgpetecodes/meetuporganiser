@@ -107,78 +107,7 @@
 
                 <hr class="my-4" />
 
-                <h5 class="fw-bold mb-3"><i class="bi bi-person-badge me-2 text-primary"></i> Speaker Profile</h5>
-
-                <div class="row g-3 mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Your Full Name *</label>
-                        <InputText @bind-Value="speaker.Name" class="form-control" required />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Contact Email</label>
-                        <InputText @bind-Value="speaker.Email" class="form-control" type="email" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Pronouns</label>
-                        <InputSelect @bind-Value="speaker.Pronouns" class="form-select">
-                            <option value="">Prefer not to say</option>
-                            <option value="she/her">she/her</option>
-                            <option value="he/him">he/him</option>
-                            <option value="they/them">they/them</option>
-                        </InputSelect>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">Bio</label>
-                    <InputTextArea @bind-Value="speaker.Bio" class="form-control" rows="3" placeholder="Tell the audience about yourself, your role, and achievements..." />
-                </div>
-
-                <!-- Photo Upload -->
-                <div class="mb-4">
-                    <label class="form-label fw-semibold">Speaker Photo / Headshot</label>
-                    <div class="d-flex align-items-center gap-3 photo-upload">
-                        @if (!string.IsNullOrWhiteSpace(previewPhotoUrl))
-                        {
-                            <img src="@previewPhotoUrl" class="rounded-circle border" style="width: 80px; height: 80px; object-fit: cover;" alt="Preview" />
-                        }
-                        <div class="flex-grow-1">
-                            <InputFile OnChange="HandlePhotoUploadAsync" class="form-control" accept="image/png, image/jpeg, image/webp" />
-                            <small class="text-secondary">Used directly on the PowerPoint slide deck and 1280x720 social card.</small>
-                        </div>
-                    </div>
-                </div>
-
-                <hr class="my-4" />
-
-                <h5 class="fw-bold mb-3"><i class="bi bi-share me-2 text-primary"></i> Social Profiles</h5>
-
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <label class="form-label small fw-semibold">LinkedIn Profile URL</label>
-                        <InputText @bind-Value="speaker.LinkedInUrl" class="form-control" placeholder="https://linkedin.com/in/..." />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-semibold">BlueSky Handle</label>
-                        <InputText @bind-Value="speaker.BlueSkyHandle" class="form-control" placeholder="handle.bsky.social" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-semibold">X / Twitter Handle</label>
-                        <InputText @bind-Value="speaker.TwitterHandle" class="form-control" placeholder="@@username" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-semibold">Facebook URL</label>
-                        <InputText @bind-Value="speaker.FacebookUrl" class="form-control" placeholder="https://facebook.com/..." />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-semibold">GitHub</label>
-                        <InputText @bind-Value="speaker.GitHubHandle" class="form-control" placeholder="username or https://github.com/user/repo" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-semibold">Website</label>
-                        <InputText @bind-Value="speaker.WebsiteUrl" class="form-control" placeholder="https://..." />
-                    </div>
-                </div>
+                <SpeakerProfileFields Speaker="speaker" OnPhotoUpload="HandlePhotoUploadAsync" />
 
                 <div class="d-flex justify-content-end gap-2 submit-actions">
                     <button type="submit" class="btn btn-primary btn-lg px-4" disabled="@isSaving">
@@ -237,7 +166,6 @@
 
     private string talkTitle = string.Empty;
     private string? talkDescription;
-    private string? previewPhotoUrl;
     private string? originalBio;
     private string? originalPronouns;
 
@@ -254,7 +182,6 @@
                 if (isNewProfile) speaker.Name = string.Empty;
                 originalBio = speaker.Bio;
                 originalPronouns = speaker.Pronouns;
-                previewPhotoUrl = speaker.PhotoBlobUrl;
                 session = tokenEntity.EventSpeakerSession;
                 if (session != null)
                 {
@@ -266,7 +193,7 @@
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error validating speaker magic link token: {Token}", Token);
+            Logger.LogError(ex, "Error validating speaker magic link.");
             errorMessage = "Failed to load link details. Please try again.";
         }
         finally
@@ -285,7 +212,6 @@
             using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024); // 10MB
             var url = await BlobStorageService.UploadAsync("speaker-photos", file.Name, stream, file.ContentType);
             speaker.PhotoBlobUrl = url;
-            previewPhotoUrl = url;
         }
         catch (Exception ex)
         {

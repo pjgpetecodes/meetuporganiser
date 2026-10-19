@@ -6,6 +6,7 @@ using MeetupOrganiser.Infrastructure;
 using MeetupOrganiser.Infrastructure.Data;
 using MeetupOrganiser.Infrastructure.Services;
 using MeetupOrganiser.Web.Components;
+using MeetupOrganiser.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -24,6 +25,8 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNEC
 
 // Add Infrastructure & EF Core Database
 builder.Services.AddInfrastructureServices(builder.Configuration);
+builder.Services.AddScoped<SpeakerBookingNotifications>();
+builder.Services.AddScoped<UpcomingMeetupScheduler>();
 
 // Add Razor & Interactive Server Components
 builder.Services.AddRazorComponents()

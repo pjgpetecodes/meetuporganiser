@@ -13,6 +13,11 @@ public class MeetupGroup
     [MaxLength(2000)]
     public string? Description { get; set; }
 
+    public bool CfpEnabled { get; set; }
+
+    [MaxLength(64)]
+    public string? CfpKey { get; set; }
+
     [MaxLength(500)]
     public string? WebsiteUrl { get; set; }
 

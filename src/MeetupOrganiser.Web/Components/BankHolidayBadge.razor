@@ -1,0 +1,12 @@
+@if (Holiday is not null)
+{
+    <span class="public-holiday-indicator" title="@Holiday.Description">
+        <span class="public-holiday-badge" aria-hidden="true">PH</span>
+        <span class="@(ShowName ? "public-holiday-name" : "visually-hidden")">Public holiday: @Holiday.Description</span>
+    </span>
+}
+
+@code {
+    [Parameter] public BankHoliday? Holiday { get; set; }
+    [Parameter] public bool ShowName { get; set; }
+}

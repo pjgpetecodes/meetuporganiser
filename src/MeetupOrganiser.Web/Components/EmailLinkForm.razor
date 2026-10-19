@@ -28,6 +28,7 @@
     [Parameter] public DateTime? EventDateUtc { get; set; }
     [Parameter] public EventCallback<string> OnSent { get; set; }
     [Parameter] public bool AutoSend { get; set; }
+    [Parameter] public bool ChooseDate { get; set; }
 
     private string? email;
     private string? message;
@@ -71,7 +72,9 @@
         message = null;
         try
         {
-            var (subject, body) = SpeakerInviteEmail.Build(SpeakerName, EventTitle, EventDateUtc, Link);
+            var (subject, body) = ChooseDate
+                ? SpeakerInviteEmail.BuildDateChoice(SpeakerName, EventTitle, Link)
+                : SpeakerInviteEmail.Build(SpeakerName, EventTitle, EventDateUtc, Link);
             if (!await EmailService.SendAsync(to, subject, body))
             {
                 message = "Email isn't configured, so nothing was sent. Use Copy instead.";

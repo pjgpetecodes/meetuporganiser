@@ -2,6 +2,41 @@ html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
+.public-holiday-indicator {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .25rem;
+}
+
+.public-holiday-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    flex: 0 0 1.65rem;
+    border: 1px solid #805b00;
+    border-radius: 50%;
+    color: #513b00;
+    background-color: #fff0bd;
+    font-size: .65rem;
+    font-weight: 700;
+    vertical-align: middle;
+}
+
+.calendar-table .calendar-day.public-holiday,
+.public-holiday-card {
+    background-color: var(--bs-warning-bg-subtle, #fff3cd);
+    color: var(--bs-warning-text-emphasis, #664d03);
+}
+
+.calendar-table .calendar-day.public-holiday.selected,
+.calendar-table .calendar-day.public-holiday.btn-primary {
+    background-color: var(--bs-primary);
+    color: white;
+}
+
 html {
     min-height: 100%;
     -webkit-text-size-adjust: 100%;

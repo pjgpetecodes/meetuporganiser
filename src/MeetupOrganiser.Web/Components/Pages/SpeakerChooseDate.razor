@@ -1,0 +1,247 @@
+@page "/speaker/choose/{Token}"
+@inherits BankHolidayAwareComponent
+@using MeetupOrganiser.Core.Services
+@inject ISpeakerBookingService BookingService
+@inject IBlobStorageService BlobStorageService
+@inject SpeakerBookingNotifications Notifications
+@inject NavigationManager Navigation
+@inject ILogger<SpeakerChooseDate> Logger
+
+<PageTitle>Choose a Speaking Date - Meetup Organiser</PageTitle>
+<div class="container py-4" style="max-width: 860px;">
+    <h1 class="h3 fw-bold">Choose your speaking date</h1>
+    @if (loading)
+    {
+        <p role="status">Loading your invitation...</p>
+    }
+    else if (bookedEvent != null)
+    {
+        <div class="alert alert-success" role="status">
+            <strong>Your place is confirmed!</strong>
+            <div>@MeetupDateTime.Display(bookedEvent.EventDateTimeUtc)</div>
+            <div>@bookedEvent.MeetupGroup?.Name · @bookedEvent.LocationOrPlatform</div>
+            <div>Your speaker profile and talk have been saved.</div>
+        </div>
+        @if (notificationWarning)
+        {
+            <div class="alert alert-warning">Your booking is confirmed, but one or more confirmation emails could not be delivered. Please contact the organiser if you need a calendar invitation.</div>
+        }
+    }
+    else if (invitation == null)
+    {
+        <div class="alert alert-warning">This link is invalid, expired, already used, or has been revoked. Please request a new invitation.</div>
+    }
+    else
+    {
+        <h2 class="h4">@invitation.GroupName</h2>
+        @if (invitation.RequiresEmailVerification)
+        {
+            <p>We couldn't verify your email automatically. Retry to open the speaker and talk form.</p>
+            <button type="button" class="btn btn-primary" @onclick="VerifyEmailAsync" disabled="@busy">@(busy ? "Verifying..." : "Retry email verification")</button>
+            <p class="form-text">Email verification alone does not reserve a place.</p>
+        }
+        else
+        {
+            <EditForm Model="speaker" OnValidSubmit="BookAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <fieldset disabled="@busy">
+                    @if (SelectedDate is { } chosenDate)
+                    {
+                        <div class="card border p-3 mb-3">
+                            <h3 class="h6">Your selected meetup</h3>
+                            <strong>@MeetupDateTime.Display(chosenDate.EventDateTimeUtc)</strong>
+                            <BankHolidayBadge Holiday="@HolidayCalendar?.Find(DateOnly.FromDateTime(EventHeader.ToUkTime(chosenDate.EventDateTimeUtc)))" ShowName="true" />
+                            <span>@EventHeader.FormatLabel(chosenDate.Format) · @chosenDate.DurationMinutes minutes · @chosenDate.VenueName @chosenDate.LocationOrPlatform</span>
+                            @if (chosenDate.OccupiedPlaces == 1)
+                            {
+                                <span class="small text-primary">You'll be sharing the event with one other speaker.</span>
+                            }
+                            <BankHolidayLegend Calendar="HolidayCalendar" Years="@(new[] { EventHeader.ToUkTime(chosenDate.EventDateTimeUtc).Year })" />
+                        </div>
+                    }
+                    else
+                    {
+                        <AvailableDatePicker Dates="dates" @bind-SelectedDateId="selectedDateId" Disabled="busy" />
+                        <button type="button" class="btn btn-sm btn-outline-secondary mb-3" @onclick="RefreshDatesAsync">Refresh dates</button>
+                    }
+                    @if (invitation.HasExistingProfile)
+                    {
+                        <p class="small text-secondary">Your existing speaker profile is prefilled. You can update it while submitting your talk.</p>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <p class="small text-secondary">Enter your speaker details below, or import your public profile from Sessionize.</p>
+                            <SessionizeProfileLookup Current="speaker" InitialQuery="@speaker.Name" AllowProfileSelection="true" OnApply="ApplySessionizeProfile" />
+                        </div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Talk Title *</label>
+                        <InputText @bind-Value="talkTitle" class="form-control" required maxlength="300" />
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Talk Abstract / Description</label>
+                        <InputTextArea @bind-Value="talkDescription" class="form-control" rows="4" maxlength="6000" />
+                    </div>
+                    <SpeakerProfileFields Speaker="speaker" RequireEmail="true" LockEmail="invitation.IsPublic" OnPhotoUpload="UploadPhotoAsync" />
+                    <button type="submit" class="btn btn-primary" disabled="@(busy || dates.Count == 0 || photoUploading)">
+                        @(busy ? "Booking..." : "Confirm date and submit talk")
+                    </button>
+                </fieldset>
+            </EditForm>
+        }
+    }
+    @if (error != null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@error</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = string.Empty;
+    [SupplyParameterFromQuery(Name = "dateId")] public Guid? PreferredDateId { get; set; }
+    private SpeakerBookingInvitation? invitation;
+    private Speaker speaker = new();
+    private IReadOnlyList<AvailableMeetupDate> dates = [];
+    private Guid? selectedDateId;
+    private AvailableMeetupDate? SelectedDate => dates.FirstOrDefault(date => date.Id == selectedDateId);
+    private string talkTitle = string.Empty;
+    private string? talkDescription, error;
+    private MeetupEvent? bookedEvent;
+    private bool loading = true, busy, notificationWarning, photoUploading;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        invitation = null;
+        bookedEvent = null;
+        speaker = new();
+        dates = [];
+        selectedDateId = PreferredDateId;
+        talkTitle = string.Empty;
+        talkDescription = null;
+        notificationWarning = false;
+        error = null;
+        try
+        {
+            invitation = await BookingService.GetInvitationAsync(Token);
+            if (invitation != null)
+            {
+                if (invitation.RequiresEmailVerification)
+                    await VerifyEmailAsync();
+                else
+                {
+                    speaker = invitation.Speaker;
+                    if (speaker.IsPlaceholder) speaker.Name = string.Empty;
+                    await RefreshDatesAsync();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not load date-choice invitation.");
+            error = "Unable to load this invitation. Please try again later.";
+        }
+        finally { loading = false; }
+    }
+
+    private async Task VerifyEmailAsync()
+    {
+        if (busy) return;
+        busy = true;
+        error = null;
+        try
+        {
+            var result = await BookingService.VerifyEmailAsync(Token);
+            if (!result.Success) { error = result.Message; return; }
+            invitation = await BookingService.GetInvitationAsync(Token);
+            if (invitation != null)
+            {
+                speaker = invitation.Speaker;
+                await RefreshDatesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not verify CFP email.");
+            error = "Unable to verify this link. Please try again or request another verification email.";
+        }
+        finally { busy = false; }
+    }
+
+    private async Task RefreshDatesAsync()
+    {
+        if (invitation == null) return;
+        try
+        {
+            dates = await BookingService.GetAvailableDatesAsync(invitation.GroupId);
+            if (selectedDateId != null && dates.All(d => d.Id != selectedDateId)) selectedDateId = null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not refresh available speaking dates.");
+            error = "Unable to refresh dates. Please try again.";
+        }
+    }
+
+    private async Task UploadPhotoAsync(InputFileChangeEventArgs e)
+    {
+        photoUploading = true;
+        try
+        {
+            var file = e.File;
+            if (file.ContentType is not ("image/png" or "image/jpeg" or "image/webp"))
+            {
+                error = "Choose a PNG, JPEG or WebP image.";
+                return;
+            }
+            using var stream = file.OpenReadStream(10 * 1024 * 1024);
+            speaker.PhotoBlobUrl = await BlobStorageService.UploadAsync("speaker-photos", file.Name, stream, file.ContentType);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not upload booking speaker photo.");
+            error = "Photo upload failed. Choose an image under 10 MB and try again.";
+        }
+        finally { photoUploading = false; }
+    }
+
+    private void ApplySessionizeProfile((SessionizeProfile Profile, SessionizeProfileFields Fields) result)
+    {
+        var verifiedEmail = speaker.Email;
+        SessionizeSpeakerMapper.ApplyProfile(speaker, result.Profile, result.Fields);
+        speaker.Email = verifiedEmail;
+    }
+
+    private async Task BookAsync()
+    {
+        if (busy || photoUploading || invitation == null) return;
+        error = null;
+        if (selectedDateId == null)
+        {
+            error = "Select an available date.";
+            return;
+        }
+        busy = true;
+        try
+        {
+            var result = await BookingService.BookAsync(Token, selectedDateId.Value, speaker, talkTitle, talkDescription);
+            if (!result.Success || result.Event == null || result.Speaker == null)
+            {
+                error = result.Message;
+                await RefreshDatesAsync();
+                return;
+            }
+            bookedEvent = result.Event;
+            if (!result.AlreadyBooked)
+                notificationWarning = !await Notifications.SendAsync(result.Event, result.Speaker, talkTitle, Navigation.BaseUri);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not complete speaker booking.");
+            error = "Unable to complete the booking. Your details are still here; please try again.";
+        }
+        finally { busy = false; }
+    }
+}

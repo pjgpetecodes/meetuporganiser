@@ -54,6 +54,7 @@ public class MeetupEvent
     public int? MeetupAttendeeCount { get; set; }
 
     public EventStatus Status { get; set; } = EventStatus.Draft;
+    public bool IsOpenForBookings { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;

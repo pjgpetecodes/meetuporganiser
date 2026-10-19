@@ -1,0 +1,123 @@
+@using System.Globalization
+@inherits BankHolidayAwareComponent
+
+<div class="meetup-date-time-picker">
+    <details class="date-picker mb-2">
+        <summary class="form-control" aria-label="@($"{Label}: {Value:dddd d MMMM yyyy}")">
+            <i class="bi bi-calendar3 me-2" aria-hidden="true"></i>@Value.ToString("dddd d MMMM yyyy", CultureInfo.InvariantCulture)
+            <BankHolidayBadge Holiday="@HolidayCalendar?.Find(DateOnly.FromDateTime(Value))" ShowName="true" />
+        </summary>
+        <fieldset class="calendar-panel border rounded p-2 mt-2" disabled="@Disabled">
+            <legend class="visually-hidden">@Label</legend>
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Previous month"
+                        disabled="@(month == new DateOnly(1, 1, 1))" @onclick="() => MoveMonth(-1)">
+                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                </button>
+                <select class="form-select form-select-sm" aria-label="Calendar month" value="@month.Month" @onchange="ChangeMonth">
+                    @for (var number = 1; number <= 12; number++)
+                    {
+                        <option value="@number">@CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(number)</option>
+                    }
+                </select>
+                <input class="form-control form-control-sm calendar-year" type="number" aria-label="Calendar year"
+                       min="1" max="9999" value="@month.Year" @onchange="ChangeYear" />
+                <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Next month"
+                        disabled="@(month == new DateOnly(9999, 12, 1))" @onclick="() => MoveMonth(1)">
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                </button>
+            </div>
+            <table class="table table-sm calendar-table mb-0">
+                <caption class="caption-top text-body py-1">@month.ToString("MMMM yyyy", CultureInfo.InvariantCulture)</caption>
+                <thead>
+                    <tr>
+                        @foreach (var weekday in new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" })
+                        {
+                            <th scope="col">@weekday</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var week = 0; week < CellCount / 7; week++)
+                    {
+                        <tr>
+                            @for (var weekday = 0; weekday < 7; weekday++)
+                            {
+                                var day = week * 7 + weekday - WeekdayOffset + 1;
+                                <td>
+                                    @if (day > 0 && day <= DateTime.DaysInMonth(month.Year, month.Month))
+                                    {
+                                        var date = new DateOnly(month.Year, month.Month, day);
+                                        var holiday = HolidayCalendar?.Find(date);
+                                        <button type="button" class="btn btn-sm calendar-day @(holiday is not null ? "public-holiday" : "") @(date == DateOnly.FromDateTime(Value) ? "btn-primary" : "btn-outline-secondary")"
+                                                aria-label="@date.ToString("dddd d MMMM yyyy", CultureInfo.InvariantCulture)"
+                                                title="@holiday?.Description"
+                                                aria-describedby="@(holiday is not null ? $"{timeId}-holiday-{day}" : null)"
+                                                aria-pressed="@(date == DateOnly.FromDateTime(Value) ? "true" : "false")"
+                                                @onclick="() => SelectDateAsync(date)">
+                                            @day
+                                            <span id="@($"{timeId}-holiday-{day}")"><BankHolidayBadge Holiday="holiday" /></span>
+                                        </button>
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </fieldset>
+    </details>
+    <BankHolidayLegend Calendar="HolidayCalendar" Years="@(new[] { month.Year, Value.Year })" />
+    <label for="@timeId" class="form-label small mb-1">Start time (UK)</label>
+    <input id="@timeId" type="time" class="form-control" value="@Value.ToString("HH:mm", CultureInfo.InvariantCulture)"
+           @onchange="ChangeTimeAsync" disabled="@Disabled" required />
+</div>
+
+@code {
+    [Parameter] public DateTime Value { get; set; }
+    [Parameter] public EventCallback<DateTime> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Meetup date (UK)";
+    [Parameter] public bool Disabled { get; set; }
+    private readonly string timeId = $"meetup-time-{Guid.NewGuid():N}";
+    private DateOnly month;
+    private DateOnly? previousDate;
+    private int WeekdayOffset => ((int)month.DayOfWeek + 6) % 7;
+    private int CellCount => ((WeekdayOffset + DateTime.DaysInMonth(month.Year, month.Month) + 6) / 7) * 7;
+
+    protected override void OnInitialized() => UpdateMonthFromValue();
+
+    protected override void OnParametersSet() => UpdateMonthFromValue();
+
+    private void UpdateMonthFromValue()
+    {
+        var date = DateOnly.FromDateTime(Value);
+        if (previousDate != date)
+        {
+            month = new(date.Year, date.Month, 1);
+            previousDate = date;
+        }
+    }
+
+    private void MoveMonth(int delta) => month = month.AddMonths(delta);
+
+    private void ChangeMonth(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var number) && number is >= 1 and <= 12)
+            month = new(month.Year, number, 1);
+    }
+
+    private void ChangeYear(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var year) && year is >= 1 and <= 9999)
+            month = new(year, month.Month, 1);
+    }
+
+    private Task SelectDateAsync(DateOnly date) => Disabled
+        ? Task.CompletedTask
+        : ValueChanged.InvokeAsync(date.ToDateTime(TimeOnly.FromDateTime(Value), DateTimeKind.Unspecified));
+
+    private Task ChangeTimeAsync(ChangeEventArgs args) =>
+        !Disabled && TimeOnly.TryParseExact(args.Value?.ToString(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time)
+            ? ValueChanged.InvokeAsync(DateOnly.FromDateTime(Value).ToDateTime(time, DateTimeKind.Unspecified))
+            : Task.CompletedTask;
+}

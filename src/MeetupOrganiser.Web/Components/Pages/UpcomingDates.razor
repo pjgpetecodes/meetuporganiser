@@ -1,0 +1,316 @@
+@page "/events/upcoming"
+@attribute [Authorize]
+@inherits BankHolidayAwareComponent
+@using System.Globalization
+@using MeetupOrganiser.Core.Entities
+@using MeetupOrganiser.Core.Services
+@using MeetupOrganiser.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject UpcomingMeetupScheduler Scheduler
+@inject ILogger<UpcomingDates> Logger
+@inject NavigationManager Navigation
+
+<PageTitle>Plan Upcoming Meetups - Meetup Organiser</PageTitle>
+
+<div class="container-fluid py-2">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h1 class="h3 fw-bold mb-1">Plan Upcoming Meetups</h1>
+            <p class="text-secondary mb-0">Choose dates on the calendar, review your list, then create draft meetups together.</p>
+        </div>
+        <a href="@BackUrl" class="btn btn-outline-secondary">@(ReturnToCfp ? "Back to CFP" : "Back to Events")</a>
+    </div>
+
+    @if (message != null)
+    {
+        <div class="alert @(isError ? "alert-danger" : "alert-success")" role="alert">@message</div>
+    }
+    @if (groups == null)
+    {
+        @if (message == null)
+        {
+            <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading groups</span></div>
+        }
+    }
+    else if (groups.Count == 0)
+    {
+        <div class="alert alert-info">Create a <a href="/groups/new">meetup group</a> before planning dates.</div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm p-3 mb-4">
+            <label for="schedule-group" class="form-label fw-semibold">Meetup group</label>
+            <select id="schedule-group" class="form-select" @bind="selectedGroupId" @bind:after="LoadGroupAsync" disabled="@(busy || loadingGroup)">
+                <option value="">Select a group</option>
+                @foreach (var group in groups)
+                {
+                    <option value="@group.Id">@group.Name</option>
+                }
+            </select>
+            <small class="text-secondary mt-2">Changing the group clears your selected dates.</small>
+        </div>
+
+        @if (loadingGroup)
+        {
+            <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading existing meetups</span></div>
+        }
+        else if (loadedGroupId != null)
+        {
+            <div class="row g-4">
+                <div class="col-md-8">
+                    <div class="card border-0 shadow-sm p-3">
+                        <fieldset disabled="@busy">
+                            <legend class="h5">Choose meetup dates</legend>
+                            <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                                <button type="button" class="btn btn-outline-secondary" aria-label="Previous month" disabled="@(calendarMonth <= CurrentMonth)" @onclick="() => MoveMonth(-1)"><i class="bi bi-chevron-left"></i></button>
+                                <label for="calendar-month" class="visually-hidden">Month</label>
+                                <select id="calendar-month" class="form-select calendar-month" value="@calendarMonth.Month" @onchange="ChangeMonth">
+                                    @for (var month = 1; month <= 12; month++)
+                                    {
+                                        <option value="@month">@CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(month)</option>
+                                    }
+                                </select>
+                                <label for="calendar-year" class="visually-hidden">Year</label>
+                                <input id="calendar-year" class="form-control calendar-year" type="number" min="@Today.Year" max="9998" value="@calendarMonth.Year" @onchange="ChangeYear" />
+                                <button type="button" class="btn btn-outline-secondary" aria-label="Next month" disabled="@(calendarMonth.Year == 9998 && calendarMonth.Month == 12)" @onclick="() => MoveMonth(1)"><i class="bi bi-chevron-right"></i></button>
+                                <button type="button" class="btn btn-outline-secondary" @onclick="() => calendarMonth = CurrentMonth">This month</button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table calendar-table">
+                                    <caption class="caption-top fw-semibold text-body">@calendarMonth.ToString("MMMM yyyy", CultureInfo.InvariantCulture) (UK dates)</caption>
+                                    <thead>
+                                        <tr>
+                                            @foreach (var day in new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" })
+                                            {
+                                                <th scope="col">@day</th>
+                                            }
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @for (var week = 0; week < CalendarCellCount / 7; week++)
+                                        {
+                                            <tr>
+                                                @for (var weekday = 0; weekday < 7; weekday++)
+                                                {
+                                                    var number = week * 7 + weekday - FirstWeekdayOffset + 1;
+                                                    <td>
+                                                        @if (number > 0 && number <= DateTime.DaysInMonth(calendarMonth.Year, calendarMonth.Month))
+                                                        {
+                                                            var date = new DateOnly(calendarMonth.Year, calendarMonth.Month, number);
+                                                            var holiday = HolidayCalendar?.Find(date);
+                                                            var existing = existingEvents.Where(e => DateOnly.FromDateTime(EventHeader.ToUkTime(e.EventDateTimeUtc)) == date).ToList();
+                                                            <button type="button" class="calendar-day @(holiday is not null ? "public-holiday" : "") @(selectedDates.Contains(date) ? "selected" : "")"
+                                                                    aria-label="@date.ToString("dddd d MMMM yyyy", CultureInfo.InvariantCulture)"
+                                                                    title="@holiday?.Description"
+                                                                    aria-describedby="@(holiday is not null ? $"holiday-{number}" : null)"
+                                                                    aria-pressed="@(selectedDates.Contains(date) ? "true" : "false")"
+                                                                    disabled="@(date < Today || existing.Count > 0)" @onclick="() => ToggleDate(date)">
+                                                                @number
+                                                                <span id="@($"holiday-{number}")"><BankHolidayBadge Holiday="holiday" /></span>
+                                                                @if (selectedDates.Contains(date))
+                                                                {
+                                                                    <span class="d-block small">Selected</span>
+                                                                }
+                                                            </button>
+                                                            @foreach (var meetup in existing)
+                                                            {
+                                                                <a class="existing-meetup" href="/events/edit/@meetup.Id" title="@meetup.Title">@meetup.Title <span>(@meetup.Status)</span></a>
+                                                            }
+                                                        }
+                                                    </td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <BankHolidayLegend Calendar="HolidayCalendar" Years="@(selectedDates.Select(date => date.Year).Append(calendarMonth.Year))" />
+                            <p class="small text-secondary mb-0">Click a date to select or deselect it. Selected dates stay in your list when you change months. Past dates and days with an existing meetup cannot be selected.</p>
+                        </fieldset>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm p-3">
+                        <h2 class="h5">Selected dates (@selectedDates.Count)</h2>
+                        @if (selectedDates.Count == 0)
+                        {
+                            <p class="text-secondary">Select dates from the calendar to build your list.</p>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush mb-3">
+                                @foreach (var date in selectedDates.Order())
+                                {
+                                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center gap-2">
+                                        <span>
+                                            @date.ToString("ddd d MMM yyyy", CultureInfo.InvariantCulture)
+                                            <BankHolidayBadge Holiday="@HolidayCalendar?.Find(date)" ShowName="true" />
+                                        </span>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" aria-label="@($"Remove {date:d MMM yyyy}")" disabled="@busy" @onclick="() => selectedDates.Remove(date)">Remove</button>
+                                    </li>
+                                }
+                            </ul>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mb-3" disabled="@busy" @onclick="() => selectedDates.Clear()">Clear selected dates</button>
+                        }
+                        <form @onsubmit="CreateDraftsAsync" @onsubmit:preventDefault>
+                            <fieldset disabled="@busy">
+                                <legend class="visually-hidden">Save selected dates</legend>
+                                <p class="small text-secondary">Save one draft per date with <strong>no speakers or talks</strong>. Drafts start at 18:30 UK time for 90 minutes, using Hybrid format and the group's default location. Edit these details later.</p>
+                                <p class="small text-secondary">Drafts are open for speaker bookings, but are not published.</p>
+                                <button class="btn btn-primary w-100" type="submit" disabled="@(busy || selectedDates.Count == 0)">
+                                    @(busy ? "Saving dates..." : "Save dates")
+                                </button>
+                            </fieldset>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "groupId")] public Guid? GroupId { get; set; }
+    [SupplyParameterFromQuery(Name = "returnToCfp")] public bool ReturnToCfp { get; set; }
+    private string BackUrl => ReturnToCfp && (GroupId ?? loadedGroupId) is { } id
+        ? $"/groups/edit/{id}?tab=cfp"
+        : "/events";
+    private List<MeetupGroup>? groups;
+    private string selectedGroupId = string.Empty;
+    private Guid? loadedGroupId;
+    private List<MeetupEvent> existingEvents = [];
+    private readonly HashSet<DateOnly> selectedDates = [];
+    private static DateOnly Today => DateOnly.FromDateTime(EventHeader.ToUkTime(DateTime.UtcNow));
+    private static DateOnly CurrentMonth => new(Today.Year, Today.Month, 1);
+    private DateOnly calendarMonth = CurrentMonth;
+    private int FirstWeekdayOffset => ((int)calendarMonth.DayOfWeek + 6) % 7;
+    private int CalendarCellCount => ((FirstWeekdayOffset + DateTime.DaysInMonth(calendarMonth.Year, calendarMonth.Month) + 6) / 7) * 7;
+    private string? location;
+    private bool busy;
+    private bool loadingGroup;
+    private string? message;
+    private bool isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            groups = await db.MeetupGroups.AsNoTracking().OrderBy(g => g.Name).ToListAsync();
+            var initial = groups.FirstOrDefault(g => g.Id == GroupId) ?? (groups.Count == 1 ? groups[0] : null);
+            if (initial != null)
+            {
+                selectedGroupId = initial.Id.ToString();
+                await LoadGroupAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not load groups for the upcoming date calendar.");
+            message = "Unable to load meetup groups. Reload the page and try again.";
+            isError = true;
+        }
+    }
+
+    private async Task LoadGroupAsync()
+    {
+        selectedDates.Clear();
+        loadedGroupId = null;
+        existingEvents = [];
+        message = null;
+        if (!Guid.TryParse(selectedGroupId, out var id)) return;
+        loadingGroup = true;
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            existingEvents = await db.MeetupEvents.AsNoTracking().Where(e => e.MeetupGroupId == id).ToListAsync();
+            location = groups!.Single(g => g.Id == id).DefaultLocation;
+            loadedGroupId = id;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not load calendar for group {GroupId}.", id);
+            message = "Unable to load this group's calendar. Select the group again to retry.";
+            isError = true;
+        }
+        finally { loadingGroup = false; }
+    }
+
+    private void MoveMonth(int delta)
+    {
+        var next = calendarMonth.AddMonths(delta);
+        if (next >= CurrentMonth && next.Year <= 9998) calendarMonth = next;
+    }
+
+    private void ChangeMonth(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var month) && month is >= 1 and <= 12)
+            calendarMonth = LaterMonth(new DateOnly(calendarMonth.Year, month, 1));
+    }
+
+    private void ChangeYear(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var year) && year >= Today.Year && year <= 9998)
+            calendarMonth = LaterMonth(new DateOnly(year, calendarMonth.Month, 1));
+    }
+
+    private static DateOnly LaterMonth(DateOnly month) => month < CurrentMonth ? CurrentMonth : month;
+
+    private void ToggleDate(DateOnly date)
+    {
+        if (busy || date < Today || existingEvents.Any(e => DateOnly.FromDateTime(EventHeader.ToUkTime(e.EventDateTimeUtc)) == date))
+            return;
+        if (!selectedDates.Add(date)) selectedDates.Remove(date);
+    }
+
+    private async Task CreateDraftsAsync()
+    {
+        if (busy || loadedGroupId is not { } groupId) return;
+        busy = true;
+        message = null;
+        try
+        {
+            var count = await Scheduler.CreateDraftsAsync(groupId, selectedDates.ToArray(), new TimeOnly(18, 30), 90, EventFormat.Hybrid, location, null);
+            selectedDates.Clear();
+            message = $"Created {count} draft meetups, all open for speaker bookings. Find them in Events > Drafts.";
+            isError = false;
+        }
+        catch (ArgumentException ex)
+        {
+            message = ex.Message;
+            isError = true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.LogWarning(ex, "Could not create upcoming meetups for group {GroupId}.", groupId);
+            message = ex.Message;
+            isError = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not create upcoming meetups for group {GroupId}.", groupId);
+            message = "Unable to confirm draft creation. Check the calendar before retrying; your selected dates have been kept.";
+            isError = true;
+        }
+        finally
+        {
+            try
+            {
+                await using var db = await DbContextFactory.CreateDbContextAsync();
+                existingEvents = await db.MeetupEvents.AsNoTracking().Where(e => e.MeetupGroupId == groupId).ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Could not refresh upcoming date calendar for group {GroupId}.", groupId);
+                message += " Unable to refresh the calendar. Reload the page before selecting more dates.";
+                isError = true;
+                loadedGroupId = null;
+            }
+            busy = false;
+        }
+        if (!isError && ReturnToCfp)
+            Navigation.NavigateTo($"/groups/edit/{GroupId ?? groupId}?tab=cfp");
+    }
+}

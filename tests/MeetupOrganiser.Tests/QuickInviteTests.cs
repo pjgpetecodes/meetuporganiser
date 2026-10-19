@@ -1,6 +1,7 @@
 using System.Reflection;
 using MeetupOrganiser.Core.DTOs;
 using MeetupOrganiser.Core.Entities;
+using MeetupOrganiser.Core.Interfaces;
 using MeetupOrganiser.Infrastructure.Data;
 using MeetupOrganiser.Infrastructure.Services;
 using MeetupOrganiser.Web.Components.Pages;
@@ -12,6 +13,35 @@ namespace MeetupOrganiser.Tests;
 
 public class QuickInviteTests
 {
+    [Fact]
+    public async Task DateChoiceInvites_DoNotCreateEventsOrReserveSessions()
+    {
+        var factory = new TestDbContextFactory();
+        await using var db = factory.CreateDbContext();
+        var existing = new Speaker { Name = "Existing", Email = "existing@example.com" };
+        db.Speakers.Add(existing);
+        await db.SaveChangesAsync();
+        var page = await CreatePageAsync(factory, db);
+        var booking = DispatchProxy.Create<ISpeakerBookingService, InvitationServiceStub>();
+        SetProperty(page, "BookingService", booking);
+        SetField(page, "chooseDate", true);
+        SetField(page, "speakerCount", 2);
+        ChangeMode(page, 0, "Existing");
+        Field<Guid?[]>(page, "selectedSpeakerIds")[0] = existing.Id;
+        Field<Speaker[]>(page, "speakerDrafts")[1].Name = "New speaker";
+
+        await InvokeAsync(page, "CreateInviteAsync");
+
+        Assert.False(Field<bool>(page, "isError"));
+        await using var verify = factory.CreateDbContext();
+        Assert.Empty(await verify.MeetupEvents.ToListAsync());
+        Assert.Empty(await verify.EventSpeakerSessions.ToListAsync());
+        Assert.Equal(2, await verify.Speakers.CountAsync());
+        Assert.Equal(2, ((InvitationServiceStub)booking).Calls);
+        Assert.All(Field<List<string>>(page, "links"), link => Assert.Contains("/speaker/choose/", link));
+        Assert.Null(Field<DateTime?>(page, "createdEventUtc"));
+    }
+
     [Fact]
     public async Task ExistingAndImportedSpeakers_HaveSeparateLinksWithPrefilledEditableProfiles()
     {
@@ -186,5 +216,17 @@ public class QuickInviteTests
     private sealed class TestNavigationManager : NavigationManager
     {
         public TestNavigationManager() => Initialize("https://meetup.example.com/", "https://meetup.example.com/events/invite");
+    }
+
+    public class InvitationServiceStub : DispatchProxy
+    {
+        public int Calls { get; private set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            Assert.Equal(nameof(ISpeakerBookingService.CreateInvitationAsync), targetMethod?.Name);
+            Calls++;
+            return Task.FromResult($"invitation-{Calls}");
+        }
     }
 }

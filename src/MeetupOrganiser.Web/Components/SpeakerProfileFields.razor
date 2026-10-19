@@ -1,0 +1,75 @@
+<h5 class="fw-bold mb-3">Speaker Profile</h5>
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <label class="form-label fw-semibold">Your Full Name *</label>
+        <InputText @bind-Value="Speaker.Name" class="form-control" required maxlength="200" />
+    </div>
+    <div class="col-md-6">
+        <label class="form-label fw-semibold">Contact Email</label>
+        <InputText @bind-Value="Speaker.Email" class="form-control" type="email" required="@RequireEmail" readonly="@LockEmail" maxlength="250" />
+        @if (LockEmail)
+        {
+            <div class="form-text">Verified email address. Use a new verification link to book with another address.</div>
+        }
+    </div>
+    <div class="col-md-6">
+        <label class="form-label fw-semibold">Pronouns</label>
+        <InputSelect @bind-Value="Speaker.Pronouns" class="form-select">
+            <option value="">Prefer not to say</option>
+            <option value="she/her">she/her</option>
+            <option value="he/him">he/him</option>
+            <option value="they/them">they/them</option>
+        </InputSelect>
+    </div>
+</div>
+<div class="mb-3">
+    <label class="form-label fw-semibold">Bio</label>
+    <InputTextArea @bind-Value="Speaker.Bio" class="form-control" rows="3" maxlength="4000" placeholder="Tell the audience about yourself..." />
+</div>
+<div class="mb-4">
+    <label class="form-label fw-semibold">Speaker Photo / Headshot</label>
+    <div class="d-flex flex-wrap align-items-center gap-3 photo-upload">
+        @if (!string.IsNullOrWhiteSpace(Speaker.PhotoBlobUrl))
+        {
+            <img src="@Speaker.PhotoBlobUrl" alt="Preview" class="rounded-circle border" style="width: 80px; height: 80px; object-fit: cover;" />
+        }
+        <div class="flex-grow-1" style="min-width: 0;">
+            <InputFile OnChange="OnPhotoUpload" class="form-control" accept="image/png, image/jpeg, image/webp" />
+            <small class="text-secondary">Used on event slides and social images.</small>
+        </div>
+    </div>
+</div>
+<h5 class="fw-bold mb-3">Social Profiles</h5>
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <label class="form-label small fw-semibold">LinkedIn Profile URL</label>
+        <InputText @bind-Value="Speaker.LinkedInUrl" class="form-control" maxlength="500" placeholder="https://linkedin.com/in/..." />
+    </div>
+    <div class="col-md-6">
+        <label class="form-label small fw-semibold">BlueSky Handle</label>
+        <InputText @bind-Value="Speaker.BlueSkyHandle" class="form-control" maxlength="100" placeholder="handle.bsky.social" />
+    </div>
+    <div class="col-md-6">
+        <label class="form-label small fw-semibold">X / Twitter Handle</label>
+        <InputText @bind-Value="Speaker.TwitterHandle" class="form-control" maxlength="100" placeholder="@@username" />
+    </div>
+    <div class="col-md-6">
+        <label class="form-label small fw-semibold">Facebook URL</label>
+        <InputText @bind-Value="Speaker.FacebookUrl" class="form-control" maxlength="500" placeholder="https://facebook.com/..." />
+    </div>
+    <div class="col-md-6">
+        <label class="form-label small fw-semibold">GitHub</label>
+        <InputText @bind-Value="Speaker.GitHubHandle" class="form-control" maxlength="100" placeholder="username or https://github.com/user/repo" />
+    </div>
+    <div class="col-md-6">
+        <label class="form-label small fw-semibold">Website</label>
+        <InputText @bind-Value="Speaker.WebsiteUrl" class="form-control" maxlength="500" placeholder="https://..." />
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Speaker Speaker { get; set; } = default!;
+    [Parameter] public bool RequireEmail { get; set; }
+    [Parameter] public bool LockEmail { get; set; }
+    [Parameter] public EventCallback<InputFileChangeEventArgs> OnPhotoUpload { get; set; }
+}

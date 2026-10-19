@@ -1,0 +1,8 @@
+.date-picker summary { cursor: pointer; list-style: none; }
+.date-picker summary::-webkit-details-marker { display: none; }
+.calendar-panel { max-width: 28rem; min-width: 17rem; }
+.calendar-year { min-width: 5rem; max-width: 6rem; }
+.calendar-table { table-layout: fixed; text-align: center; }
+.calendar-table th { font-size: .8rem; }
+.calendar-table td { padding: .15rem; }
+.calendar-day { width: 100%; min-height: 2.5rem; padding: .25rem; }

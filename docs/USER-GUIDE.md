@@ -32,6 +32,8 @@ For your own visual branding, follow [creating a PPTX template](PPTX-TEMPLATES.m
 | Event editor `/events/edit/{id}` | Event details and **Social & Slides** tab |
 | Quick Invite `/events/invite` | Minimal event creation and speaker invitation links |
 | Speaker portal `/speaker/submit/{token}` | Single-use self-service submission |
+| Date-choice portal `/speaker/choose/{token}` | Personal invitation or verified public submission with a date picker |
+| Public CFP `/cfp/{key}` | Group speaking opportunities and email verification |
 
 The older `/assets?eventId=<id>` address redirects to the event's Social & Slides tab. With no event ID it returns to Events.
 
@@ -140,11 +142,45 @@ A speaker linked to an event session cannot be deleted. Changing a directory pro
 
 ## Events
 
-Use **Events** to search by title/speaker and filter by group/status. The create menu offers **New Event**, **Quick Invite**, and **Sync Past Meetup Events**.
+Use **Events** to search by title/speaker and filter by group/status. **Upcoming / Live Meetups** is the default and contains non-draft events that have not yet ended, including meetings currently in progress. **Past** contains non-draft events whose scheduled end time has passed. **Drafts** shows drafts regardless of date. Switching views resets status filtering and paging. All three views show twelve events per page.
+
+The create menu offers **New Event**, **Plan Upcoming Dates**, **Quick Invite**, and **Sync Past Meetup Events**.
+
+### Upcoming dates and speaker bookings
+
+Choose **Plan Upcoming Dates** and select a group. Use the Monday–Sunday month calendar to select multiple dates; move between months using the arrows or choose a month and year directly. Selected dates remain in the review list across months and years. Existing meetups are shown as links, and their days cannot be selected again. Past days cannot be selected.
+
+Review the list on the right, remove any unwanted dates, then choose **Save dates**. All selected dates are created together as drafts **open for speaker bookings**, without speakers or talks. Drafts use 18:30 UK time, 90 minutes, Hybrid format and the group's default location; edit these details in each draft later. Changing groups clears the selection. A conflicting existing date blocks the whole batch, leaving your selection available to review.
+
+Use **Open this draft date for speaker bookings** in an individual event's editor to open or close it. Existing drafts remain unchanged by the calendar workflow. Only future draft dates with fewer than two assigned speakers appear to invited and public CFP speakers.
+
+Any assigned speaker reserves a place, even when their talk is blank or a fixed-date invite is awaiting completion. Two assigned speakers fill the date. One assigned speaker makes it a shared event; applicants see that they will share the event, not the other speaker's name or talk.
+
+Availability is checked again when a submission is saved. If another person fills the date first, the speaker can choose another date without re-entering their profile or talk. Merely opening a link or verifying an email does not reserve a place.
+
+Bookings leave events in Draft. Publishing remains an explicit organiser action. Closing bookings or changing an event to a non-draft status removes it from new date choices without cancelling existing assignments.
+
+Changing a booked date requires acknowledgement in the event editor. Notify the assigned speakers and update calendars separately; rescheduling does not automatically send revised invitations.
+
+### Public call for speakers
+
+Open an existing group's **Call for Speakers** tab, enable public bookings and choose **Save CFP settings**. These controls save separately from **Save Group**. Copy and share the public link.
+
+Applicants see only that group's open dates and can select a date by clicking its card. They enter their email and receive a personal link that expires after 30 minutes. Opening the link automatically verifies the email and opens the speaker profile and talk form. Their preferred date appears as a summary, not another date picker; date choices appear only if no date was supplied or it is no longer available. There is no additional verification button unless verification fails and needs retrying. Opening the link does not book a place or create a speaker. A successful submission confirms the place immediately; there is no approval queue.
+
+After email verification, exactly one catalogue speaker with that email (matched ignoring case and surrounding spaces) is prefilled for editing. Submitting updates that existing profile. No catalogue details are disclosed before verification. If no unique match exists, the speaker can enter details or import a public Sessionize profile; submission creates a separate profile rather than choosing between duplicate catalogue records. Sessionize import preserves the verified email. Email verification alone does not create or update a speaker record or reserve a date. If email cannot be sent, the applicant sees an error and no booking is created.
+
+Disable the CFP or choose **Revoke old link and create a new one** to invalidate the old public link and outstanding verification links. Existing confirmed bookings and personalised invitations are unaffected. Requests are rate-limited; repeated requests may require waiting before retrying.
 
 ### New Event and editing
 
 Select a group, enter a title/agenda, and set date/time, duration, format, venue, location/platform, and optional promo subtitle.
+
+Date fields in the event editor and Quick Invite open a month calendar with Monday-Sunday headings, month/year navigation and the selected weekday shown in the field. Set the UK start time separately below the date.
+
+Organiser calendars and speaker CFP date choices mark **England-and-Wales public holidays** with different shading and a circular **PH** badge. The holiday name appears on hover and is available to screen readers; selected-date summaries and CFP cards also show the name. Holidays remain selectable and do not change booking availability.
+
+Holiday information comes from the official GOV.UK bank-holiday feed, including published substitute days and exceptional holidays, and is cached for up to a day. If the feed cannot be loaded or does not cover the selected year, an explicit warning asks you to check holidays separately. Dates remain usable; missing data does not mean there are no holidays. Scotland, Northern Ireland and school holidays are not included.
 
 The editor supports one or two speaker slots. Select an existing speaker, add one through the directory, or generate a magic link for a placeholder speaker. Choose a Sessionize talk through the talk picker, or **Create a new talk** and enter title/abstract manually. Existing populated slots offer **Change speaker or talk**.
 
@@ -154,9 +190,9 @@ Picking a talk can regenerate the event title/description. Review the text after
 
 ### Dates, formats, and status
 
-The date input is labelled **Local**, but conversion currently uses the **web server's** local timezone, not a detected browser/user timezone. Stored values are UTC. Promotional headers/social text render UK time (`Europe/London`, with BST/GMT), while the speaker portal's context shows UTC.
+The event editor and Quick Invite date inputs use **UK time** (`Europe/London`) independently of the web server's timezone. Stored values are UTC. Date choices display GMT/BST explicitly; ambiguous or nonexistent clock-change times cannot be saved. The fixed-date speaker portal's existing context displays UTC.
 
-For a server outside the intended timezone, verify a known event end-to-end before sending invitations. Also check the scheduled start in Zoom after API creation; its current call path should not be assumed timezone-safe.
+Check the scheduled start in Zoom after API creation; changes to the local schedule do not update external meetings automatically.
 
 | Field | Behaviour |
 | --- | --- |
@@ -182,7 +218,11 @@ Use an event ID when pulling both speakers and sessions: a single full endpoint 
 
 ### Quick Invite and magic links
 
-Quick Invite creates a draft event and one/two new speaker profiles/placeholders. It does not require an existing directory speaker. If a person is already in the directory, using the normal editor avoids unnecessary duplicate profiles.
+Quick Invite offers **New Speaker**, **Import from Sessionize**, or **Use Existing Speaker** for each slot. Existing speakers are reused, with their profile prefilled for review/edit.
+
+With a fixed date, Quick Invite creates a draft event and its assigned sessions. Alternatively choose **Let each speaker choose an upcoming date** to create independent group invitations without creating an event or reserving a place. Each invited speaker can choose a different open draft date.
+
+The **New Event** form also offers **Let the speaker choose an upcoming date**, which opens the same invitation controls instead of creating an undated event. Existing dated events keep fixed-date invitations.
 
 You can also choose **Magic Link** on a normal event slot. This saves the event/session first and creates a placeholder profile if none is selected.
 

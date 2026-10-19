@@ -1,0 +1,18 @@
+.calendar-month { width: auto; }
+.calendar-year { width: 7rem; }
+.calendar-table { table-layout: fixed; min-width: 420px; }
+.calendar-table th { text-align: center; }
+.calendar-table td { height: 6rem; vertical-align: top; padding: .25rem; }
+.calendar-day {
+    display: block;
+    width: 100%;
+    min-height: 3rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: .375rem;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+.calendar-day:not(:disabled):hover { border-color: var(--bs-primary); }
+.calendar-day.selected { background: var(--bs-primary); color: white; }
+.calendar-day:disabled { opacity: .5; }
+.existing-meetup { display: block; font-size: .75rem; overflow-wrap: anywhere; margin-top: .25rem; }

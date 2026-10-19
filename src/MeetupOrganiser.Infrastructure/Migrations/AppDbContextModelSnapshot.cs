@@ -182,6 +182,9 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.Property<int>("Format")
                         .HasColumnType("int");
 
+                    b.Property<bool>("IsOpenForBookings")
+                        .HasColumnType("bit");
+
                     b.Property<string>("LocationOrPlatform")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -253,6 +256,13 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.Property<string>("BioPreference")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("CfpEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("CfpKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -428,6 +438,65 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.ToTable("Speakers");
                 });
 
+            modelBuilder.Entity("MeetupOrganiser.Core.Entities.SpeakerBookingToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("BookedSessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("MeetupGroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PublicKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("SpeakerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("UsedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("VerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookedSessionId")
+                        .IsUnique()
+                        .HasFilter("[BookedSessionId] IS NOT NULL");
+
+                    b.HasIndex("SpeakerId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("MeetupGroupId", "Email", "CreatedAtUtc");
+
+                    b.ToTable("SpeakerBookingTokens");
+                });
+
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.Sponsor", b =>
                 {
                     b.Property<Guid>("Id")
@@ -530,6 +599,31 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("MeetupGroup");
+                });
+
+            modelBuilder.Entity("MeetupOrganiser.Core.Entities.SpeakerBookingToken", b =>
+                {
+                    b.HasOne("MeetupOrganiser.Core.Entities.EventSpeakerSession", "BookedSession")
+                        .WithMany()
+                        .HasForeignKey("BookedSessionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("MeetupOrganiser.Core.Entities.MeetupGroup", "MeetupGroup")
+                        .WithMany()
+                        .HasForeignKey("MeetupGroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MeetupOrganiser.Core.Entities.Speaker", "Speaker")
+                        .WithMany()
+                        .HasForeignKey("SpeakerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("BookedSession");
+
+                    b.Navigation("MeetupGroup");
+
+                    b.Navigation("Speaker");
                 });
 
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.Sponsor", b =>

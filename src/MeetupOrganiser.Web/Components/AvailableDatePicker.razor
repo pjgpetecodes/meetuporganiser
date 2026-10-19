@@ -1,0 +1,43 @@
+@using MeetupOrganiser.Core.Services
+@inherits BankHolidayAwareComponent
+
+<fieldset disabled="@Disabled">
+    <legend class="h5 fw-bold">Choose your meetup date</legend>
+    <p class="small text-secondary">All times are UK time. A place is confirmed only when your submission succeeds.</p>
+    <BankHolidayLegend Calendar="HolidayCalendar" Years="@Dates.Select(date => EventHeader.ToUkTime(date.EventDateTimeUtc).Year)" />
+    @if (Dates.Count == 0)
+    {
+        <div class="alert alert-info">No dates currently have available places. Please contact the organiser or check again later.</div>
+    }
+    @foreach (var date in Dates)
+    {
+        var holiday = HolidayCalendar?.Find(DateOnly.FromDateTime(EventHeader.ToUkTime(date.EventDateTimeUtc)));
+        <label for="@($"{pickerId}-{date.Id}")" class="meetup-date-card border rounded p-3 mb-2 d-flex align-items-start gap-2 w-100 @(holiday is not null ? "public-holiday-card" : "") @(SelectedDateId == date.Id ? "border-primary border-2" : "")" @key="date.Id">
+            <input id="@($"{pickerId}-{date.Id}")" type="radio" name="@pickerId" class="form-check-input mt-1" value="@date.Id" checked="@(SelectedDateId == date.Id)"
+                   @onchange="() => SelectedDateIdChanged.InvokeAsync((Guid?)date.Id)" disabled="@Disabled" />
+            <span>
+                <strong class="d-block">@MeetupDateTime.Display(date.EventDateTimeUtc)</strong>
+                <BankHolidayBadge Holiday="holiday" ShowName="true" />
+                <span class="small d-block">
+                    @EventHeader.FormatLabel(date.Format) · @date.DurationMinutes minutes ·
+                    @if (date.Format != EventFormat.Online && !string.IsNullOrWhiteSpace(date.VenueName))
+                    {
+                        <span>@date.VenueName · </span>
+                    }
+                    @date.LocationOrPlatform
+                </span>
+                <span class="small d-block @(date.OccupiedPlaces == 1 ? "text-primary" : "text-secondary")">
+                    @(date.OccupiedPlaces == 1 ? "Shared event: one speaker is already assigned. You'll be sharing the event; one place left." : "Two speaker places available.")
+                </span>
+            </span>
+        </label>
+    }
+</fieldset>
+
+@code {
+    [Parameter] public IReadOnlyList<AvailableMeetupDate> Dates { get; set; } = [];
+    [Parameter] public Guid? SelectedDateId { get; set; }
+    [Parameter] public EventCallback<Guid?> SelectedDateIdChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    private readonly string pickerId = $"meetup-date-{Guid.NewGuid():N}";
+}
