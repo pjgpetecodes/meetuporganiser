@@ -184,7 +184,8 @@
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Meetup Description Template</label>
-                            <textarea class="form-control font-monospace small mb-2" rows="14" @bind="group.MeetupDescriptionTemplate" placeholder="Leave blank to use the global template from Settings"></textarea>
+                            <MeetupMarkdownEditor Label="Group Meetup description template" Rows="14" @bind-Value="group.MeetupDescriptionTemplate"
+                                                  Placeholder="Leave blank to use the global template from Settings" />
                             <div class="d-flex flex-wrap gap-1">
                                 @foreach (var (name, description) in MeetupDescriptionTemplate.Placeholders)
                                 {

@@ -195,7 +195,7 @@ public class SpeakerBookingSqlTests
         await using var database = await BookingSqlDatabase.CreateAsync(migrate: false);
         await using var db = new AppDbContext(database.Options);
         var migrations = db.Database.GetMigrations().ToArray();
-        await db.GetService<IMigrator>().MigrateAsync(migrations[^2]);
+        await db.GetService<IMigrator>().MigrateAsync(migrations.Single(m => m.EndsWith("_AddMeetupAttendeeCount")));
         var group = Guid.NewGuid();
         var speaker = Guid.NewGuid();
         var date = Guid.NewGuid();

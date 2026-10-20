@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Meetup Organiser Website Handoff",
+  "version": "0.3.0",
+  "description": "User-triggered event form preparation. Review and save on Meetup yourself.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Meetup Organiser handoff"
+  }
+}

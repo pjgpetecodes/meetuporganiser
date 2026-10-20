@@ -56,7 +56,10 @@ public class MeetupService : IMeetupService
         var urlname = !string.IsNullOrWhiteSpace(group?.MeetupUrlName)
             ? group.MeetupUrlName
             : (_settingsService != null ? await _settingsService.GetSettingAsync("Integrations:Meetup:Urlname", cancellationToken) : null)
-              ?? _configuration["Integrations:Meetup:Urlname"] ?? "dotnetnotts";
+              ?? _configuration["Integrations:Meetup:Urlname"];
+
+        if (string.IsNullOrWhiteSpace(urlname) || !Regex.IsMatch(urlname, @"\A[A-Za-z0-9][A-Za-z0-9_-]*\z"))
+            return new MeetupCreationResult(false, null, null, "Configure a valid Meetup group URL name before publishing.");
 
         // 2. Group-specific API Key override takes precedence, falling back to global settings / environment
         var accessToken = !string.IsNullOrWhiteSpace(group?.MeetupApiKeyOverride)
@@ -71,13 +74,13 @@ public class MeetupService : IMeetupService
 
         if (string.IsNullOrWhiteSpace(accessToken))
         {
-            _logger.LogInformation("Meetup API Key not configured for group {GroupName} ({UrlName}). Returning preview with formatted copyable payload.", group?.Name ?? "Default", urlname);
+            _logger.LogInformation("Meetup API Key not configured for group {GroupName} ({UrlName}). Manual publication is required.", group?.Name ?? "Default", urlname);
             return new MeetupCreationResult(
-                Success: true,
+                Success: false,
                 EventId: null,
-                EventUrl: $"https://www.meetup.com/{urlname}/events/create",
+                EventUrl: $"https://www.meetup.com/{urlname}/",
                 ErrorMessage: null
-            );
+            ) { RequiresManualAction = true };
         }
 
         var mutation = """
@@ -897,7 +900,11 @@ public class MeetupService : IMeetupService
     public string GenerateMeetupDescription(MeetupEvent meetupEvent, string? bioPreference = null, string? template = null)
     {
         // A description populated from the template in the event editor is used as-is.
-        if (meetupEvent.Description?.TrimStart().StartsWith("# ", StringComparison.Ordinal) == true)
+        var savedDescription = meetupEvent.Description?.TrimStart();
+        var firstLine = savedDescription?.Split('\n', 2)[0].TrimEnd('\r').Trim();
+        var boldTitle = firstLine is not null &&
+            (firstLine == $"**{meetupEvent.Title}**" || firstLine == $"__{meetupEvent.Title}__");
+        if (savedDescription?.StartsWith("# ", StringComparison.Ordinal) == true || boldTitle)
         {
             return meetupEvent.Description;
         }

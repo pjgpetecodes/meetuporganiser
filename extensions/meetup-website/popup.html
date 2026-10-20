@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meetup Organiser</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-mark" aria-hidden="true">M</div>
+    <div><h1>Meetup Organiser</h1><p>Your event, ready for Meetup.</p></div>
+    <span class="version">v0.3</span>
+  </header>
+  <main>
+    <section class="card connection-card" aria-labelledby="connection-title">
+      <div class="section-heading"><h2 id="connection-title">Connection</h2><span id="connection-state" class="badge">Not connected</span></div>
+      <div id="connection-summary" hidden>
+        <p id="connected-origin" class="origin-text"></p>
+        <div class="connection-footer"><span id="connection-expiry" class="muted"></span><button id="api-disconnect" class="text-button danger" type="button">Sign out / switch app</button></div>
+      </div>
+      <div id="connection-setup">
+        <label for="origin">App address</label>
+        <input id="origin" type="url" placeholder="https://your-app.azurewebsites.net" spellcheck="false" autocomplete="url">
+        <p class="hint">Use your app's base address, including the port for localhost.</p>
+        <button id="api-connect" class="primary full-width" type="button">Connect to Meetup Organiser</button>
+        <p class="hint">Approve once in your browser. Stay signed in for 30 days.</p>
+      </div>
+      <div id="pairing-state" hidden>
+        <p>Approve access in the app tab, then reopen this extension. We'll finish connecting automatically.</p>
+        <button id="api-finish" class="secondary" type="button">Check approval</button>
+        <button id="api-cancel" class="text-button" type="button">Cancel connection</button>
+      </div>
+    </section>
+
+    <p id="status" class="notice" role="status" aria-live="polite" hidden></p>
+
+    <section id="event-picker" class="card" aria-labelledby="event-heading" hidden>
+      <div class="section-heading"><h2 id="event-heading">Choose an event</h2><span class="eyebrow">Upcoming</span></div>
+      <form id="event-search-form" class="search-row">
+        <label class="sr-only" for="event-search">Search by event or meetup group</label>
+        <input id="event-search" type="search" maxlength="200" placeholder="Search events or meetup groups">
+        <button id="event-search-button" class="secondary" type="submit">Search</button>
+      </form>
+      <label for="api-events" class="sr-only">Saved upcoming events</label>
+      <select id="api-events" size="4" aria-label="Saved upcoming events"></select>
+      <div class="picker-footer">
+        <div class="paging"><button id="api-prev" class="text-button" type="button" disabled>Previous</button><span id="api-page" class="muted">Page 1</span><button id="api-next" class="text-button" type="button" disabled>Next</button></div>
+        <button id="api-load" class="primary" type="button" disabled>Fill Meetup Fields</button>
+      </div>
+    </section>
+
+    <section id="handoff" class="card" hidden>
+      <div class="section-heading"><span class="eyebrow">Event actions</span><button id="clear" class="text-button" type="button">Clear</button></div>
+      <div class="link-row"><a id="target" target="_blank" rel="noopener noreferrer">Open on Meetup</a><a id="image" download="meetup-social.png">Download PNG</a></div>
+      <button id="photo" class="secondary full-width" type="button">Send PNG to open photo chooser</button>
+      <p id="fill-status" class="notice" role="status" aria-live="polite" hidden></p>
+      <p class="hint">For a new event, download the PNG and use Meetup's image Select button.</p>
+    </section>
+
+    <ul id="results" class="results" hidden></ul>
+    <details class="card fallback">
+      <summary>Use prepared content instead</summary>
+      <p class="hint">For unsaved preview edits, prepare content in Social &amp; Slides, then capture it from that app tab.</p>
+      <button id="connect" class="secondary full-width" type="button">Trust app address for capture</button>
+      <button id="capture" class="secondary full-width" type="button">Capture content from this tab</button>
+      <button id="fill" class="secondary full-width" type="button">Fill captured content</button>
+    </details>
+  </main>
+  <footer class="app-footer">You stay in control. Review and Save/Publish on Meetup yourself.</footer>
+  <script type="module" src="popup.js"></script>
+  <script type="module" src="popup-api.js"></script>
+</body>
+</html>

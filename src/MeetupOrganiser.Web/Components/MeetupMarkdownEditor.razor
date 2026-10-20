@@ -1,0 +1,91 @@
+@inject IJSRuntime JS
+@inject ILogger<MeetupMarkdownEditor> Logger
+@implements IAsyncDisposable
+
+<div class="meetup-markdown-editor">
+    <div class="d-flex flex-wrap gap-1 mb-2" role="toolbar" aria-label="@($"{Label} formatting")">
+        @foreach (var (command, caption) in Commands)
+        {
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-rich-command="@command"
+                    aria-controls="@Id" aria-label="@caption" title="@caption">@caption</button>
+        }
+    </div>
+    <div id="@Id" @ref="editor" class="form-control rich-text-input" contenteditable="true" role="textbox"
+         aria-multiline="true" aria-label="@Label" data-placeholder="@Placeholder"
+         style="@($"min-height: {Rows * 1.5}rem")">@((MarkupString)initialHtml)</div>
+    <small class="text-secondary">Ctrl+B bold, Ctrl+I italic, Ctrl+K link (Cmd on Mac). Ctrl+Shift+7/8 for lists. Saved as Markdown.</small>
+    <p class="rich-save-error text-danger small" role="alert" hidden></p>
+    @if (error is not null)
+    {
+        <p class="text-danger small" role="alert">@error</p>
+    }
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = $"markdown-{Guid.NewGuid():N}";
+    [Parameter] public string Label { get; set; } = "Meetup description";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public int Rows { get; set; } = 8;
+    [Parameter] public string? Placeholder { get; set; }
+    private ElementReference editor;
+    private DotNetObjectReference<MeetupMarkdownEditor>? reference;
+    private string initialHtml = "";
+    private string? syncedValue;
+    private string? error;
+    private bool initializationFailed;
+    private static readonly (string Command, string Caption)[] Commands =
+        [("bold", "Bold"), ("italic", "Italic"), ("heading", "Heading"),
+         ("bullets", "Bullet list"), ("numbers", "Numbered list"), ("link", "Link"),
+         ("undo", "Undo"), ("redo", "Redo")];
+
+    protected override void OnInitialized() => initialHtml = MeetupMarkdown.ToHtml(Value, preserveHeadings: true);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (initializationFailed) return;
+        try
+        {
+            if (firstRender)
+            {
+                reference = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("meetupOrganiser.initRichEditor", editor, reference);
+            }
+            if (firstRender || Value != syncedValue)
+            {
+                syncedValue = Value;
+                await JS.InvokeVoidAsync("meetupOrganiser.setRichEditor", editor, MeetupMarkdown.ToHtml(Value, preserveHeadings: true));
+            }
+            error = null;
+        }
+        catch (JSException ex)
+        {
+            initializationFailed = true;
+            Logger.LogError(ex, "Failed to initialise Meetup rich-text editor.");
+            error = "Unable to initialise the rich-text editor. Reload the page and try again.";
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public async Task RichTextChanged(string markdown)
+    {
+        syncedValue = markdown;
+        await ValueChanged.InvokeAsync(markdown);
+    }
+
+    [JSInvokable]
+    public Task RichTextError(string message)
+    {
+        error = message;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (reference is null) return;
+        try { await JS.InvokeVoidAsync("meetupOrganiser.disposeRichEditor", editor); }
+        catch (JSDisconnectedException) { }
+        finally { reference.Dispose(); }
+    }
+}

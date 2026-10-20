@@ -27,6 +27,26 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNEC
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddScoped<SpeakerBookingNotifications>();
 builder.Services.AddScoped<UpcomingMeetupScheduler>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<ExtensionAccess>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+    options.AddPolicy("extension-pairing", context =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+            }));
+    options.AddPolicy("extension-read", context =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(context.Request.Headers.Authorization.ToString()))),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+            }));
+});
 
 // Add Razor & Interactive Server Components
 builder.Services.AddRazorComponents()
@@ -126,8 +146,10 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.UseAntiforgery();
+app.MapExtensionApi();
 
 const string meetupOAuthStateCookie = "MeetupOAuthState";
 app.MapGet("/integrations/meetup/connect", async (
@@ -213,6 +235,7 @@ app.MapGet("/login", async (HttpContext context) =>
 {
     var claims = new List<Claim>
     {
+        new(ClaimTypes.NameIdentifier, "development-organizer"),
         new(ClaimTypes.Name, "Pete Gallagher (Organizer)"),
         new(ClaimTypes.Email, "organizer@dotnetnotts.co"),
         new(ClaimTypes.Role, "Organizer"),
@@ -220,7 +243,9 @@ app.MapGet("/login", async (HttpContext context) =>
     };
     var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
     await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
-    return Results.Redirect("/dashboard");
+    var returnUrl = context.Request.Query["ReturnUrl"].ToString();
+    return returnUrl.StartsWith('/') && (returnUrl.Length == 1 || returnUrl[1] is not ('/' or '\\'))
+        ? Results.LocalRedirect(returnUrl) : Results.Redirect("/dashboard");
 });
 
 if (!isEntraConfigured)

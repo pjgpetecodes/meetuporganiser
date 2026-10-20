@@ -1,0 +1,3 @@
+.rich-text-input { overflow-wrap: anywhere; max-height: 36rem; overflow-y: auto; }
+.rich-text-input:empty::before { content: attr(data-placeholder); color: var(--bs-secondary-color); pointer-events: none; }
+.rich-text-input ::deep p:last-child { margin-bottom: 0; }

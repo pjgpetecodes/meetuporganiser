@@ -85,6 +85,35 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.ToTable("EventSpeakerSessions");
                 });
 
+            modelBuilder.Entity("MeetupOrganiser.Core.Entities.ExtensionGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("ExtensionGrants");
+                });
+
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.GeneratedAsset", b =>
                 {
                     b.Property<Guid>("Id")

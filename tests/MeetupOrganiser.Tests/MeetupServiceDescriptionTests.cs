@@ -8,6 +8,36 @@ namespace MeetupOrganiser.Tests;
 
 public class MeetupServiceDescriptionTests
 {
+    [Theory]
+    [InlineData("# Event title")]
+    [InlineData("**Event title**")]
+    [InlineData("__Event title__")]
+    public void GeneratedDescription_EditedAsRichTextIsNotWrappedInTemplateAgain(string heading)
+    {
+        var saved = $"{heading}\n\nTalk details.\n\n**Our Speaker:**\n\nSpeaker bio.\n\n**How to find us:**\n\nVenue.";
+        var meetup = new MeetupEvent
+        {
+            Title = "Event title",
+            Description = saved,
+            EventDateTimeUtc = DateTime.UtcNow,
+            Sessions = [new() { TalkDescription = "Talk details.", Speaker = new() { Name = "Speaker", Bio = "Speaker bio." } }]
+        };
+        var service = CreateService();
+        Assert.Equal(saved, service.GenerateMeetupDescription(meetup));
+        Assert.Equal(saved, service.GenerateMeetupDescription(meetup, null,
+            MeetupOrganiser.Core.Services.MeetupDescriptionTemplate.Default));
+    }
+
+    [Fact]
+    public void ShortBoldAgenda_StillUsesPublicationTemplate()
+    {
+        var meetup = new MeetupEvent { Title = "Event title", Description = "**Welcome**", EventDateTimeUtc = DateTime.UtcNow };
+        var result = CreateService().GenerateMeetupDescription(meetup, null,
+            MeetupOrganiser.Core.Services.MeetupDescriptionTemplate.Default);
+        Assert.StartsWith("# Event title", result);
+        Assert.Contains("**Welcome**", result);
+        Assert.Contains("How to find us:", result);
+    }
     private static MeetupService CreateService() =>
         new(new HttpClient(), new ConfigurationBuilder().Build(), NullLogger<MeetupService>.Instance);
 

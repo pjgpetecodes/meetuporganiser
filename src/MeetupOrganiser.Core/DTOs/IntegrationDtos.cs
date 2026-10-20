@@ -41,7 +41,10 @@ public record MeetupCreationResult(
     string? EventId,
     string? EventUrl,
     string? ErrorMessage
-);
+)
+{
+    public bool RequiresManualAction { get; init; }
+}
 
 public record MeetupEventImportSpeaker(string Name, string? Bio, string? TalkTitle = null);
 

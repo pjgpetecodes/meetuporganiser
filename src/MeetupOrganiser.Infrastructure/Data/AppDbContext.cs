@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<GeneratedAsset> GeneratedAssets => Set<GeneratedAsset>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<SpeakerBookingToken> SpeakerBookingTokens => Set<SpeakerBookingToken>();
+    public DbSet<ExtensionGrant> ExtensionGrants => Set<ExtensionGrant>();
     public bool SkipSpeakerPhotoLocalization { get; set; }
     public bool AllowBookedDateChange { get; set; }
 
@@ -125,6 +126,15 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<ExtensionGrant>(entity =>
+        {
+            entity.HasKey(g => g.Id);
+            entity.Property(g => g.TokenHash).IsRequired().HasMaxLength(64);
+            entity.Property(g => g.Owner).IsRequired().HasMaxLength(1000);
+            entity.HasIndex(g => g.TokenHash).IsUnique();
+            entity.HasIndex(g => g.ExpiresAtUtc);
+        });
 
         modelBuilder.Entity<SpeakerBookingToken>(entity =>
         {
