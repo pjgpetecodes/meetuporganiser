@@ -1,0 +1,46 @@
+@page "/extension/connect"
+@attribute [Authorize(Policy = "OrganizerOnly")]
+@using System.Security.Claims
+@inject ExtensionAccess Access
+@inject AuthenticationStateProvider Authentication
+
+<PageTitle>Connect browser extension - Meetup Organiser</PageTitle>
+<h1>Connect Meetup Organiser extension</h1>
+<p>Only approve a request you just started in your own Meetup Organiser extension.</p>
+<p>This grants read-only access to all events available to organisers, their generated publication text and images for 30 days. It cannot edit or publish events through this API. You can sign out in the extension or revoke all access here at any time.</p>
+@if (!string.IsNullOrWhiteSpace(Request))
+{
+    <p>Request: <code>@Request</code></p>
+    <button class="btn btn-primary" @onclick="ApproveAsync" disabled="@approved">Approve read-only access</button>
+}
+<button class="btn btn-outline-danger ms-2" @onclick="RevokeAsync">Revoke my extension access</button>
+@if (message is not null)
+{
+    <p role="status" class="mt-3">@message</p>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "request")] public string? Request { get; set; }
+    private bool approved;
+    private string? message;
+    private async Task<string?> OwnerAsync()
+    {
+        var user = (await Authentication.GetAuthenticationStateAsync()).User;
+        var claim = user.FindFirst(ClaimTypes.NameIdentifier) ?? user.FindFirst("oid") ?? user.FindFirst("preferred_username");
+        return claim is null ? null : $"{claim.Issuer}:{claim.Value}";
+    }
+    private async Task ApproveAsync()
+    {
+        var owner = await OwnerAsync();
+        approved = owner is not null && Request is not null && Access.Approve(Request, owner);
+        message = approved ? "Approved. Reopen the extension; it will finish connecting automatically."
+            : "Request expired, already approved or unavailable. Start a new connection from the extension.";
+    }
+    private async Task RevokeAsync()
+    {
+        var owner = await OwnerAsync();
+        if (owner is null) { message = "Your sign-in has no stable user identifier. Sign in again."; return; }
+        await Access.RevokeAsync(owner);
+        message = "Your extension grants have been revoked.";
+    }
+}

@@ -63,7 +63,158 @@ function closeEventActionPopovers() {
 document.addEventListener('scroll', closeEventActionPopovers, true);
 window.addEventListener('resize', closeEventActionPopovers);
 
+const richEditors = new WeakMap();
+
+function richMarkdown(root) {
+    const escape = text => text.replace(/\u00a0/g, ' ').replace(/([\\`*_[\]<>#])/g, '\\$1')
+        .replace(/^(\s*)([-+]|\d+[.)])(?=\s)/gm, '$1\\$2');
+    const wrap = (text, marker) => text.trim() ? text.replace(/^(\s*)([\s\S]*?)(\s*)$/, `$1${marker}$2${marker}$3`) : text;
+    function read(node) {
+        if (node.nodeType === Node.TEXT_NODE) return escape(node.textContent);
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+        const tag = node.tagName;
+        if (['SCRIPT', 'STYLE', 'IMG', 'IFRAME', 'OBJECT'].includes(tag)) return '';
+        if (tag === 'BR') return '\n';
+        if (tag === 'UL' || tag === 'OL') {
+            return '\n\n' + [...node.children].filter(child => child.tagName === 'LI')
+                .map((item, index) => (tag === 'OL' ? `${index + 1}. ` : '- ') +
+                    [...item.childNodes].map(read).join('').trim().replace(/\n/g, '\n    ')).join('\n') + '\n\n';
+        }
+        const text = [...node.childNodes].map(read).join('');
+        if (tag === 'STRONG' || tag === 'B') return wrap(text, '**');
+        if (tag === 'EM' || tag === 'I') return wrap(text, '_');
+        if (tag === 'A') {
+            const href = node.getAttribute('href') ?? '';
+            if (/^https?:\/\//i.test(href)) return `[${text}](${href.replace(/[()\\\s]/g,
+                char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)})`;
+            return text;
+        }
+        if (/^H[1-6]$/.test(tag)) return `\n\n# ${text.trim()}\n\n`;
+        if (tag === 'P' || tag === 'DIV') return `\n\n${text.trim()}\n\n`;
+        return text;
+    }
+    return [...root.childNodes].map(read).join('').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function richCommand(editor, command) {
+    const state = richEditors.get(editor);
+    if (!state) return;
+    editor.focus();
+    const selection = window.getSelection();
+    if (state.range && editor.contains(state.range.commonAncestorContainer)) {
+        selection.removeAllRanges();
+        selection.addRange(state.range);
+    }
+    const commands = { bold: 'bold', italic: 'italic', heading: 'formatBlock', bullets: 'insertUnorderedList',
+        numbers: 'insertOrderedList', undo: 'undo', redo: 'redo' };
+    let value = command === 'heading' ? 'h2' : null;
+    let nativeCommand = commands[command];
+    if (command === 'link') {
+        value = window.prompt('Link address (http:// or https://)', 'https://');
+        if (value === null) return;
+        let url;
+        try { url = new URL(value); } catch { state.error('Enter a valid http:// or https:// link.'); return; }
+        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) {
+            state.error('Links must use http:// or https:// without credentials.');
+            return;
+        }
+        value = url.href;
+        nativeCommand = 'createLink';
+    }
+    if (!nativeCommand) return;
+    if (!document.execCommand(nativeCommand, false, value)) {
+        state.error('The browser could not apply this formatting. Select text and try again.');
+        return;
+    }
+    state.changed();
+}
+
 window.meetupOrganiser = {
+    initRichEditor: function (editor, callback) {
+        if (richEditors.has(editor)) return;
+        const toolbar = editor.parentElement.querySelector('[role=toolbar]');
+        const notice = editor.parentElement.querySelector('.rich-save-error');
+        let queue = Promise.resolve();
+        const state = {
+            range: null,
+            changed: () => {
+                if (state.composing) return;
+                state.remember();
+                const markdown = richMarkdown(editor);
+                queue = queue.then(async () => {
+                    await callback.invokeMethodAsync('RichTextChanged', markdown);
+                    editor.removeAttribute('aria-invalid');
+                    notice.hidden = true;
+                }).catch(error => {
+                    console.error('Unable to save rich-text changes', error);
+                    editor.setAttribute('aria-invalid', 'true');
+                    notice.textContent = 'Changes could not reach the app. Copy your text before reloading or leaving this page.';
+                    notice.hidden = false;
+                });
+            },
+            error: message => callback.invokeMethodAsync('RichTextError', message),
+            remember: () => {
+                const selection = window.getSelection();
+                if (selection.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer))
+                    state.range = selection.getRangeAt(0).cloneRange();
+            },
+            keydown: event => {
+                if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+                const key = event.key.toLowerCase();
+                const command = event.shiftKey && ['7', '&'].includes(key) ? 'numbers'
+                    : event.shiftKey && ['8', '*'].includes(key) ? 'bullets'
+                    : !event.shiftKey ? { b: 'bold', i: 'italic', k: 'link' }[key] : null;
+                if (!command) return;
+                event.preventDefault();
+                state.remember();
+                richCommand(editor, command);
+            },
+            paste: event => {
+                event.preventDefault();
+                if (!document.execCommand('insertText', false, event.clipboardData.getData('text/plain')))
+                    state.error('Unable to paste. Try typing the content instead.');
+                else state.changed();
+            },
+            drop: event => { event.preventDefault(); state.error('Drag-and-drop is not supported. Paste text instead.'); },
+            pointerdown: event => {
+                if (event.target.closest('[data-rich-command]')) { state.remember(); event.preventDefault(); }
+            },
+            click: event => {
+                const button = event.target.closest('[data-rich-command]');
+                if (button) richCommand(editor, button.dataset.richCommand);
+            },
+            compositionstart: () => { state.composing = true; },
+            compositionend: () => { state.composing = false; state.changed(); }
+        };
+        richEditors.set(editor, state);
+        const listeners = [[editor, 'input', state.changed], [editor, 'keydown', state.keydown],
+            [editor, 'paste', state.paste], [editor, 'drop', state.drop],
+            [editor, 'keyup', state.remember], [editor, 'mouseup', state.remember],
+            [editor, 'compositionstart', state.compositionstart], [editor, 'compositionend', state.compositionend],
+            [toolbar, 'pointerdown', state.pointerdown], [toolbar, 'click', state.click]];
+        for (const [target, name, handler] of listeners) target.addEventListener(name, handler);
+        state.dispose = () => { for (const [target, name, handler] of listeners) target.removeEventListener(name, handler); };
+    },
+    setRichEditor: function (editor, html) {
+        editor.innerHTML = html;
+        const state = richEditors.get(editor);
+        if (state) state.range = null;
+    },
+    disposeRichEditor: function (editor) {
+        richEditors.get(editor)?.dispose();
+        richEditors.delete(editor);
+    },
+    copyMarkdown: async function (text, html) {
+        if (navigator.clipboard?.write && typeof ClipboardItem === 'function' && window.isSecureContext) {
+            await navigator.clipboard.write([new ClipboardItem({
+                'text/html': new Blob([html], { type: 'text/html' }),
+                'text/plain': new Blob([text], { type: 'text/plain' })
+            })]);
+            return 'html';
+        }
+        if (!await window.meetupOrganiser.copyText(text)) throw new Error('Clipboard access failed.');
+        return 'text';
+    },
     copyText: async function (text) {
         try {
             if (navigator.clipboard && window.isSecureContext) {

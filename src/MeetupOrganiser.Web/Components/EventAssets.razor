@@ -103,10 +103,41 @@
                     <p class="text-secondary small mb-2">
                         Copy the title and description into their matching fields on Meetup.com, or publish the event directly.
                     </p>
+                    @if (meetupManualUrl is not null)
+                    {
+                        <p><a href="@meetupManualUrl" target="_blank" rel="noopener noreferrer">Open Meetup target <span class="visually-hidden">(opens in a new tab)</span></a></p>
+                    }
+                    <div class="border rounded p-3 mb-3">
+                        <h6>Use the Meetup website (no API required)</h6>
+                        <p class="small">Prepare the edited content below, then open the Meetup Organiser extension on this tab to capture it.
+                            Open your group's create form or the existing event's edit form and use the extension again to fill supported fields.
+                            Review every field and save/publish on Meetup yourself. Unsupported fields are listed as manual steps.</p>
+                        <button type="button" class="btn btn-outline-primary btn-sm" @onclick="PrepareWebsiteHandoff" disabled="@(isGeneratingImage || previewImageBase64 is null)">
+                            @(string.IsNullOrWhiteSpace(selectedEvent.MeetupEventUrl) ? "Prepare new event for Meetup" : "Prepare update for Meetup")
+                        </button>
+                        @if (websiteHandoffJson is not null)
+                        {
+                            <textarea id="meetup-organiser-handoff" hidden readonly>@websiteHandoffJson</textarea>
+                            <p class="small mt-2 mb-0" role="status">Prepared for 30 minutes. Capture using the extension before changing tabs. This has not saved or published anything.</p>
+                        }
+                        <details class="mt-3">
+                            <summary>I have saved or published this event on Meetup</summary>
+                            <p class="small mt-2">Record your own confirmation, not a platform-verified result. Marking Published removes this date from new CFP bookings. Recording a draft will set this local event to Draft.</p>
+                            <label for="meetup-completed-url" class="form-label small">Actual Meetup event URL</label>
+                            <input id="meetup-completed-url" class="form-control form-control-sm" @bind="websiteCompletedUrl" placeholder="https://www.meetup.com/group/events/123/" />
+                            <label for="meetup-completed-status" class="form-label small mt-2">What did you save on Meetup?</label>
+                            <select id="meetup-completed-status" class="form-select form-select-sm" @bind="websiteCompletedStatus">
+                                <option value="@EventStatus.Draft">Saved draft</option>
+                                <option value="@EventStatus.Published">Published event</option>
+                            </select>
+                            <label class="small d-block my-2"><input type="checkbox" @bind="websiteOutcomeConfirmed" /> I checked the Meetup event and confirm this URL and status.</label>
+                            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="RecordWebsiteOutcomeAsync" disabled="@(!websiteOutcomeConfirmed || recordingWebsiteOutcome)">Record my confirmation</button>
+                        </details>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label small fw-semibold" for="meetup-title">Meetup.com Title</label>
                         <div class="input-group">
-                            <input id="meetup-title" type="text" class="form-control" @bind="meetupTitle" />
+                            <input id="meetup-title" type="text" class="form-control" @bind="meetupTitle" @bind:after="InvalidateWebsiteHandoff" />
                             <button type="button" class="btn btn-outline-primary" @onclick="CopyMeetupTitleAsync">
                                 <i class="bi bi-clipboard me-1"></i> Copy Title
                             </button>
@@ -114,7 +145,8 @@
                     </div>
                     <div class="mb-2">
                         <label class="form-label small fw-semibold" for="meetup-description">Meetup.com Description</label>
-                        <textarea id="meetup-description" class="form-control font-monospace small" rows="8" @bind="meetupMarkdownDescription"></textarea>
+                        <MeetupMarkdownEditor Id="meetup-description" @bind-Value="meetupMarkdownDescription" @bind-Value:after="InvalidateWebsiteHandoff" />
+                        <small class="text-secondary">Preview edits are used by Copy Description and Prepare for Meetup, not saved to the event. Direct API publication and extension API loading use saved event/template content.</small>
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
                         <span class="badge bg-light text-secondary border">Markdown Formatted</span>
@@ -273,6 +305,11 @@
     private bool isPublishingBlueSky;
 
     private string? statusMessage;
+    private string? meetupManualUrl;
+    private string? websiteHandoffJson;
+    private string websiteCompletedUrl = string.Empty;
+    private EventStatus websiteCompletedStatus = EventStatus.Draft;
+    private bool websiteOutcomeConfirmed, recordingWebsiteOutcome;
     private bool isError;
 
     protected override async Task OnParametersSetAsync()
@@ -280,6 +317,10 @@
         if (loadedEventId == EventId) return;
         loadedEventId = EventId;
         selectedEvent = null;
+        meetupManualUrl = null;
+        websiteHandoffJson = null;
+        websiteCompletedUrl = string.Empty;
+        websiteOutcomeConfirmed = false;
         previewImageBase64 = null;
 
         try
@@ -338,7 +379,85 @@
 
     private Task CopyMeetupTitleAsync() => CopyMeetupTextAsync(meetupTitle, "title");
 
-    private Task CopyMeetupDescriptionAsync() => CopyMeetupTextAsync(meetupMarkdownDescription, "description");
+    private void InvalidateWebsiteHandoff() => websiteHandoffJson = null;
+
+    private void PrepareWebsiteHandoff()
+    {
+        websiteHandoffJson = null;
+        if (selectedEvent is null) return;
+        try
+        {
+            var payload = MeetupWebsite.Prepare(selectedEvent, meetupTitle, meetupMarkdownDescription, previewImageBase64 ?? string.Empty);
+            websiteHandoffJson = System.Text.Json.JsonSerializer.Serialize(payload, System.Text.Json.JsonSerializerOptions.Web);
+            statusMessage = "Website content prepared. Capture it with the Meetup Organiser extension. No event has been saved or published.";
+            meetupManualUrl = payload.EventUrl ?? $"https://www.meetup.com/{payload.GroupSlug}/";
+            isError = false;
+        }
+        catch (ArgumentException ex)
+        {
+            statusMessage = ex.Message;
+            isError = true;
+        }
+    }
+
+    private async Task RecordWebsiteOutcomeAsync()
+    {
+        if (!websiteOutcomeConfirmed || recordingWebsiteOutcome) return;
+        recordingWebsiteOutcome = true;
+        try
+        {
+            if (websiteCompletedStatus is not (EventStatus.Draft or EventStatus.Published))
+                throw new ArgumentException("Choose Saved draft or Published event.");
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            var stored = await db.MeetupEvents
+                .Include(e => e.MeetupGroup).ThenInclude(g => g!.Sponsors)
+                .Include(e => e.Sessions).ThenInclude(s => s.Speaker)
+                .AsSplitQuery().SingleAsync(e => e.Id == EventId);
+            var (url, id) = MeetupWebsite.ValidateEventUrl(websiteCompletedUrl, stored.MeetupGroup?.MeetupUrlName ?? "", stored.MeetupEventUrl);
+            if (!string.IsNullOrWhiteSpace(stored.MeetupEventId) && stored.MeetupEventId != id)
+                throw new ArgumentException("This local event is already linked to a different Meetup event.");
+            stored.MeetupEventUrl = url;
+            stored.MeetupEventId = id;
+            stored.Status = websiteCompletedStatus;
+            await db.SaveChangesAsync();
+            selectedEvent = stored;
+            websiteHandoffJson = null;
+            websiteOutcomeConfirmed = false;
+            statusMessage = $"Recorded your confirmation: {websiteCompletedStatus}. This result was reported by you, not verified through Meetup.";
+            meetupManualUrl = url;
+            isError = false;
+        }
+        catch (ArgumentException ex)
+        {
+            statusMessage = ex.Message;
+            isError = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not record organiser-reported Meetup outcome for event {EventId}.", EventId);
+            statusMessage = "Unable to record your confirmation. Your Meetup event has not been changed; retry recording the result here.";
+            isError = true;
+        }
+        finally { recordingWebsiteOutcome = false; }
+    }
+
+    private async Task CopyMeetupDescriptionAsync()
+    {
+        try
+        {
+            var format = await JS.InvokeAsync<string>("meetupOrganiser.copyMarkdown",
+                meetupMarkdownDescription, MeetupMarkdown.ToHtml(meetupMarkdownDescription));
+            statusMessage = format == "html" ? "Formatted Meetup description copied to the clipboard."
+                : "Meetup description copied as Markdown text; formatted clipboard access is unavailable.";
+            isError = false;
+        }
+        catch (JSException ex)
+        {
+            Logger.LogError(ex, "Failed to copy Meetup description for event {EventId}.", EventId);
+            statusMessage = "Unable to copy the Meetup description. Check your browser's clipboard permissions.";
+            isError = true;
+        }
+    }
 
     private async Task CopyMeetupTextAsync(string? text, string field)
     {
@@ -414,8 +533,15 @@
         try
         {
             isPublishingMeetup = true;
+            meetupManualUrl = null;
             var result = await MeetupService.CreateEventAsync(selectedEvent);
-            if (result.Success)
+            if (result.RequiresManualAction)
+            {
+                statusMessage = "No event has been published. Meetup API access is not configured. Open your Meetup group, create the event, and copy the title and description below. Download the social PNG to upload as the event image.";
+                meetupManualUrl = result.EventUrl;
+                isError = false;
+            }
+            else if (result.Success)
             {
                 statusMessage = $"Published to Meetup! Event URL: {result.EventUrl}";
                 isError = false;
@@ -423,8 +549,14 @@
             else
             {
                 statusMessage = $"Meetup publication note: {result.ErrorMessage}";
-                isError = false; // Note: In sandbox / fallback mode this provides the link or feedback
+                isError = true;
             }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to publish Meetup event {EventId}.", EventId);
+            statusMessage = "Unable to confirm Meetup publication. Check your Meetup group before trying again to avoid creating a duplicate event.";
+            isError = true;
         }
         finally
         {

@@ -117,8 +117,9 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Event Description / Agenda</label>
-                        <textarea class="form-control" rows="14" placeholder="Overview of the event, talks, and timetable..." @bind="evt.Description"></textarea>
+                        <label for="event-description" class="form-label fw-semibold">Event Description / Agenda</label>
+                        <MeetupMarkdownEditor Id="event-description" Label="Event Description / Agenda" Rows="14"
+                                              Placeholder="Overview of the event, talks, and timetable..." @bind-Value="evt.Description" />
                     </div>
 
                     <div class="row g-3 mb-3">

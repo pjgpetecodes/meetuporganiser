@@ -116,8 +116,8 @@
                         <h5 class="fw-bold mb-0">Meetup Description Template</h5>
                     </div>
                     <div class="card-body p-4">
-                        <p class="small text-muted mb-3">Used to build the event description when you pick a talk, and when publishing to Meetup. Write plain text or Markdown and insert placeholders such as <code>{{EventTitle}}</code>; they are replaced for each event. Placeholders that are empty are removed.</p>
-                        <textarea class="form-control font-monospace small mb-2" rows="18" @bind="model.DescriptionTemplate"></textarea>
+                        <p class="small text-muted mb-3">Used to build the event description when you pick a talk, and when publishing to Meetup. Format your text with the toolbar or keyboard shortcuts and insert placeholders such as <code>{{EventTitle}}</code>; they are replaced for each event. Placeholders that are empty are removed.</p>
+                        <MeetupMarkdownEditor Label="Meetup description template" Rows="18" @bind-Value="model.DescriptionTemplate" />
                         <button type="button" class="btn btn-sm btn-outline-secondary mb-3" @onclick="ResetTemplate">Reset to default</button>
                         <div class="small fw-semibold mb-1">Available placeholders</div>
                         <ul class="small text-muted mb-0 column-count-2">

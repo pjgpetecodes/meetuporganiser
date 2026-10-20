@@ -52,6 +52,11 @@ public class CfpOrganiserRenderingTests
         Assert.Contains(">Mon</th>", html);
         Assert.Contains(">Sun</th>", html);
         Assert.DoesNotContain("datetime-local", html);
+        Assert.Contains("id=\"event-description\"", html);
+        Assert.Contains("contenteditable=\"true\"", html);
+        Assert.Contains("Event Description / Agenda formatting", html);
+        Assert.Contains("<strong>Formatted agenda</strong>", html);
+        Assert.Contains("Ctrl+B", html);
         Assert.Equal(isNew, html.Contains("Let the speaker choose an upcoming date", StringComparison.Ordinal));
         Assert.DoesNotContain("event editor could not be loaded", html);
         Assert.DoesNotMatch(@">\s*}\s*<", html);
@@ -107,7 +112,7 @@ public class CfpOrganiserRenderingTests
     {
         protected override Task OnInitializedAsync()
         {
-            SetField<EventEdit>(this, "evt", new MeetupEvent { Title = "Upcoming date" });
+            SetField<EventEdit>(this, "evt", new MeetupEvent { Title = "Upcoming date", Description = "**Formatted agenda**" });
             SetField<EventEdit>(this, "groups", new List<MeetupGroup>());
             SetField<EventEdit>(this, "speakers", new List<Speaker>());
             return Task.CompletedTask;

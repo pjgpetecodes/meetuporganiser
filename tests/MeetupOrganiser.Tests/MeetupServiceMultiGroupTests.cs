@@ -43,9 +43,11 @@ public class MeetupServiceMultiGroupTests
         var result = await service.CreateEventAsync(evt);
 
         // Assert
-        Assert.True(result.Success);
+        Assert.False(result.Success);
+        Assert.True(result.RequiresManualAction);
+        Assert.Null(result.EventId);
         Assert.NotNull(result.EventUrl);
-        Assert.Contains("azure-notts", result.EventUrl);
+        Assert.Equal("https://www.meetup.com/azure-notts/", result.EventUrl);
     }
 
     [Fact]
@@ -73,8 +75,61 @@ public class MeetupServiceMultiGroupTests
         var result = await service.CreateEventAsync(evt);
 
         // Assert
-        Assert.True(result.Success);
+        Assert.False(result.Success);
+        Assert.True(result.RequiresManualAction);
+        Assert.Null(result.EventId);
         Assert.NotNull(result.EventUrl);
-        Assert.Contains("global-fallback-slug", result.EventUrl);
+        Assert.Equal("https://www.meetup.com/global-fallback-slug/", result.EventUrl);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("../another-group")]
+    [InlineData("https://example.com")]
+    public async Task CreateEventAsync_RejectsMissingOrInvalidGroupRatherThanUsingAnotherGroup(string? slug)
+    {
+        var service = new MeetupService(new HttpClient(), CreateConfig(urlname: slug), NullLogger<MeetupService>.Instance);
+
+        var result = await service.CreateEventAsync(new MeetupEvent());
+
+        Assert.False(result.Success);
+        Assert.False(result.RequiresManualAction);
+        Assert.Null(result.EventUrl);
+        Assert.Contains("group URL name", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task CreateEventAsync_WithApiAccessStillReturnsConfirmedEvent()
+    {
+        using var handler = new CreationHandler();
+        using var client = new HttpClient(handler);
+        var service = new MeetupService(client, CreateConfig(apiKey: "test-access-token"), NullLogger<MeetupService>.Instance);
+
+        var result = await service.CreateEventAsync(new MeetupEvent { Title = "Community talk" });
+
+        Assert.True(result.Success);
+        Assert.False(result.RequiresManualAction);
+        Assert.Equal("123", result.EventId);
+        Assert.Equal("https://www.meetup.com/global-slug/events/123/", result.EventUrl);
+        Assert.Null(result.ErrorMessage);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    private sealed class CreationHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("https://api.meetup.com/gql-ext", request.RequestUri!.AbsoluteUri);
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"data":{"createEvent":{"event":{"id":"123","eventUrl":"https://www.meetup.com/global-slug/events/123/"},"errors":[]}}}""")
+            });
+        }
     }
 }
