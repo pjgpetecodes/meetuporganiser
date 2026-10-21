@@ -50,6 +50,360 @@ test("fills evidenced fields only; never saves or replaces venue directions", as
     assert.ok(result.manual.some(line => line.includes("image")));
   } finally { dom.window.close(); }
 });
+
+function speakerControls(window, enabled = true, labelled = true) {
+  const section = window.document.createElement("section");
+  section.innerHTML = `<div>${labelled ? '<button type="button" aria-label="Speakers">?</button>' : ""}
+    <button type="button" role="switch" aria-checked="${enabled}">Speakers switch</button></div>
+    <div id="speaker" ${enabled ? "" : "hidden"}>
+    <input id="speaker.name" maxlength="80">
+    <div id="speaker.bio"><div class="toastui-editor-main toastui-editor-ww-mode">
+      <div class="ProseMirror" contenteditable="true">Hidden Markdown bio</div>
+      <div class="ProseMirror toastui-editor-contents" contenteditable="true">Old bio</div>
+    </div></div>
+    ${["facebook", "instagram", "twitter", "linkedin", "other"].map(id =>
+      `<input id="speaker.${id}" maxlength="120" value="Old ${id}">`).join("")}
+    </div>`;
+  window.document.querySelector("form").append(section);
+  const toggle = section.querySelector('[role="switch"]');
+  let clicks = 0;
+  toggle.onclick = () => {
+    clicks++;
+    toggle.setAttribute("aria-checked", "true");
+    section.querySelector("#speaker").hidden = false;
+  };
+  const rects = window.HTMLElement.prototype.getClientRects;
+  window.HTMLElement.prototype.getClientRects = function () {
+    return this.closest("[hidden]") ? [] : rects.call(this);
+  };
+  return { section, toggle, clicks: () => clicks };
+}
+
+function dateControls(window, { month = "2027-01", selected = "2027-01-22", disabledDay = false,
+  stuck = false, revert = false, ambiguous = false, disabledNavigation = false } = {}) {
+  const trigger = window.document.createElement("button");
+  trigger.type = "button";
+  trigger.setAttribute("aria-label", "Open date picker");
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-controls", "calendar-test");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.textContent = "Date";
+  window.document.querySelector("form").append(trigger);
+  const dialog = window.document.createElement("div");
+  dialog.id = "calendar-test";
+  dialog.setAttribute("role", "dialog");
+  dialog.hidden = true;
+  window.document.body.append(dialog);
+  let navigations = 0, selections = 0, opens = 0;
+  let displayed = new Date(`${month}-01T00:00:00Z`);
+  function render() {
+    const heading = displayed.toLocaleDateString("en-US", { timeZone: "UTC", month: "long", year: "numeric" });
+    const prefix = displayed.toISOString().slice(0, 7);
+    const count = new Date(Date.UTC(displayed.getUTCFullYear(), displayed.getUTCMonth() + 1, 0)).getUTCDate();
+    dialog.innerHTML = `<button type="button" aria-label="Go to the Previous Month" ${disabledNavigation ? "disabled" : ""}>Previous</button>
+      <button type="button" aria-label="Go to the Next Month" ${disabledNavigation ? "disabled" : ""}>Next</button>
+      <table role="grid" aria-label="${heading}"><tbody><tr>${Array.from({ length: count }, (_, index) => {
+        const date = `${prefix}-${String(index + 1).padStart(2, "0")}`;
+        return `<td role="gridcell" data-day="${date}" ${selected === date ? 'aria-selected="true"' : ""}>
+          <button type="button" ${disabledDay ? 'disabled data-disabled="true"' : ""}>${index + 1}</button></td>`;
+      }).join("")}</tr></tbody></table>`;
+    for (const [index, button] of [...dialog.querySelectorAll(":scope > button")].entries()) {
+      button.onclick = () => {
+        navigations++;
+        if (stuck) return;
+        window.setTimeout(() => {
+          displayed.setUTCMonth(displayed.getUTCMonth() + (index === 0 ? -1 : 1));
+          render();
+        }, 5);
+      };
+    }
+    for (const button of dialog.querySelectorAll("td button"))
+      button.onclick = () => {
+        selections++;
+        if (!revert) selected = button.parentElement.dataset.day;
+        dialog.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
+      };
+    if (ambiguous) dialog.append(dialog.querySelector("table").cloneNode(true));
+  }
+  trigger.onclick = () => {
+    const opening = trigger.getAttribute("aria-expanded") !== "true";
+    trigger.setAttribute("aria-expanded", String(opening));
+    dialog.hidden = !opening;
+    if (opening) { opens++; render(); }
+  };
+  return { trigger, dialog, selected: () => selected, navigations: () => navigations,
+    selections: () => selections, opens: () => opens };
+}
+
+for (const month of ["2027-01", "2026-12", "2027-02"]) {
+  test(`selects and reopens calendar to verify full date from ${month}, then sets native time without saving`, async () => {
+    const { dom, window, run } = page();
+    const calendar = dateControls(window, { month });
+    let saves = 0;
+    window.document.getElementById("save").onclick = () => saves++;
+    try {
+      const result = await run();
+      assert.equal(result.errors.length, 0);
+      assert.equal(calendar.selected(), "2027-01-25");
+      assert.equal(calendar.navigations(), month === "2027-01" ? 0 : 1);
+      assert.equal(calendar.selections(), 1);
+      assert.equal(calendar.opens(), 2);
+      assert.equal(calendar.trigger.getAttribute("aria-expanded"), "false");
+      assert.ok(result.filled.includes("Start date: 2027-01-25"));
+      assert.equal(window.document.querySelector('[type="time"]').value, "18:30");
+      assert.equal(saves, 0);
+    } finally { dom.window.close(); }
+  });
+}
+
+test("already-selected day is verified without toggling it off, and absent schedule consent leaves calendar untouched", async () => {
+  const { dom, window, run } = page();
+  const calendar = dateControls(window, { selected: "2027-01-25" });
+  try {
+    await run(payload(), { replace: true, schedule: false });
+    assert.equal(calendar.opens(), 0);
+    assert.equal(window.document.querySelector('[type="time"]').value, "12:00");
+    const result = await run();
+    assert.equal(calendar.selections(), 0);
+    assert.ok(result.filled.includes("Start date: 2027-01-25"));
+  } finally { dom.window.close(); }
+});
+
+for (const options of [
+  { disabledDay: true }, { revert: true }, { ambiguous: true },
+  { month: "2026-12", stuck: true }, { month: "2026-12", disabledNavigation: true },
+  { month: "2010-01" }
+]) {
+  test(`calendar failure ${JSON.stringify(options)} reports unconfirmed date and preserves time`, async () => {
+    const { dom, window, run } = page();
+    const calendar = dateControls(window, options);
+    try {
+      const result = await run();
+      assert.ok(result.errors.some(line => line.startsWith("Start date:")));
+      assert.ok(!result.filled.some(line => line.startsWith("Start date:")));
+      assert.equal(calendar.selected(), "2027-01-22");
+      assert.equal(window.document.querySelector('[type="time"]').value, "12:00");
+    } finally { dom.window.close(); }
+  });
+}
+
+test("calendar controls are untouched on the wrong event and date selection preserves an already-open picker", async () => {
+  const wrong = page("/test-group/events/456/edit/");
+  const wrongCalendar = dateControls(wrong.window);
+  try {
+    await wrong.run();
+    assert.equal(wrongCalendar.opens(), 0);
+  } finally { wrong.dom.window.close(); }
+  const { dom, window, run } = page();
+  const calendar = dateControls(window);
+  calendar.trigger.click();
+  try {
+    const result = await run();
+    assert.equal(result.errors.length, 0);
+    assert.equal(calendar.trigger.getAttribute("aria-expanded"), "true");
+    assert.equal(calendar.selected(), "2027-01-25");
+  } finally { dom.window.close(); }
+});
+
+test("navigation while opening date picker stops further writes", async () => {
+  const { dom, window, run } = page();
+  const calendar = dateControls(window);
+  calendar.trigger.onclick = () => window.history.replaceState({}, "", "/test-group/events/456/edit/");
+  try {
+    const result = await run();
+    assert.ok(result.errors.some(line => line.includes("navigated")));
+    assert.equal(window.document.querySelector('[type="time"]').value, "12:00");
+    assert.equal(window.document.querySelector(".ProseMirror").textContent, "Old description");
+  } finally { dom.window.close(); }
+});
+
+const preparedSpeaker = { name: "Alex Example", bio: "**Alex** builds apps.", twitter: "@alex",
+  facebook: "https://facebook.com/alex", linkedIn: "https://linkedin.com/in/alex", website: "https://alex.example" };
+
+function joiningControls(window, initial = "In person", { locked = false, revert = false, duplicate = false } = {}) {
+  window.document.getElementById("onlineEventLink").remove();
+  const card = window.document.createElement("section");
+  const labels = ["In person", "Online", "Hybrid"];
+  let clicks = 0;
+  function render(selected) {
+    card.innerHTML = `<div class="format-tabs">${labels.map(label => `<div><div><span>${label}</span></div>
+      ${selected === label ? '<div class="bottom-0 bg-ds2-icon-fill-primary-enabled"></div>' : ""}</div>`).join("")}</div>
+      ${locked ? "<h2>Hybrid events cannot be modified</h2>" : ""}
+      ${selected !== "In person" ? '<input id="onlineEventLink" value="Old online link">' : ""}
+      ${selected !== "Online" ? '<div id="venue"><input placeholder="Search or add location..." value="Old venue"></div>' : ""}`;
+    for (const tab of card.querySelector(".format-tabs").children)
+      tab.onclick = () => {
+        clicks++;
+        if (!revert) window.setTimeout(() => render(tab.textContent.trim()), 25);
+      };
+  }
+  render(initial);
+  window.document.querySelector("form").append(card);
+  if (duplicate) window.document.querySelector("form").append(card.cloneNode(true));
+  return { card, clicks: () => clicks };
+}
+
+for (const [format, label, initial] of [
+  ["InPerson", "In person", "Online"], ["Online", "Online", "In person"], ["Hybrid", "Hybrid", "In person"]
+]) {
+  test(`selects ${format}, waits for rendered controls and fills only applicable joining details`, async () => {
+    const { dom, window, run } = page();
+    const controls = joiningControls(window, initial);
+    let saved = false;
+    window.document.getElementById("save").onclick = () => { saved = true; };
+    try {
+      const result = await run(payload({ format, onlineEventUrl: "https://zoom.us/saved", venueName: "Town Hall",
+        location: "Physical address" }));
+      assert.equal(result.errors.length, 0);
+      assert.equal(controls.clicks(), 1);
+      assert.ok(result.filled.includes(`Event format: ${label}`));
+      if (format !== "InPerson")
+        assert.equal(window.document.getElementById("onlineEventLink").value, "https://zoom.us/saved");
+      else assert.equal(window.document.getElementById("onlineEventLink"), null);
+      if (format !== "Online") {
+        assert.equal(window.document.querySelector("#venue input").value, "Town Hall");
+        assert.ok(result.manual.some(line => line.includes("does not select or save a venue")));
+      } else assert.equal(window.document.querySelector("#venue"), null);
+      assert.equal(window.document.getElementById("howToFindUs").value, "Do not replace arrival directions");
+      assert.equal(saved, false);
+    } finally { dom.window.close(); }
+  });
+}
+
+test("already-selected hybrid can fill details without switching despite immutable hybrid notice", async () => {
+  const { dom, window, run } = page();
+  const controls = joiningControls(window, "Hybrid", { locked: true });
+  try {
+    const result = await run();
+    assert.equal(result.errors.length, 0);
+    assert.equal(controls.clicks(), 0);
+    assert.equal(window.document.getElementById("onlineEventLink").value, payload().location);
+    assert.equal(window.document.querySelector("#venue input").value, "Hall");
+  } finally { dom.window.close(); }
+});
+
+for (const mode of ["locked", "revert", "duplicate"]) {
+  test(`format ${mode} reports failure without writing mismatched joining details`, async () => {
+    const { dom, window, run } = page();
+    const controls = joiningControls(window, "Hybrid", { [mode]: true });
+    try {
+      const result = await run(payload({ format: "Online" }));
+      assert.ok(result.errors.some(line => line.startsWith("Event format:")));
+      assert.equal(window.document.getElementById("onlineEventLink").value, "Old online link");
+      assert.equal(window.document.querySelector("#venue input").value, "Old venue");
+      assert.equal(controls.clicks(), mode === "revert" ? 1 : 0);
+    } finally { dom.window.close(); }
+  });
+}
+
+test("unsafe or missing online links preserve existing data; blank venue does not erase search", async () => {
+  const { dom, window, run } = page();
+  joiningControls(window, "Hybrid");
+  try {
+    const result = await run(payload({ onlineEventUrl: "javascript:alert(1)", location: "", venueName: "" }));
+    assert.equal(window.document.getElementById("onlineEventLink").value, "Old online link");
+    assert.equal(window.document.querySelector("#venue input").value, "Old venue");
+    assert.ok(result.manual.some(line => line.includes("no valid saved")));
+    assert.ok(result.manual.some(line => line.includes("no saved venue")));
+  } finally { dom.window.close(); }
+});
+
+test("enables evidenced Speakers switch and fills first speaker without mixing the description editors", async () => {
+  const { dom, window, run } = page(undefined, true);
+  const controls = speakerControls(window, false);
+  let saves = 0;
+  window.document.getElementById("save").onclick = () => saves++;
+  try {
+    const result = await run(payload({ speaker: preparedSpeaker, speakerCount: 2 }));
+    assert.equal(result.errors.length, 0);
+    assert.equal(controls.clicks(), 1);
+    assert.ok(result.filled.includes("Speakers enabled"));
+    assert.ok(result.filled.includes("Description (formatted rich text)"));
+    assert.ok(result.filled.includes("Speaker bio (formatted rich text)"));
+    assert.equal(window.document.getElementById("speaker.name").value, "Alex Example");
+    assert.equal(window.document.getElementById("speaker.twitter").value, "https://x.com/alex");
+    assert.equal(window.document.getElementById("speaker.linkedin").value, preparedSpeaker.linkedIn);
+    assert.equal(window.document.getElementById("speaker.facebook").value, preparedSpeaker.facebook);
+    assert.equal(window.document.getElementById("speaker.other").value, preparedSpeaker.website);
+    assert.equal(window.document.getElementById("speaker.instagram").value, "Old instagram");
+    assert.equal(controls.section.querySelector(".toastui-editor-contents strong").textContent, "Alex");
+    assert.equal(controls.section.querySelector('.ProseMirror:not(.toastui-editor-contents)').textContent, "Hidden Markdown bio");
+    assert.equal(window.document.querySelector("form > .ProseMirror strong").textContent, "New description");
+    assert.ok(result.manual.some(line => line.includes("second/remaining")));
+    assert.ok(result.manual.some(line => line.includes("Speaker photo")));
+    assert.equal(saves, 0);
+  } finally { dom.window.close(); }
+});
+
+test("fills already enabled speaker fields without toggling and refuses oversized or unsafe links", async () => {
+  const { dom, window, run } = page();
+  const controls = speakerControls(window, true, false);
+  try {
+    const result = await run(payload({ speaker: { ...preparedSpeaker, name: "A".repeat(81),
+      facebook: "javascript:alert(1)", website: "https://example.test/" + "x".repeat(121) }, speakerCount: 1 }));
+    assert.equal(controls.clicks(), 0);
+    assert.ok(result.errors.some(line => line.startsWith("Speaker name:")));
+    assert.ok(result.errors.some(line => line.startsWith("Speaker Other:")));
+    assert.ok(result.manual.some(line => line.startsWith("Speaker Facebook:")));
+    assert.equal(window.document.getElementById("speaker.facebook").value, "Old facebook");
+    assert.ok(result.filled.includes("Description (Markdown)"));
+    assert.ok(result.filled.includes("Speaker bio (formatted rich text)"));
+  } finally { dom.window.close(); }
+});
+
+test("unidentified switch stays untouched; absent prepared speaker leaves existing profile alone", async () => {
+  for (const data of [payload({ speaker: preparedSpeaker, speakerCount: 1 }), payload()]) {
+    const { dom, window, run } = page();
+    const controls = speakerControls(window, false, false);
+    try {
+      const result = await run(data);
+      assert.equal(controls.clicks(), 0);
+      assert.equal(window.document.getElementById("speaker.name").value, "");
+      if (data.speaker) assert.ok(result.manual.some(line => line.includes("enable the Speakers switch manually")));
+      assert.ok(result.filled.includes("Description (Markdown)"));
+    } finally { dom.window.close(); }
+  }
+});
+
+test("speaker values reverting after input are reported and missing bio does not erase existing content", async () => {
+  const { dom, window, run } = page();
+  const controls = speakerControls(window);
+  const name = window.document.getElementById("speaker.name");
+  name.addEventListener("input", () => { name.value = "Controlled old name"; });
+  try {
+    const result = await run(payload({ speaker: { ...preparedSpeaker, bio: "", linkedIn: null }, speakerCount: 1 }));
+    assert.ok(result.errors.some(line => line.startsWith("Speaker name: Meetup did not retain")));
+    assert.ok(!result.filled.includes("Speaker name"));
+    assert.ok(result.manual.some(line => line.includes("no prepared bio")));
+    assert.equal(controls.section.querySelector(".toastui-editor-contents").textContent, "Old bio");
+    assert.equal(window.document.getElementById("speaker.linkedin").value, "Old linkedin");
+    assert.ok(result.manual.some(line => line.startsWith("Speaker LinkedIn: no saved value")));
+  } finally { dom.window.close(); }
+});
+
+test("Other social accepts a Bluesky profile and missing speaker payload explains reloading content", async () => {
+  const { dom, window, run } = page();
+  speakerControls(window);
+  try {
+    const result = await run(payload({ speaker: { ...preparedSpeaker, website: "https://bsky.app/profile/alex.example" }, speakerCount: 1 }));
+    assert.equal(window.document.getElementById("speaker.other").value, "https://bsky.app/profile/alex.example");
+    assert.ok(result.filled.includes("Speaker Other"));
+    const old = await run(payload());
+    assert.ok(old.manual.some(line => line.includes("load/capture fresh event content")));
+  } finally { dom.window.close(); }
+});
+
+test("wrong target cannot toggle or write speaker fields", async () => {
+  const { dom, window, run } = page("/another-group/events/123/edit/");
+  const controls = speakerControls(window, false);
+  try {
+    const result = await run(payload({ speaker: preparedSpeaker, speakerCount: 1 }));
+    assert.ok(result.errors.length);
+    assert.equal(controls.clicks(), 0);
+    assert.equal(window.document.getElementById("speaker.name").value, "");
+  } finally { dom.window.close(); }
+});
 test("requires explicit replacement consent and correct target before modifying anything", async () => {
   for (const [path, consent] of [
     ["/test-group/events/456/edit/", { replace: true }],
@@ -248,6 +602,45 @@ test("photo action fails explicitly when chooser is closed without editing anyth
   try {
     const result = await run(payload(), { replace: true, photo: true });
     assert.ok(result.errors[0].includes("Replace"));
+    assert.equal(window.document.getElementById("title").value, "Old title");
+  } finally { dom.window.close(); }
+});
+test("speaker photo action supplies only speaker PNG to the open chooser and never applies it", async () => {
+  const { dom, window, run } = page();
+  speakerControls(window);
+  window.document.body.insertAdjacentHTML("beforeend", `<div role="dialog" data-slot="modal-content">
+    <div id="photo-uploader-drop-area"><button>Choose photo</button><input type="file" accept="image/*"></div>
+    <button id="apply-speaker">Apply</button></div>`);
+  const input = window.document.querySelector('input[type="file"]');
+  Object.defineProperty(input, "files", { writable: true, value: [] });
+  window.DataTransfer = class { files = []; items = { add: file => this.files.push(file) }; };
+  let applied = false, changed = 0;
+  window.document.getElementById("apply-speaker").onclick = () => { applied = true; };
+  input.addEventListener("change", () => changed++);
+  try {
+    const photoBase64 = window.btoa("\x89PNG\r\n\x1a\nSPEAKER");
+    const result = await run(payload({ speaker: { ...preparedSpeaker, photoBase64 }, speakerCount: 1 }),
+      { replace: true, speakerPhoto: true });
+    assert.equal(result.errors.length, 0);
+    assert.equal(input.files[0].name, "speaker-photo.png");
+    assert.equal(input.files[0].size, window.atob(photoBase64).length);
+    assert.equal(input.files[0].type, "image/png");
+    assert.equal(changed, 1);
+    assert.equal(applied, false);
+    assert.equal(window.document.getElementById("title").value, "Old title");
+    assert.ok(result.manual.some(line => line.includes("not as the event image")));
+  } finally { dom.window.close(); }
+});
+test("speaker photo action fails without a prepared photo or open chooser, never uses social image", async () => {
+  const { dom, window, run } = page();
+  speakerControls(window);
+  try {
+    const missing = await run(payload({ speaker: { ...preparedSpeaker, photoError: "Photo unavailable" }, speakerCount: 1 }),
+      { replace: true, speakerPhoto: true });
+    assert.match(missing.errors[0], /Photo unavailable/);
+    const closed = await run(payload({ speaker: { ...preparedSpeaker, photoBase64: payload().imageBase64 }, speakerCount: 1 }),
+      { replace: true, speakerPhoto: true });
+    assert.match(closed.errors[0], /Upload Photo/);
     assert.equal(window.document.getElementById("title").value, "Old title");
   } finally { dom.window.close(); }
 });

@@ -100,7 +100,7 @@
 
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Meetup Group</label>
-                        <select class="form-select" @bind="evt.MeetupGroupId">
+                        <select class="form-select" @bind="evt.MeetupGroupId" @bind:after="RefreshDescriptionAsync">
                             @if (groups != null)
                             {
                                 @foreach (var g in groups)
@@ -113,19 +113,20 @@
 
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Event Title</label>
-                        <input type="text" class="form-control" placeholder="e.g. Building Cloud-Native Apps with .NET 10" @bind="evt.Title" />
+                        <input type="text" class="form-control" placeholder="e.g. Building Cloud-Native Apps with .NET 10" @bind="evt.Title" @bind:after="RefreshDescriptionAsync" />
                     </div>
 
                     <div class="mb-3">
                         <label for="event-description" class="form-label fw-semibold">Event Description / Agenda</label>
                         <MeetupMarkdownEditor Id="event-description" Label="Event Description / Agenda" Rows="14"
                                               Placeholder="Overview of the event, talks, and timetable..." @bind-Value="evt.Description" />
+                        <small class="text-secondary">Automatically populated from speaker and talk details until you edit this description.</small>
                     </div>
 
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Date &amp; Start Time (UK)</label>
-                            <MeetupDateTimePicker @bind-Value="localEventDateTime" />
+                            <MeetupDateTimePicker @bind-Value="localEventDateTime" @bind-Value:after="RefreshDescriptionAsync" />
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Duration (Mins)</label>
@@ -189,7 +190,7 @@
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Location / Platform</label>
-                            <input type="text" class="form-control" placeholder="Zoom / Online / Nottingham, UK" @bind="evt.LocationOrPlatform" />
+                            <input type="text" class="form-control" placeholder="Zoom / Online / Nottingham, UK" @bind="evt.LocationOrPlatform" @bind:after="RefreshDescriptionAsync" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Bitly / Short URL</label>
@@ -233,10 +234,10 @@
                         </div>
                         <div class="row g-2">
                             <div class="col-md-8">
-                                <input type="text" class="form-control form-control-sm" placeholder="Zoom Join URL" @bind="evt.ZoomMeetingUrl" />
+                                <input type="text" class="form-control form-control-sm" placeholder="Zoom Join URL" @bind="evt.ZoomMeetingUrl" @bind:after="RefreshDescriptionAsync" />
                             </div>
                             <div class="col-md-4">
-                                <input type="text" class="form-control form-control-sm" placeholder="Passcode" @bind="evt.ZoomPasscode" />
+                                <input type="text" class="form-control form-control-sm" placeholder="Passcode" @bind="evt.ZoomPasscode" @bind:after="RefreshDescriptionAsync" />
                             </div>
                         </div>
                     </div>
@@ -327,7 +328,7 @@
                         <div class="mb-2">
                             <label class="form-label small fw-semibold">Select Speaker</label>
                             <SpeakerPicker Speakers="@(speakers ?? [])" SelectedSpeakerId="@SelectedSpeaker(session1SpeakerId)?.Id"
-                                           SelectedSpeakerIdChanged="id => session1SpeakerId = id?.ToString() ?? string.Empty" Disabled="isSaving" />
+                                           SelectedSpeakerIdChanged="id => OnSpeakerChangedAsync(0, id)" Disabled="isSaving" />
                             @if (SelectedSpeaker(session1SpeakerId) is { } sp1)
                             {
                                 <div class="mt-2"><SessionizeTalkPicker @key="sp1.Id" Speaker="sp1" OnPick="s => OnTalkPicked(session1, sp1, s)" OnNewTalk="() => OnNewTalk(session1)" /></div>
@@ -345,12 +346,13 @@
 
                         <div class="mb-2">
                             <label class="form-label small fw-semibold">Talk Title</label>
-                            <input type="text" class="form-control form-control-sm" placeholder="Title of talk..." @bind="session1.TalkTitle" @bind:after="RefreshEventTitle" />
+                            <input type="text" class="form-control form-control-sm" placeholder="Title of talk..." @bind="session1.TalkTitle" @bind:event="oninput" @bind:after="RefreshMeetupDetailsAsync" />
                         </div>
 
                         <div class="mb-1">
-                            <label class="form-label small fw-semibold">Talk Abstract</label>
-                            <textarea class="form-control form-control-sm" rows="3" placeholder="Talk abstract and description..." @bind="session1.TalkDescription"></textarea>
+                            <label for="talk-description-1" class="form-label small fw-semibold">Talk Abstract</label>
+                            <MeetupMarkdownEditor Id="talk-description-1" Label="First talk abstract" Rows="3"
+                                                  Placeholder="Talk abstract and description..." @bind-Value="session1.TalkDescription" @bind-Value:after="RefreshMeetupDetailsAsync" />
                         </div>
                     </div>
 
@@ -403,7 +405,7 @@
                             <div class="mb-2">
                                 <label class="form-label small fw-semibold">Select Speaker</label>
                                 <SpeakerPicker Speakers="@(speakers ?? [])" SelectedSpeakerId="@SelectedSpeaker(session2SpeakerId)?.Id"
-                                               SelectedSpeakerIdChanged="id => session2SpeakerId = id?.ToString() ?? string.Empty" Disabled="isSaving" />
+                                               SelectedSpeakerIdChanged="id => OnSpeakerChangedAsync(1, id)" Disabled="isSaving" />
                                 @if (SelectedSpeaker(session2SpeakerId) is { } sp2)
                                 {
                                     <div class="mt-2"><SessionizeTalkPicker @key="sp2.Id" Speaker="sp2" OnPick="s => OnTalkPicked(session2, sp2, s)" OnNewTalk="() => OnNewTalk(session2)" /></div>
@@ -421,12 +423,13 @@
 
                             <div class="mb-2">
                                 <label class="form-label small fw-semibold">Talk Title</label>
-                                <input type="text" class="form-control form-control-sm" placeholder="Title of talk..." @bind="session2.TalkTitle" @bind:after="RefreshEventTitle" />
+                                <input type="text" class="form-control form-control-sm" placeholder="Title of talk..." @bind="session2.TalkTitle" @bind:event="oninput" @bind:after="RefreshMeetupDetailsAsync" />
                             </div>
 
                             <div class="mb-1">
-                                <label class="form-label small fw-semibold">Talk Abstract</label>
-                                <textarea class="form-control form-control-sm" rows="3" placeholder="Talk abstract and description..." @bind="session2.TalkDescription"></textarea>
+                                <label for="talk-description-2" class="form-label small fw-semibold">Talk Abstract</label>
+                                <MeetupMarkdownEditor Id="talk-description-2" Label="Second talk abstract" Rows="3"
+                                                      Placeholder="Talk abstract and description..." @bind-Value="session2.TalkDescription" @bind-Value:after="RefreshMeetupDetailsAsync" />
                             </div>
                         </div>
                     }
@@ -536,6 +539,8 @@
     private bool isSaving;
     private bool isGeneratingZoom;
     private bool isSyncingSessionize;
+    private string? generatedDescription;
+    private int descriptionRevision;
 
     private DateTime? PreviewDateUtc => MeetupDateTime.TryToUtc(localEventDateTime, out var utc) ? utc : null;
 
@@ -572,13 +577,39 @@
         session.TalkTitle = talk.Title;
         session.TalkDescription = SpeakerBio.ResolveTalkDescription(talk.Summary, speaker);
 
+        await RefreshMeetupDetailsAsync();
+    }
+
+    private async Task OnSpeakerChangedAsync(int slot, Guid? id)
+    {
+        if (slot == 0) session1SpeakerId = id?.ToString() ?? "";
+        else session2SpeakerId = id?.ToString() ?? "";
+        await RefreshMeetupDetailsAsync();
+    }
+
+    private async Task RefreshMeetupDetailsAsync()
+    {
         RefreshEventTitle();
-        await PopulateEventDescriptionAsync();
+        await RefreshDescriptionAsync();
+    }
+
+    private async Task RefreshDescriptionAsync()
+    {
+        try { await PopulateEventDescriptionAsync(); }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to generate the event description.");
+            statusMessage = "Unable to update the event description. Your entered details have been kept; check the template sections and try again.";
+            isError = true;
+        }
     }
 
     private async Task PopulateEventDescriptionAsync()
     {
         if (evt == null) return;
+        var revision = ++descriptionRevision;
+        if (!string.IsNullOrWhiteSpace(evt.Description) && evt.Description != generatedDescription) return;
+        var previousDescription = evt.Description;
         if (PreviewDateUtc is not { } utc)
         {
             statusMessage = "Choose a valid UK start time before generating the description.";
@@ -601,7 +632,8 @@
 
         foreach (var (session, speakerId) in slots)
         {
-            if (string.IsNullOrWhiteSpace(session.TalkTitle)) continue;
+            if (string.IsNullOrWhiteSpace(session.TalkTitle) && SelectedSpeaker(speakerId) is null &&
+                string.IsNullOrWhiteSpace(session.TalkDescription)) continue;
             preview.Sessions.Add(new EventSpeakerSession
             {
                 OrderIndex = session.OrderIndex,
@@ -615,13 +647,18 @@
         var preference = !string.IsNullOrWhiteSpace(group?.BioPreference) ? group.BioPreference : await SettingsService.GetSettingAsync(SpeakerBio.SettingKey);
         var template = (!string.IsNullOrWhiteSpace(group?.MeetupDescriptionTemplate) ? group.MeetupDescriptionTemplate : null)
             ?? await SettingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey) ?? MeetupDescriptionTemplate.Default;
-        evt.Description = MeetupService.GenerateMeetupDescription(preview, preference, template);
+        await using var templateDb = await DbContextFactory.CreateDbContextAsync();
+        var sections = await templateDb.TemplateSections.AsNoTracking().ToListAsync();
+        var description = MeetupService.GenerateMeetupDescription(preview, preference, template, sections);
+        if (revision != descriptionRevision || evt.Description != previousDescription) return;
+        evt.Description = generatedDescription = description;
     }
 
-    private void OnNewTalk(EventSpeakerSession session)
+    private async Task OnNewTalk(EventSpeakerSession session)
     {
         session.TalkTitle = string.Empty;
         session.TalkDescription = string.Empty;
+        await RefreshMeetupDetailsAsync();
     }
 
     private void RefreshEventTitle()
@@ -649,6 +686,7 @@
             SessionizeSpeakerMapper.ApplyProfile(speaker, result.Profile, result.Fields);
             speaker.UpdatedAtUtc = DateTime.UtcNow;
             await DbContext.SaveChangesAsync();
+            await RefreshMeetupDetailsAsync();
             statusMessage = $"Updated {speaker.Name} from their Sessionize profile.";
             isError = false;
         }
@@ -734,9 +772,10 @@
         }
     }
 
-    private void SetSpeakerCount(int count)
+    private async Task SetSpeakerCount(int count)
     {
         speakerCount = count;
+        await RefreshMeetupDetailsAsync();
     }
 
     private Task SaveEventAsync() => PersistEventAsync(navigateIfNew: true);

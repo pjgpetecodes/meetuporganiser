@@ -71,7 +71,16 @@
                     <i class="bi bi-plug me-1"></i> API Integrations
                 </button>
             </li>
+            <li class="nav-item">
+                <button type="button" class="nav-link @(activeTab == "sections" ? "active" : "")" @onclick='() => activeTab = "sections"'>
+                    <i class="bi bi-braces me-1"></i> Template Sections
+                </button>
+            </li>
         </ul>
+
+        <div class="@(activeTab == "sections" ? "" : "d-none")">
+            <TemplateSectionEditor />
+        </div>
 
         <div class="@(activeTab == "general" ? "" : "d-none")">
         <div class="row g-4">
@@ -120,12 +129,7 @@
                         <MeetupMarkdownEditor Label="Meetup description template" Rows="18" @bind-Value="model.DescriptionTemplate" />
                         <button type="button" class="btn btn-sm btn-outline-secondary mb-3" @onclick="ResetTemplate">Reset to default</button>
                         <div class="small fw-semibold mb-1">Available placeholders</div>
-                        <ul class="small text-muted mb-0 column-count-2">
-                            @foreach (var (name, description) in MeetupDescriptionTemplate.Placeholders)
-                            {
-                                <li><code>@("{{" + name + "}}")</code> &ndash; @description</li>
-                            }
-                        </ul>
+                        <TemplateSectionTokens @key="activeTab" />
                     </div>
                 </div>
             </div>
@@ -512,7 +516,7 @@
             </div>
         </div>
 
-        <div class="mt-4 text-end">
+        <div class="mt-4 text-end @(activeTab == "sections" ? "d-none" : "")">
             <button class="btn btn-primary btn-lg px-4 d-inline-flex align-items-center gap-2 shadow-sm" @onclick="SaveAllAsync" disabled="@isSaving">
                 @if (isSaving)
                 {

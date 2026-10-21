@@ -67,7 +67,8 @@
             </table>
         </fieldset>
     </details>
-    <BankHolidayLegend Calendar="HolidayCalendar" Years="@(new[] { month.Year, Value.Year })" />
+    <BankHolidayLegend Calendar="HolidayCalendar" Years="@(new[] { month.Year, Value.Year })"
+                       ShowLegend="@(HolidayCalendar?.Find(DateOnly.FromDateTime(Value)) is not null)" />
     <label for="@timeId" class="form-label small mb-1">Start time (UK)</label>
     <input id="@timeId" type="time" class="form-control" value="@Value.ToString("HH:mm", CultureInfo.InvariantCulture)"
            @onchange="ChangeTimeAsync" disabled="@Disabled" required />

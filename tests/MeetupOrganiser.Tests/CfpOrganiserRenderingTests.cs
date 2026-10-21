@@ -57,6 +57,10 @@ public class CfpOrganiserRenderingTests
         Assert.Contains("Event Description / Agenda formatting", html);
         Assert.Contains("<strong>Formatted agenda</strong>", html);
         Assert.Contains("Ctrl+B", html);
+        Assert.Contains("id=\"talk-description-1\"", html);
+        Assert.Contains("id=\"talk-description-2\"", html);
+        Assert.Contains("First talk abstract formatting", html);
+        Assert.Contains("Second talk abstract formatting", html);
         Assert.Equal(isNew, html.Contains("Let the speaker choose an upcoming date", StringComparison.Ordinal));
         Assert.DoesNotContain("event editor could not be loaded", html);
         Assert.DoesNotMatch(@">\s*}\s*<", html);
@@ -115,6 +119,7 @@ public class CfpOrganiserRenderingTests
             SetField<EventEdit>(this, "evt", new MeetupEvent { Title = "Upcoming date", Description = "**Formatted agenda**" });
             SetField<EventEdit>(this, "groups", new List<MeetupGroup>());
             SetField<EventEdit>(this, "speakers", new List<Speaker>());
+            SetField<EventEdit>(this, "speakerCount", 2);
             return Task.CompletedTask;
         }
     }

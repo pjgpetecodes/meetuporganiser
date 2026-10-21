@@ -19,11 +19,13 @@ export async function requestApi(origin, path, options = {}) {
   if (response.status === 429) throw new Error("Too many connection requests. Wait a minute before retrying.");
   if (!response.ok) {
     let message = `API request failed (${response.status}) at ${new URL(path, origin).pathname}.`;
+    let hasDetails = false;
     try {
       const problem = await response.json();
       message = problem.error ?? problem.detail ?? problem.title ?? message;
+      hasDetails = Boolean(problem.error ?? problem.detail ?? problem.title);
     } catch { /* Keep the explicit HTTP error for non-JSON responses. */ }
-    if (response.status === 400) message += " Check the app is running the latest version and the app address/port is correct.";
+    if (response.status === 400 && !hasDetails) message += " Check the app is running the latest version and the app address/port is correct.";
     throw new Error(message);
   }
   if (response.status === 204) return null;

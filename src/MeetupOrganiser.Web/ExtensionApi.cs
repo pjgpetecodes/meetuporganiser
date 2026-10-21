@@ -1,6 +1,7 @@
 using MeetupOrganiser.Core.Interfaces;
 using MeetupOrganiser.Core.Services;
 using MeetupOrganiser.Infrastructure.Data;
+using MeetupOrganiser.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace MeetupOrganiser.Web;
@@ -68,9 +69,11 @@ public static class ExtensionApi
                 : await settings.GetSettingAsync(MeetupDescriptionTemplate.SettingKey, ct) ?? MeetupDescriptionTemplate.Default;
             try
             {
-                var description = meetup.GenerateMeetupDescription(e, bio, template);
+                var sections = await db.TemplateSections.AsNoTracking().ToListAsync(ct);
+                var description = meetup.GenerateMeetupDescription(e, bio, template, sections);
                 var image = await images.GenerateSocialCardAsync(e, ct);
-                return Results.Ok(MeetupWebsite.Prepare(e, e.Title, description, Convert.ToBase64String(image)));
+                var payload = MeetupWebsite.Prepare(e, e.Title, description, Convert.ToBase64String(image), bio);
+                return Results.Ok(await MeetupWebsiteSpeakerPhoto.AttachAsync(payload, e, ct));
             }
             catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
         });

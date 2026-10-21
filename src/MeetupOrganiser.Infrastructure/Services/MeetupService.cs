@@ -11,6 +11,8 @@ using MeetupOrganiser.Core.Interfaces;
 using MeetupOrganiser.Core.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using MeetupOrganiser.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace MeetupOrganiser.Infrastructure.Services;
 
@@ -23,6 +25,7 @@ public class MeetupService : IMeetupService
     private readonly IConfiguration _configuration;
     private readonly ILogger<MeetupService> _logger;
     private readonly IMeetupOAuthService? _meetupOAuthService;
+    private readonly IDbContextFactory<AppDbContext>? _dbFactory;
 
     public MeetupService(HttpClient httpClient, IConfiguration configuration, ILogger<MeetupService> logger)
         : this(httpClient, null, configuration, logger, null)
@@ -39,13 +42,15 @@ public class MeetupService : IMeetupService
         ISettingsService? settingsService,
         IConfiguration configuration,
         ILogger<MeetupService> logger,
-        IMeetupOAuthService? meetupOAuthService)
+        IMeetupOAuthService? meetupOAuthService,
+        IDbContextFactory<AppDbContext>? dbFactory = null)
     {
         _httpClient = httpClient;
         _settingsService = settingsService;
         _configuration = configuration;
         _logger = logger;
         _meetupOAuthService = meetupOAuthService;
+        _dbFactory = dbFactory;
     }
 
     public async Task<MeetupCreationResult> CreateEventAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default)
@@ -91,6 +96,12 @@ public class MeetupService : IMeetupService
               }
             }
             """;
+        List<TemplateSection>? sections = null;
+        if (_dbFactory is not null)
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
+            sections = await db.TemplateSections.AsNoTracking().ToListAsync(cancellationToken);
+        }
         var variables = new
         {
             input = new
@@ -104,7 +115,7 @@ public class MeetupService : IMeetupService
                         : _settingsService != null ? await _settingsService.GetSettingAsync(SpeakerBio.SettingKey, cancellationToken) : null,
                     (!string.IsNullOrWhiteSpace(group?.MeetupDescriptionTemplate) ? group.MeetupDescriptionTemplate : null)
                         ?? (_settingsService != null ? await _settingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey, cancellationToken) : null)
-                        ?? MeetupDescriptionTemplate.Default),
+                        ?? MeetupDescriptionTemplate.Default, sections),
                 startDateTime = DateTime.SpecifyKind(meetupEvent.EventDateTimeUtc, DateTimeKind.Utc).ToString("O"),
                 duration = XmlConvert.ToString(TimeSpan.FromMinutes(meetupEvent.DurationMinutes)),
                 publishStatus = "PUBLISHED",
@@ -897,21 +908,25 @@ public class MeetupService : IMeetupService
     private static string FormatApiError(string? apiError) =>
         string.IsNullOrWhiteSpace(apiError) ? string.Empty : $" Meetup API fallback reason: {apiError}";
 
-    public string GenerateMeetupDescription(MeetupEvent meetupEvent, string? bioPreference = null, string? template = null)
+    public string GenerateMeetupDescription(MeetupEvent meetupEvent, string? bioPreference = null, string? template = null,
+        IReadOnlyList<TemplateSection>? sections = null)
     {
         // A description populated from the template in the event editor is used as-is.
         var savedDescription = meetupEvent.Description?.TrimStart();
         var firstLine = savedDescription?.Split('\n', 2)[0].TrimEnd('\r').Trim();
         var boldTitle = firstLine is not null &&
             (firstLine == $"**{meetupEvent.Title}**" || firstLine == $"__{meetupEvent.Title}__");
-        if (savedDescription?.StartsWith("# ", StringComparison.Ordinal) == true || boldTitle)
+        var headingLength = firstLine?.TakeWhile(c => c == '#').Count() ?? 0;
+        var startsWithHeading = headingLength is >= 1 and <= 6 &&
+            firstLine!.Length > headingLength && firstLine[headingLength] is ' ' or '\t';
+        if (startsWithHeading || boldTitle)
         {
             return meetupEvent.Description;
         }
 
         if (!string.IsNullOrWhiteSpace(template))
         {
-            return RenderTemplate(meetupEvent, bioPreference, template);
+            return RenderTemplate(meetupEvent, bioPreference, template, sections);
         }
 
         var sb = new StringBuilder();
@@ -1010,7 +1025,8 @@ public class MeetupService : IMeetupService
         return sb.ToString();
     }
 
-    private static string RenderTemplate(MeetupEvent meetupEvent, string? bioPreference, string template)
+    private static string RenderTemplate(MeetupEvent meetupEvent, string? bioPreference, string template,
+        IReadOnlyList<TemplateSection>? sections)
     {
         var group = meetupEvent.MeetupGroup;
         var sessions = meetupEvent.Sessions.OrderBy(s => s.OrderIndex).ToList();
@@ -1023,56 +1039,7 @@ public class MeetupService : IMeetupService
             .DistinctBy(speaker => speaker.Id)
             .ToList();
         var first = sessions.FirstOrDefault();
-
-        var talks = new StringBuilder();
-        var talkDescriptions = new StringBuilder();
-        foreach (var session in sessions)
-        {
-            var description = SpeakerBio.ResolveTalkDescription(session.TalkDescription, session.Speaker, bioPreference);
-            talks.AppendLine($"{session.TalkTitle} - {session.Speaker?.Name ?? "Guest Speaker"}").AppendLine();
-            if (!string.IsNullOrWhiteSpace(description))
-            {
-                talks.AppendLine(description).AppendLine();
-                talkDescriptions.AppendLine(description).AppendLine();
-            }
-        }
-
-        var speakerSection = new StringBuilder();
-        if (speakers.Count > 0)
-        {
-            speakerSection.AppendLine(speakers.Count == 1 ? "Our Speaker:" : "Our Speakers:").AppendLine();
-            foreach (var speaker in speakers)
-            {
-                speakerSection.AppendLine($"{speaker.Name}:").AppendLine();
-                var bio = SpeakerBio.Resolve(speaker, bioPreference);
-                if (!string.IsNullOrWhiteSpace(bio))
-                {
-                    speakerSection.AppendLine(bio).AppendLine();
-                }
-
-                var links = GetSpeakerContactLinks(speaker).ToList();
-                if (links.Count > 0)
-                {
-                    var firstName = speaker.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? speaker.Name;
-                    speakerSection.AppendLine($"How to find {firstName}:").AppendLine();
-                    foreach (var (label, url) in links)
-                    {
-                        speakerSection.AppendLine($"{label}: {url}").AppendLine();
-                    }
-                }
-            }
-        }
-
-        var zoomSection = new StringBuilder();
-        if (!string.IsNullOrWhiteSpace(meetupEvent.ZoomMeetingUrl))
-        {
-            zoomSection.AppendLine($"Online on Zoom: {meetupEvent.ZoomMeetingUrl}");
-            if (!string.IsNullOrWhiteSpace(meetupEvent.ZoomPasscode))
-            {
-                zoomSection.AppendLine($"Passcode: {meetupEvent.ZoomPasscode}");
-            }
-        }
-
+        sections ??= MeetupDescriptionTemplate.CreateDefaultSections();
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["EventTitle"] = meetupEvent.Title,
@@ -1080,22 +1047,85 @@ public class MeetupService : IMeetupService
             ["EventTime"] = ukTime.ToString("h:mm tt"),
             ["EventDescription"] = meetupEvent.Description?.Trim() ?? string.Empty,
             ["TalkTitle"] = first?.TalkTitle ?? string.Empty,
+            ["TalkDescription"] = SpeakerBio.ResolveTalkDescription(first?.TalkDescription, first?.Speaker, bioPreference) ?? string.Empty,
             ["SpeakerName"] = string.Join(" and ", speakers.Select(s => s.Name)),
-            ["Talks"] = talks.ToString().Trim(),
-            ["TalkDescriptions"] = talkDescriptions.ToString().Trim(),
-            ["SpeakerSection"] = speakerSection.ToString().Trim(),
+            ["SpeakerBio"] = speakers.FirstOrDefault() is { } firstSpeaker ? SpeakerBio.Resolve(firstSpeaker, bioPreference) ?? "" : "",
+            ["SpeakerFirstName"] = FirstName(speakers.FirstOrDefault()?.Name ?? ""),
+            ["ContactUrl"] = "",
+            ["SpeakerLinks"] = "",
+            ["SpeakerContacts"] = "",
+            ["Talks"] = "",
+            ["TalkDescriptions"] = "",
+            ["SpeakerSection"] = "",
             ["Location"] = !string.IsNullOrWhiteSpace(meetupEvent.LocationOrPlatform)
                 ? meetupEvent.LocationOrPlatform
-                : group?.DefaultLocation ?? "Online on Zoom",
+                : group?.DefaultLocation ?? "",
             ["ZoomUrl"] = meetupEvent.ZoomMeetingUrl ?? string.Empty,
             ["ZoomPasscode"] = meetupEvent.ZoomPasscode ?? string.Empty,
-            ["ZoomSection"] = zoomSection.ToString().Trim(),
-            ["GroupName"] = group?.Name ?? ".NET Notts",
+            ["ZoomSection"] = "",
+            ["GroupName"] = group?.Name ?? "",
             ["WebsiteUrl"] = group?.WebsiteUrl ?? string.Empty,
             ["Hashtags"] = group?.DefaultHashtags ?? string.Empty
         };
 
-        return MeetupDescriptionTemplate.Render(template, values);
+        string Block(string name, IReadOnlyDictionary<string, string> context) =>
+            MeetupDescriptionTemplate.Render("{{" + name + "}}", context, sections).TrimEnd('\n');
+        static string FirstName(string name) =>
+            name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+        static string Join(IEnumerable<string> blocks) => string.Join("\n\n", blocks.Where(b => !string.IsNullOrWhiteSpace(b)));
+        if (string.IsNullOrWhiteSpace(values["Location"])) values["Location"] = Block("DefaultLocation", values);
+        if (group is null) values["GroupName"] = Block("DefaultGroupName", values);
+
+        var talks = new List<string>();
+        var talkDescriptions = new List<string>();
+        foreach (var session in sessions)
+        {
+            var context = new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase)
+            {
+                ["TalkTitle"] = session.TalkTitle ?? "",
+                ["TalkDescription"] = SpeakerBio.ResolveTalkDescription(session.TalkDescription, session.Speaker, bioPreference) ?? "",
+                ["SpeakerName"] = session.Speaker?.Name ?? Block("GuestSpeakerName", values)
+            };
+            talks.Add(Block("TalkBlock", context));
+            if (!string.IsNullOrWhiteSpace(context["TalkDescription"]))
+                talkDescriptions.Add(Block("TalkDescriptionBlock", context));
+        }
+        values["Talks"] = Join(talks);
+        values["TalkDescriptions"] = Join(talkDescriptions);
+
+        var speakerBlocks = new List<string>();
+        foreach (var speaker in speakers)
+        {
+            var context = new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase)
+            {
+                ["SpeakerName"] = speaker.Name,
+                ["SpeakerFirstName"] = FirstName(speaker.Name),
+                ["SpeakerBio"] = SpeakerBio.Resolve(speaker, bioPreference) ?? "",
+                ["SpeakerLinks"] = "",
+                ["SpeakerContacts"] = ""
+            };
+            var links = GetSpeakerContactLinks(speaker).ToList();
+            context["SpeakerLinks"] = Join(links.Select(link =>
+            {
+                var linkContext = new Dictionary<string, string>(context, StringComparer.OrdinalIgnoreCase) { ["ContactUrl"] = link.Url };
+                return Block(link.Label.Replace(" ", "", StringComparison.Ordinal) + "Link", linkContext);
+            }));
+            if (links.Count > 0)
+                context["SpeakerContacts"] = Block("SpeakerContactsBlock", context);
+            speakerBlocks.Add(Block("SpeakerBlock", context));
+            if (speaker.Id == speakers[0].Id)
+            {
+                values["SpeakerLinks"] = context["SpeakerLinks"];
+                values["SpeakerContacts"] = context["SpeakerContacts"];
+            }
+        }
+        if (speakers.Count > 0)
+            values["SpeakerSection"] = Join([Block(speakers.Count == 1 ? "SingleSpeakerHeading" : "MultipleSpeakersHeading", values), .. speakerBlocks]);
+        if (!string.IsNullOrWhiteSpace(meetupEvent.ZoomMeetingUrl))
+            values["ZoomSection"] = Block("ZoomLinkBlock", values) +
+                (!string.IsNullOrWhiteSpace(meetupEvent.ZoomPasscode) ? "\n" + Block("ZoomPasscodeBlock", values) : "");
+
+        return MeetupDescriptionTemplate.Render(template, values, sections);
     }
 
     private async Task<JsonDocument> SendGraphQlAsync(

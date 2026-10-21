@@ -22,6 +22,7 @@ public class GroupEditRenderingTests
     {
         using var services = new ServiceCollection().AddLogging()
             .AddDbContextFactory<AppDbContext>(options => options.UseInMemoryDatabase(Guid.NewGuid().ToString()))
+            .AddScoped<ITemplateSectionService, TemplateSectionService>()
             .AddSingleton(DispatchProxy.Create<IPptxPreviewService, CfpOrganiserRenderingTests.UnusedService>())
             .AddSingleton(DispatchProxy.Create<IBlobStorageService, CfpOrganiserRenderingTests.UnusedService>())
             .AddSingleton(DispatchProxy.Create<IJSRuntime, CfpOrganiserRenderingTests.UnusedService>())

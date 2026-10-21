@@ -112,7 +112,7 @@
                         <p class="small">Prepare the edited content below, then open the Meetup Organiser extension on this tab to capture it.
                             Open your group's create form or the existing event's edit form and use the extension again to fill supported fields.
                             Review every field and save/publish on Meetup yourself. Unsupported fields are listed as manual steps.</p>
-                        <button type="button" class="btn btn-outline-primary btn-sm" @onclick="PrepareWebsiteHandoff" disabled="@(isGeneratingImage || previewImageBase64 is null)">
+                        <button type="button" class="btn btn-outline-primary btn-sm" @onclick="PrepareWebsiteHandoff" disabled="@(isPreparingWebsite || isGeneratingImage || previewImageBase64 is null)">
                             @(string.IsNullOrWhiteSpace(selectedEvent.MeetupEventUrl) ? "Prepare new event for Meetup" : "Prepare update for Meetup")
                         </button>
                         @if (websiteHandoffJson is not null)
@@ -307,6 +307,8 @@
     private string? statusMessage;
     private string? meetupManualUrl;
     private string? websiteHandoffJson;
+    private bool isPreparingWebsite;
+    private long websiteRevision;
     private string websiteCompletedUrl = string.Empty;
     private EventStatus websiteCompletedStatus = EventStatus.Draft;
     private bool websiteOutcomeConfirmed, recordingWebsiteOutcome;
@@ -318,7 +320,7 @@
         loadedEventId = EventId;
         selectedEvent = null;
         meetupManualUrl = null;
-        websiteHandoffJson = null;
+        InvalidateWebsiteHandoff();
         websiteCompletedUrl = string.Empty;
         websiteOutcomeConfirmed = false;
         previewImageBase64 = null;
@@ -349,6 +351,8 @@
         }
     }
 
+    private string? websiteBioPreference;
+
     private async Task LoadEventDataAsync()
     {
         try
@@ -358,9 +362,12 @@
             meetupTitle = selectedEvent.Title;
             var eventGroup = selectedEvent.MeetupGroup;
             var bioPreference = !string.IsNullOrWhiteSpace(eventGroup?.BioPreference) ? eventGroup.BioPreference : await SettingsService.GetSettingAsync(SpeakerBio.SettingKey);
+            websiteBioPreference = bioPreference;
             var template = (!string.IsNullOrWhiteSpace(eventGroup?.MeetupDescriptionTemplate) ? eventGroup.MeetupDescriptionTemplate : null)
                 ?? await SettingsService.GetSettingAsync(MeetupDescriptionTemplate.SettingKey) ?? MeetupDescriptionTemplate.Default;
-            meetupMarkdownDescription = MeetupService.GenerateMeetupDescription(selectedEvent, bioPreference, template);
+            await using var templateDb = await DbContextFactory.CreateDbContextAsync();
+            var sections = await templateDb.TemplateSections.AsNoTracking().ToListAsync();
+            meetupMarkdownDescription = MeetupService.GenerateMeetupDescription(selectedEvent, bioPreference, template, sections);
             linkedInText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "LinkedIn");
             twitterText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "Twitter");
             blueSkyText = SocialMediaService.GeneratePlatformPostText(selectedEvent, "BlueSky");
@@ -379,15 +386,30 @@
 
     private Task CopyMeetupTitleAsync() => CopyMeetupTextAsync(meetupTitle, "title");
 
-    private void InvalidateWebsiteHandoff() => websiteHandoffJson = null;
-
-    private void PrepareWebsiteHandoff()
+    private void InvalidateWebsiteHandoff()
     {
         websiteHandoffJson = null;
-        if (selectedEvent is null) return;
+        websiteRevision++;
+    }
+
+    private async Task PrepareWebsiteHandoff()
+    {
+        if (selectedEvent is null || isPreparingWebsite) return;
+        InvalidateWebsiteHandoff();
+        isPreparingWebsite = true;
+        var revision = websiteRevision;
+        var preparingEvent = selectedEvent;
+        var preparingImage = previewImageBase64;
         try
         {
-            var payload = MeetupWebsite.Prepare(selectedEvent, meetupTitle, meetupMarkdownDescription, previewImageBase64 ?? string.Empty);
+            var payload = MeetupWebsite.Prepare(preparingEvent, meetupTitle, meetupMarkdownDescription, preparingImage ?? string.Empty, websiteBioPreference);
+            payload = await MeetupOrganiser.Infrastructure.Services.MeetupWebsiteSpeakerPhoto.AttachAsync(payload, preparingEvent);
+            if (revision != websiteRevision || selectedEvent != preparingEvent || previewImageBase64 != preparingImage)
+            {
+                statusMessage = "The preview changed while preparing website content. Prepare it again to capture your latest edits.";
+                isError = true;
+                return;
+            }
             websiteHandoffJson = System.Text.Json.JsonSerializer.Serialize(payload, System.Text.Json.JsonSerializerOptions.Web);
             statusMessage = "Website content prepared. Capture it with the Meetup Organiser extension. No event has been saved or published.";
             meetupManualUrl = payload.EventUrl ?? $"https://www.meetup.com/{payload.GroupSlug}/";
@@ -397,6 +419,16 @@
         {
             statusMessage = ex.Message;
             isError = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to prepare Meetup website content for {EventId}.", EventId);
+            statusMessage = "Unable to prepare website content. Your event details have not been changed. Reload and try again.";
+            isError = true;
+        }
+        finally
+        {
+            isPreparingWebsite = false;
         }
     }
 

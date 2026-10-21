@@ -4,7 +4,9 @@ import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 
 async function editor() {
-  const dom = new JSDOM(`<div><div role="toolbar"><button data-rich-command="bold">Bold</button></div>
+  const dom = new JSDOM(`<div><div role="toolbar"><button data-rich-command="bold">Bold</button>
+    <select data-rich-heading><option value="">Heading</option><option value="p">Normal text</option>
+    ${[1,2,3,4,5,6].map(level => `<option value="h${level}">Heading ${level}</option>`).join("")}</select></div>
     <div contenteditable="true" tabindex="0"></div><p class="rich-save-error" hidden></p></div>`, { runScripts: "outside-only" });
   dom.window.eval(await readFile(new URL("../../../src/MeetupOrganiser.Web/wwwroot/site.js", import.meta.url), "utf8"));
   const area = dom.window.document.querySelector("[contenteditable]");
@@ -27,6 +29,38 @@ test("rich text serializes formatting, lists, links and placeholders without raw
     area.dispatchEvent(new dom.window.Event("input"));
     await drain();
     assert.equal(changes.at(-1)[1], "\\*literal\\* \\#heading \\[not a link\\]");
+    area.innerHTML = "<p><strong>{{Welcome_Section}}</strong> literal_name</p>";
+    area.dispatchEvent(new dom.window.Event("input"));
+    await drain();
+    assert.equal(changes.at(-1)[1], "**{{Welcome_Section}}** literal\\_name");
+  } finally { dom.window.close(); }
+});
+
+test("heading selector restores selection, applies every level and saves matching Markdown", async () => {
+  const { dom, area, changes, drain } = await editor();
+  try {
+    const select = dom.window.document.querySelector("[data-rich-heading]");
+    for (const tag of ["h1", "h2", "h3", "h4", "h5", "h6", "p"]) {
+      area.textContent = "Title";
+      const range = dom.window.document.createRange();
+      range.selectNodeContents(area);
+      dom.window.getSelection().removeAllRanges();
+      dom.window.getSelection().addRange(range);
+      select.dispatchEvent(new dom.window.Event("pointerdown", { bubbles: true }));
+      dom.window.getSelection().removeAllRanges();
+      dom.window.document.execCommand = (command, unused, value) => {
+        assert.equal(command, "formatBlock");
+        assert.equal(value, tag);
+        assert.equal(dom.window.getSelection().toString(), "Title");
+        area.innerHTML = `<${value}>Title</${value}>`;
+        return true;
+      };
+      select.value = tag;
+      select.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+      await drain();
+      assert.equal(changes.at(-1)[1], tag === "p" ? "Title" : "#".repeat(Number(tag[1])) + " Title");
+      assert.equal(select.value, "");
+    }
   } finally { dom.window.close(); }
 });
 

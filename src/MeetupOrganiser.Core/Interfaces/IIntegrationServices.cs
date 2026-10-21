@@ -25,7 +25,8 @@ public interface IMeetupService
     Task<MeetupCreationResult> CreateEventAsync(MeetupEvent meetupEvent, CancellationToken cancellationToken = default);
     Task<MeetupEventImportResult> ImportPastEventsAsync(string urlname, CancellationToken cancellationToken = default);
     Task<int?> GetAttendeeCountAsync(string eventUrl, CancellationToken cancellationToken = default);
-    string GenerateMeetupDescription(MeetupEvent meetupEvent, string? bioPreference = null, string? template = null);
+    string GenerateMeetupDescription(MeetupEvent meetupEvent, string? bioPreference = null, string? template = null,
+        IReadOnlyList<TemplateSection>? sections = null);
 }
 
 public interface IMeetupOAuthService

@@ -66,7 +66,9 @@ window.addEventListener('resize', closeEventActionPopovers);
 const richEditors = new WeakMap();
 
 function richMarkdown(root) {
-    const escape = text => text.replace(/\u00a0/g, ' ').replace(/([\\`*_[\]<>#])/g, '\\$1')
+    const escape = text => text.replace(/\u00a0/g, ' ')
+        .replace(/\{\{\s*[A-Za-z][A-Za-z0-9_]{0,63}\s*\}\}|([\\`*_[\]<>#])/g,
+            (match, character) => character ? '\\' + character : match)
         .replace(/^(\s*)([-+]|\d+[.)])(?=\s)/gm, '$1\\$2');
     const wrap = (text, marker) => text.trim() ? text.replace(/^(\s*)([\s\S]*?)(\s*)$/, `$1${marker}$2${marker}$3`) : text;
     function read(node) {
@@ -89,14 +91,14 @@ function richMarkdown(root) {
                 char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)})`;
             return text;
         }
-        if (/^H[1-6]$/.test(tag)) return `\n\n# ${text.trim()}\n\n`;
+        if (/^H[1-6]$/.test(tag)) return `\n\n${'#'.repeat(Number(tag[1]))} ${text.trim()}\n\n`;
         if (tag === 'P' || tag === 'DIV') return `\n\n${text.trim()}\n\n`;
         return text;
     }
     return [...root.childNodes].map(read).join('').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function richCommand(editor, command) {
+function richCommand(editor, command, heading = 'h2') {
     const state = richEditors.get(editor);
     if (!state) return;
     editor.focus();
@@ -107,7 +109,8 @@ function richCommand(editor, command) {
     }
     const commands = { bold: 'bold', italic: 'italic', heading: 'formatBlock', bullets: 'insertUnorderedList',
         numbers: 'insertOrderedList', undo: 'undo', redo: 'redo' };
-    let value = command === 'heading' ? 'h2' : null;
+    if (command === 'heading' && !/^(h[1-6]|p)$/.test(heading)) return;
+    let value = command === 'heading' ? heading : null;
     let nativeCommand = commands[command];
     if (command === 'link') {
         value = window.prompt('Link address (http:// or https://)', 'https://');
@@ -178,6 +181,13 @@ window.meetupOrganiser = {
             drop: event => { event.preventDefault(); state.error('Drag-and-drop is not supported. Paste text instead.'); },
             pointerdown: event => {
                 if (event.target.closest('[data-rich-command]')) { state.remember(); event.preventDefault(); }
+                else if (event.target.closest('[data-rich-heading]')) state.remember();
+            },
+            change: event => {
+                if (event.target.matches('[data-rich-heading]')) {
+                    richCommand(editor, 'heading', event.target.value);
+                    event.target.value = '';
+                }
             },
             click: event => {
                 const button = event.target.closest('[data-rich-command]');
@@ -191,7 +201,8 @@ window.meetupOrganiser = {
             [editor, 'paste', state.paste], [editor, 'drop', state.drop],
             [editor, 'keyup', state.remember], [editor, 'mouseup', state.remember],
             [editor, 'compositionstart', state.compositionstart], [editor, 'compositionend', state.compositionend],
-            [toolbar, 'pointerdown', state.pointerdown], [toolbar, 'click', state.click]];
+            [toolbar, 'pointerdown', state.pointerdown], [toolbar, 'click', state.click],
+            [toolbar, 'change', state.change]];
         for (const [target, name, handler] of listeners) target.addEventListener(name, handler);
         state.dispose = () => { for (const [target, name, handler] of listeners) target.removeEventListener(name, handler); };
     },

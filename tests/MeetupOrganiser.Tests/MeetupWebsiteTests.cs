@@ -36,6 +36,84 @@ public class MeetupWebsiteTests
     }
 
     [Fact]
+    public void Prepare_TransfersOnlineUrlSeparatelyFromPhysicalVenue()
+    {
+        var meetup = Event();
+        meetup.LocationOrPlatform = "Town centre";
+        meetup.ZoomMeetingUrl = "https://zoom.us/saved";
+        foreach (var format in new[] { EventFormat.Hybrid, EventFormat.Online, EventFormat.InPerson })
+        {
+            meetup.Format = format;
+            var handoff = MeetupWebsite.Prepare(meetup, "Title", "Description", Png);
+            Assert.Equal(format == EventFormat.InPerson ? null : meetup.ZoomMeetingUrl, handoff.OnlineEventUrl);
+            Assert.Equal("Town centre", handoff.Location);
+            Assert.Equal("Hall", handoff.VenueName);
+        }
+    }
+
+    [Fact]
+    public void Prepare_IncludesOnlyFirstPublicSpeakerInSessionOrderAndHonoursBioPreference()
+    {
+        var meetup = Event();
+        var first = new Speaker { Name = "Alex", Bio = "Original bio", BioThirdPerson = "Published bio",
+            Email = "private@example.test", TwitterHandle = "@alex", WebsiteUrl = "https://alex.example" };
+        var second = new Speaker { Name = "Sam" };
+        meetup.Sessions = [
+            new() { OrderIndex = 3, Speaker = second },
+            new() { OrderIndex = 1, Speaker = first },
+            new() { OrderIndex = 2, Speaker = first },
+            new() { OrderIndex = 0, Speaker = new() { Name = Speaker.PlaceholderName } }
+        ];
+        var handoff = MeetupWebsite.Prepare(meetup, "Title", "Description", Png);
+        Assert.Equal(2, handoff.SpeakerCount);
+        Assert.Equal("Alex", handoff.Speaker!.Name);
+        Assert.Equal("Published bio", handoff.Speaker.Bio);
+        Assert.Equal("@alex", handoff.Speaker.Twitter);
+        Assert.Equal("Original bio", MeetupWebsite.Prepare(meetup, "Title", "Description", Png, "original").Speaker!.Bio);
+        Assert.DoesNotContain("private@example.test", System.Text.Json.JsonSerializer.Serialize(handoff));
+    }
+
+    [Fact]
+    public void Prepare_OtherSocialUsesWebsiteThenBlueskyThenGitHub()
+    {
+        var meetup = Event();
+        var speaker = new Speaker { Name = "Alex", WebsiteUrl = "https://alex.example",
+            BlueSkyHandle = "@alex.bsky.social", GitHubHandle = "@alex" };
+        meetup.Sessions = [new() { Speaker = speaker }];
+        string? Other() => MeetupWebsite.Prepare(meetup, "Title", "Description", Png).Speaker!.Website;
+        Assert.Equal("https://alex.example", Other());
+        speaker.WebsiteUrl = null;
+        Assert.Equal("https://bsky.app/profile/alex.bsky.social", Other());
+        speaker.BlueSkyHandle = "https://bsky.app/profile/alex.example";
+        Assert.Equal(speaker.BlueSkyHandle, Other());
+        speaker.BlueSkyHandle = null;
+        Assert.Equal("https://github.com/alex", Other());
+        speaker.GitHubHandle = "javascript:alert(1)";
+        Assert.Throws<ArgumentException>(() => Other());
+    }
+
+    [Fact]
+    public void Prepare_NormalisesStoredTrackingUrlButPreservesExactEventIdentity()
+    {
+        var meetup = Event();
+        meetup.MeetupEventUrl = " https://www.meetup.com/test-group/events/123/?utm_source=email#details ";
+        Assert.Equal("https://www.meetup.com/test-group/events/123/",
+            MeetupWebsite.Prepare(meetup, "Title", "Description", Png).EventUrl);
+        foreach (var invalid in new[] {
+            "https://evil.example/test-group/events/123/?tracking=1",
+            "https://www.meetup.com/other-group/events/123/?tracking=1",
+            "https://user@www.meetup.com/test-group/events/123/",
+            "https://www.meetup.com/test-group/events/",
+            "not a url" })
+        {
+            meetup.MeetupEventUrl = invalid;
+            var error = Assert.Throws<ArgumentException>(() => MeetupWebsite.Prepare(meetup, "Title", "Description", Png));
+            Assert.Contains("saved Meetup URL", error.Message);
+            Assert.Contains("Edit Meetup", error.Message);
+        }
+    }
+
+    [Fact]
     public void Prepare_EndDateRollsOverAndExistingEventIsAnUpdate()
     {
         var meetup = Event();

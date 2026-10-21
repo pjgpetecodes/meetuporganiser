@@ -24,11 +24,43 @@ test("drops unexpected fields rather than storing private extras", () => {
   const validated = validatePayload(payload({ privateProfile: "not part of the public handoff" }));
   assert.equal(validated.privateProfile, undefined);
 });
+test("speaker payload is bounded, optional and strips private extras", () => {
+  const speaker = { name: "Alex", bio: "**Bio**", twitter: "@alex", email: "private@example.test" };
+  const validated = validatePayload(payload({ speaker, speakerCount: 2 }));
+  assert.equal(validated.speaker.name, "Alex");
+  assert.equal(validated.speakerCount, 2);
+  assert.equal(validated.speaker.email, undefined);
+  assert.equal(validatePayload(payload()).speaker, undefined);
+  for (const changes of [
+    { speaker: { ...speaker, name: "" }, speakerCount: 1 },
+    { speaker: { ...speaker, bio: "a".repeat(60001) }, speakerCount: 1 },
+    { speaker: { ...speaker, website: 123 }, speakerCount: 1 },
+    { speaker, speakerCount: 0 }, { speaker: null, speakerCount: 2 }
+  ]) assert.throws(() => validatePayload(payload(changes)));
+});
 test("accepts HTTPS app and loopback only, with no ambiguous origin paths", () => {
   assert.equal(trustedOrigin("https://organiser.example"), "https://organiser.example");
   assert.equal(trustedOrigin("http://localhost:5050"), "http://localhost:5050");
   for (const origin of ["http://public.example", "https://meetup.com", "https://app.example/path",
     "https://user@app.example", "https://app.example/?token=secret"]) assert.throws(() => trustedOrigin(origin));
+});
+test("speaker photo is bounded and allowlisted independently from event PNG", () => {
+  const speaker = { name: "Alex", bio: "Bio", photoBase64: payload().imageBase64, photoError: null };
+  assert.equal(validatePayload(payload({ speaker, speakerCount: 1 })).speaker.photoBase64, speaker.photoBase64);
+  for (const invalid of ["SGVsbG8=", 123, "a".repeat(6990509)]) {
+    assert.throws(() => validatePayload(payload({ speaker: { ...speaker, photoBase64: invalid }, speakerCount: 1 })));
+  }
+  const largePng = Buffer.concat([Buffer.from("\x89PNG\r\n\x1a\n", "latin1"), Buffer.alloc(3300000)]).toString("base64");
+  assert.throws(() => validatePayload(payload({
+    imageBase64: largePng, speaker: { ...speaker, photoBase64: largePng }, speakerCount: 1
+  })), /too large for extension storage/);
+});
+
+test("separate online URL survives validation without replacing physical location", () => {
+  const validated = validatePayload(payload({ onlineEventUrl: "https://zoom.us/saved", location: "Town centre" }));
+  assert.equal(validated.onlineEventUrl, "https://zoom.us/saved");
+  assert.equal(validated.location, "Town centre");
+  assert.throws(() => validatePayload(payload({ onlineEventUrl: 123 })));
 });
 test("requires exact group and event identity before editing", () => {
   const data = payload();

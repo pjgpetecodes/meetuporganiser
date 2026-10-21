@@ -9,7 +9,8 @@ public static partial class MeetupWebsite
 {
     public const int MaximumImageBytes = 5 * 1024 * 1024;
 
-    public static MeetupWebsiteHandoff Prepare(MeetupEvent meetup, string title, string? description, string imageBase64)
+    public static MeetupWebsiteHandoff Prepare(MeetupEvent meetup, string title, string? description, string imageBase64,
+        string? bioPreference = null)
     {
         var slug = meetup.MeetupGroup?.MeetupUrlName;
         if (string.IsNullOrWhiteSpace(slug) || !GroupSlug().IsMatch(slug))
@@ -30,17 +31,63 @@ public static partial class MeetupWebsite
 
         string? eventUrl = null;
         if (!string.IsNullOrWhiteSpace(meetup.MeetupEventUrl))
-            eventUrl = ValidateEventUrl(meetup.MeetupEventUrl, slug).Url;
+        {
+            try
+            {
+                var savedUrl = meetup.MeetupEventUrl.Trim();
+                if (Uri.TryCreate(savedUrl, UriKind.Absolute, out var parsed))
+                    savedUrl = new UriBuilder(parsed) { Query = "", Fragment = "" }.Uri.AbsoluteUri;
+                eventUrl = ValidateEventUrl(savedUrl, slug).Url;
+            }
+            catch (ArgumentException ex)
+            {
+                throw new ArgumentException("This event's saved Meetup URL is invalid. In Edit Meetup, set the Meetup URL to " +
+                    $"https://www.meetup.com/{slug}/events/<event-id>/, or clear it if this is a new Meetup event. " + ex.Message, ex);
+            }
+        }
         var utc = DateTime.SpecifyKind(meetup.EventDateTimeUtc, DateTimeKind.Utc);
         var zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
         var start = TimeZoneInfo.ConvertTimeFromUtc(utc, zone);
         var end = TimeZoneInfo.ConvertTimeFromUtc(utc.AddMinutes(meetup.DurationMinutes), zone);
+        var speakers = meetup.Sessions.OrderBy(s => s.OrderIndex).Where(s => s.Speaker is { IsPlaceholder: false })
+            .Select(s => s.Speaker!).DistinctBy(s => s.Id).ToList();
+        var speaker = speakers.FirstOrDefault();
         return new(1, meetup.Id, slug, eventUrl is null ? "create" : "update", eventUrl,
             title, description, DateTime.UtcNow.AddMinutes(30), utc.ToString("O"),
             start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), start.ToString("HH:mm", CultureInfo.InvariantCulture),
             end.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), end.ToString("HH:mm", CultureInfo.InvariantCulture),
             "Europe/London", zone.IsDaylightSavingTime(utc) ? "BST" : "GMT", meetup.DurationMinutes,
-            meetup.Format.ToString(), meetup.VenueName, meetup.LocationOrPlatform, imageBase64);
+            meetup.Format.ToString(), meetup.VenueName, meetup.LocationOrPlatform, imageBase64)
+        {
+            OnlineEventUrl = meetup.Format == EventFormat.InPerson ? null : meetup.ZoomMeetingUrl,
+            SpeakerCount = speakers.Count,
+            Speaker = speaker is null ? null : new(speaker.Name, SpeakerBio.Resolve(speaker, bioPreference) ?? "",
+                speaker.FacebookUrl, speaker.TwitterHandle, speaker.LinkedInUrl, OtherProfileUrl(speaker))
+        };
+    }
+
+    private static string? OtherProfileUrl(Speaker speaker)
+    {
+        if (!string.IsNullOrWhiteSpace(speaker.WebsiteUrl)) return speaker.WebsiteUrl;
+        foreach (var (profile, root) in new[]
+        {
+            (speaker.BlueSkyHandle, "https://bsky.app/profile/"),
+            (speaker.GitHubHandle, "https://github.com/")
+        })
+        {
+            if (string.IsNullOrWhiteSpace(profile)) continue;
+            var value = profile.Trim();
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                if (uri.Scheme is "https" or "http" && string.IsNullOrEmpty(uri.UserInfo)) return value;
+                throw new ArgumentException("The speaker's social profile must use an HTTP(S) URL without credentials.");
+            }
+            var handle = value.TrimStart('@');
+            if (!Regex.IsMatch(handle, @"\A[A-Za-z0-9][A-Za-z0-9._-]*\z"))
+                throw new ArgumentException("The speaker's social profile is not a valid handle or HTTP(S) URL.");
+            return root + handle;
+        }
+        return null;
     }
 
     public static (string Url, string Id) ValidateEventUrl(string value, string groupSlug, string? existingUrl = null)

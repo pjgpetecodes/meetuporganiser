@@ -49,7 +49,7 @@ export function validatePayload(data, now = Date.now()) {
   for (const key of ["startTime", "endTime"]) {
     if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(data[key] ?? "")) throw new Error("Invalid prepared time.");
   }
-  for (const key of ["location", "venueName"]) {
+  for (const key of ["location", "venueName", "onlineEventUrl"]) {
     if (data[key] != null && (typeof data[key] !== "string" || data[key].length > 2000)) throw new Error("Invalid location.");
   }
   if (typeof data.imageBase64 !== "string" || data.imageBase64.length > 6990508 ||
@@ -76,16 +76,50 @@ export function validatePayload(data, now = Date.now()) {
   }
   if (data.operation === "update") meetupTarget(data.eventUrl, data);
   else if (data.eventUrl != null) throw new Error("A new-event handoff must not target an existing event.");
+  let speaker;
+  if (data.speaker != null) {
+    const source = data.speaker;
+    if (typeof source.name !== "string" || !source.name.trim() || source.name.length > 200 ||
+        typeof source.bio !== "string" || source.bio.length > 60000 ||
+        !Number.isInteger(data.speakerCount) || data.speakerCount < 1 || data.speakerCount > 100)
+      throw new Error("Invalid prepared speaker details.");
+    for (const key of ["facebook", "twitter", "linkedIn", "website"]) {
+      if (source[key] != null && (typeof source[key] !== "string" || source[key].length > 2000))
+        throw new Error("Invalid prepared speaker link.");
+    }
+    speaker = Object.fromEntries(["name", "bio", "facebook", "twitter", "linkedIn", "website"].map(key => [key, source[key]]));
+    if (source.photoBase64 != null) {
+      if (typeof source.photoBase64 !== "string" || source.photoBase64.length > 6990508 ||
+          !/^[A-Za-z0-9+/]+={0,2}$/.test(source.photoBase64))
+        throw new Error("Invalid prepared speaker PNG.");
+      if (source.photoBase64.length + data.imageBase64.length > 8500000)
+        throw new Error("Combined event and speaker images are too large for extension storage. Prepare smaller images.");
+      let photo;
+      try { photo = atob(source.photoBase64); } catch { throw new Error("Invalid speaker PNG encoding."); }
+      if (photo.length > 5242880 || !photo.startsWith("\x89PNG\r\n\x1a\n"))
+        throw new Error("Invalid prepared speaker PNG.");
+      speaker.photoBase64 = source.photoBase64;
+    }
+    if (source.photoError != null) {
+      if (typeof source.photoError !== "string" || source.photoError.length > 1000)
+        throw new Error("Invalid speaker photo status.");
+      speaker.photoError = source.photoError;
+    }
+  } else if (data.speakerCount != null && data.speakerCount !== 0) {
+    throw new Error("Prepared speaker count does not match the speaker details.");
+  }
   const keys = ["version", "sourceEventId", "groupSlug", "operation", "eventUrl", "title", "description", "expiresAtUtc",
     "startUtc", "startDate", "startTime", "endDate", "endTime", "timeZone", "timeZoneLabel", "durationMinutes",
-    "format", "venueName", "location", "imageBase64"];
-  return Object.fromEntries(keys.map(key => [key, data[key]]));
+    "format", "venueName", "location", "onlineEventUrl", "imageBase64"];
+  const validated = Object.fromEntries(keys.map(key => [key, data[key]]));
+  if (speaker) { validated.speaker = speaker; validated.speakerCount = data.speakerCount; }
+  return validated;
 }
 
 // Runs in the tab's isolated world; keep this function self-contained.
 export function capturePreparedContent() {
   const element = document.querySelector("textarea#meetup-organiser-handoff");
   if (!element || !element.value) throw new Error("Click Prepare for Meetup in the app first.");
-  if (element.value.length > 7100000) throw new Error("Prepared content is too large.");
+  if (element.value.length > 14200000) throw new Error("Prepared content is too large.");
   return { origin: location.origin, payload: JSON.parse(element.value) };
 }

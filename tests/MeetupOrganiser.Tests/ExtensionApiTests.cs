@@ -28,6 +28,8 @@ public class ExtensionApiTests
             var meetup = await db.MeetupEvents.FirstAsync();
             eventId = meetup.Id;
             meetup.Title = "Saved event title";
+            db.EventSpeakerSessions.Add(new() { MeetupEventId = meetup.Id, Speaker = new() { Name = "Public speaker", Bio = "Public bio",
+                Email = "private-speaker@example.test", WebsiteUrl = "https://speaker.example" } });
             await db.SaveChangesAsync();
         }
         var builder = WebApplication.CreateBuilder();
@@ -72,7 +74,12 @@ public class ExtensionApiTests
         Assert.Equal("Saved event title", detail.GetProperty("title").GetString());
         Assert.Equal("Saved publication description", detail.GetProperty("description").GetString());
         Assert.Equal("test-group", detail.GetProperty("groupSlug").GetString());
-        Assert.False(detail.TryGetProperty("speaker", out _));
+        var speaker = detail.GetProperty("speaker");
+        Assert.Equal("Public speaker", speaker.GetProperty("name").GetString());
+        Assert.Equal("Public bio", speaker.GetProperty("bio").GetString());
+        Assert.False(speaker.TryGetProperty("email", out _));
+        Assert.False(speaker.TryGetProperty("id", out _));
+        Assert.Equal(1, detail.GetProperty("speakerCount").GetInt32());
         Assert.False(detail.TryGetProperty("email", out _));
         Assert.False(detail.TryGetProperty("token", out _));
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/extension/events/{Guid.NewGuid()}")).StatusCode);

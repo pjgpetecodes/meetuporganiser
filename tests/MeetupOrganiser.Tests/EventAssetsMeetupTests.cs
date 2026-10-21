@@ -12,7 +12,7 @@ namespace MeetupOrganiser.Tests;
 public class EventAssetsMeetupTests
 {
     [Fact]
-    public void WebsitePreparation_TransfersEditedPreviewAndReportsNoPublication()
+    public async Task WebsitePreparation_TransfersEditedPreviewAndReportsNoPublication()
     {
         var component = CreateComponent(new MeetupStub(null));
         SetField(component, "selectedEvent", new MeetupEvent
@@ -24,8 +24,8 @@ public class EventAssetsMeetupTests
         SetField(component, "meetupMarkdownDescription", "Edited preview description");
         SetField(component, "previewImageBase64", Convert.ToBase64String([137, 80, 78, 71, 13, 10, 26, 10, 0]));
 
-        typeof(EventAssets).GetMethod("PrepareWebsiteHandoff", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(component, null);
+        await (Task)typeof(EventAssets).GetMethod("PrepareWebsiteHandoff", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(component, null)!;
 
         var payload = System.Text.Json.JsonSerializer.Deserialize<MeetupWebsiteHandoff>(
             Field<string>(component, "websiteHandoffJson"), System.Text.Json.JsonSerializerOptions.Web)!;
@@ -161,7 +161,8 @@ public class EventAssetsMeetupTests
             throw new NotSupportedException();
         public Task<int?> GetAttendeeCountAsync(string eventUrl, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
-        public string GenerateMeetupDescription(MeetupEvent meetupEvent, string? bioPreference = null, string? template = null) =>
+        public string GenerateMeetupDescription(MeetupEvent meetupEvent, string? bioPreference = null, string? template = null,
+            IReadOnlyList<TemplateSection>? sections = null) =>
             throw new NotSupportedException();
     }
 }

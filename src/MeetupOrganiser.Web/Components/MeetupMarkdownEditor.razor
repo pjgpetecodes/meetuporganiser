@@ -4,10 +4,27 @@
 
 <div class="meetup-markdown-editor">
     <div class="d-flex flex-wrap gap-1 mb-2" role="toolbar" aria-label="@($"{Label} formatting")">
-        @foreach (var (command, caption) in Commands)
+        @foreach (var (command, caption, icon) in Commands)
         {
+            @if (command == "heading")
+            {
+                <select class="form-select form-select-sm w-auto" data-rich-heading
+                        aria-controls="@Id" aria-label="Heading level" title="Heading level">
+                    <option value="" selected disabled>Heading</option>
+                    <option value="p">Normal text</option>
+                    @for (var level = 1; level <= 6; level++)
+                    {
+                        <option value="@($"h{level}")">Heading @level</option>
+                    }
+                </select>
+            }
+            else
+            {
             <button type="button" class="btn btn-sm btn-outline-secondary" data-rich-command="@command"
-                    aria-controls="@Id" aria-label="@caption" title="@caption">@caption</button>
+                    aria-controls="@Id" aria-label="@caption" title="@caption">
+                <i class="bi @icon" aria-hidden="true"></i>
+            </button>
+            }
         }
     </div>
     <div id="@Id" @ref="editor" class="form-control rich-text-input" contenteditable="true" role="textbox"
@@ -34,10 +51,11 @@
     private string? syncedValue;
     private string? error;
     private bool initializationFailed;
-    private static readonly (string Command, string Caption)[] Commands =
-        [("bold", "Bold"), ("italic", "Italic"), ("heading", "Heading"),
-         ("bullets", "Bullet list"), ("numbers", "Numbered list"), ("link", "Link"),
-         ("undo", "Undo"), ("redo", "Redo")];
+    private static readonly (string Command, string Caption, string Icon)[] Commands =
+        [("bold", "Bold", "bi-type-bold"), ("italic", "Italic", "bi-type-italic"),
+         ("heading", "Heading", "bi-type-h2"), ("bullets", "Bullet list", "bi-list-ul"),
+         ("numbers", "Numbered list", "bi-list-ol"), ("link", "Link", "bi-link-45deg"),
+         ("undo", "Undo", "bi-arrow-counterclockwise"), ("redo", "Redo", "bi-arrow-clockwise")];
 
     protected override void OnInitialized() => initialHtml = MeetupMarkdown.ToHtml(Value, preserveHeadings: true);
 

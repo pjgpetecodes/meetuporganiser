@@ -121,3 +121,20 @@ test("popup rejects expired state and supports separate explicit photo action", 
     assert.equal(state.injected[0].args[1].schedule, true);
   } finally { dom.window.close(); }
 });
+test("speaker photo has its own chooser action and download which clear with handoff", async () => {
+  const data = payload({ speaker: { name: "Alex", bio: "Bio", photoBase64: payload().imageBase64 }, speakerCount: 1 });
+  const { dom, state, get, click } = await popup({ origin: "https://organiser.example", payload: data });
+  try {
+    assert.equal(get("speaker-photo").disabled, false);
+    assert.match(get("speaker-image").href, /^data:image\/png;base64,/);
+    assert.match(get("speaker-photo-status").textContent, /Alex/);
+    state.url = "https://www.meetup.com/test-group/events/123/edit/";
+    await click("speaker-photo");
+    assert.equal(state.injected[0].args[1].speakerPhoto, true);
+    assert.equal(state.injected[0].args[1].photo, false);
+    await click("clear");
+    assert.equal(get("speaker-image").hasAttribute("href"), false);
+    assert.equal(get("speaker-image").hidden, true);
+    assert.equal(get("speaker-photo").disabled, true);
+  } finally { dom.window.close(); }
+});

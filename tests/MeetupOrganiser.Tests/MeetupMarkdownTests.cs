@@ -67,6 +67,14 @@ public class MeetupMarkdownTests
         Assert.Contains("Ctrl+B", html);
         Assert.Contains("{{SpeakerSection}}", html);
         Assert.Contains("Numbered list", html);
+        Assert.Contains("bi-type-bold", html);
+        Assert.Contains("bi-list-ol", html);
+        Assert.Contains("aria-label=\"Undo\"", html);
+        Assert.Contains("aria-label=\"Heading level\"", html);
+        Assert.Contains("Normal text", html);
+        Assert.Contains("value=\"h1\"", html);
+        Assert.Contains("value=\"h6\"", html);
+        Assert.DoesNotContain(">Bold</button>", html);
     }
 
     private sealed class EditorJs : IJSRuntime

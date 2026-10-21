@@ -1,0 +1,189 @@
+@using MeetupOrganiser.Core.Services
+@inject ITemplateSectionService Sections
+@inject ILogger<TemplateSectionEditor> Logger
+
+<div class="card border-0 shadow-sm p-4">
+    <h5>Template Sections</h5>
+    <p class="text-secondary small">Manage reusable sections for Meetup description templates. Insert a section as
+        <code>{{SectionName}}</code>. Data placeholders use <code>{{Value}}</code> for their automatic event/speaker value.
+        Blocks such as SpeakerBlock, TalkBlock and ZoomLinkBlock contain editable wording and formatting with data placeholders.
+        Talk and speaker blocks repeat automatically for each talk/speaker; contact and Zoom blocks appear only when the corresponding data exists.</p>
+    <p class="small text-secondary">Built-in placeholder names (such as EventTitle, EventDescription, TalkDescriptions and SpeakerBlock) and Value are reserved.
+        Custom sections cannot use these names, even if the original section was deleted.</p>
+    <p class="small text-secondary">Changes affect newly generated descriptions globally, including group templates.
+        Saved complete event descriptions are not rewritten. Deleted sections referenced by a main template remain visible as unresolved placeholders.</p>
+    @if (message is not null)
+    {
+        <p class="alert @(failed ? "alert-danger" : "alert-success")" role="status">@message</p>
+    }
+    @if (loading)
+    {
+        <p role="status">Loading template sections...</p>
+    }
+    else
+    {
+        <div class="row g-4">
+            <div class="col-md-4">
+                <label for="template-section-list" class="form-label">Sections</label>
+                <select id="template-section-list" class="form-select" size="12" value="@selectedId" @onchange="Select" disabled="@(busy || Dirty)">
+                    @foreach (var section in sections)
+                    {
+                        <option value="@section.Id">@section.Name</option>
+                    }
+                </select>
+                <button type="button" class="btn btn-outline-primary mt-2" @onclick="Add" disabled="@(busy || loading || Dirty)">Add section</button>
+                <button type="button" class="btn btn-link mt-2" @onclick="LoadAsync" disabled="@(busy || Dirty)">Reload list</button>
+            </div>
+            <div class="col-md-8">
+                @if (draft is not null)
+                {
+                    <label for="section-name" class="form-label">Placeholder name</label>
+                    <input id="section-name" class="form-control mb-2" maxlength="64" @bind="draft.Name" @bind:event="oninput" disabled="@(busy || ReservedSelection)" />
+                    @if (ReservedSelection)
+                    {
+                        <p class="small text-secondary">This built-in name is reserved. Its section content is still editable.</p>
+                    }
+                    <label for="section-description" class="form-label">Description</label>
+                    <input id="section-description" class="form-control mb-2" maxlength="500" @bind="draft.Description" @bind:event="oninput" disabled="@busy" />
+                    <label class="form-label">Section content</label>
+                    <MeetupMarkdownEditor @key="draft.Id" Label="Template section content" @bind-Value="draft.Markdown" />
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@busy">Save section</button>
+                        @if (Dirty)
+                        {
+                            <button type="button" class="btn btn-outline-secondary" @onclick="Discard" disabled="@busy">Discard edits</button>
+                        }
+                        @if (sections.Any(s => s.Id == draft.Id))
+                        {
+                            <button type="button" class="btn btn-outline-danger" @onclick="() => confirmDelete = true" disabled="@busy">Delete section</button>
+                        }
+                    </div>
+                    @if (confirmDelete)
+                    {
+                        <div class="alert alert-warning mt-2">
+                            Delete <strong>@draft.Name</strong>? Remove references from other sections first. References in main templates will no longer resolve.
+                            <button type="button" class="btn btn-danger btn-sm ms-2" @onclick="DeleteAsync" disabled="@busy">Confirm delete</button>
+                            <button type="button" class="btn btn-link btn-sm" @onclick="() => confirmDelete = false">Cancel</button>
+                        </div>
+                    }
+                }
+                <details class="mt-3">
+                    <summary>Editable built-in blocks</summary>
+                    <ul class="small">
+                        @foreach (var block in MeetupDescriptionTemplate.Blocks)
+                        {
+                            <li><code>@block.Name</code>: @block.Description</li>
+                        }
+                    </ul>
+                </details>
+                <details class="mt-3">
+                    <summary>Automatic values available through Value</summary>
+                    <ul class="small">
+                        @foreach (var (name, description) in MeetupDescriptionTemplate.Placeholders)
+                        {
+                            <li><code>@name</code>: @description</li>
+                        }
+                    </ul>
+                </details>
+                <p class="small text-secondary mt-2">Section edits use Save section, not Save All Changes. Save or discard your edits before selecting another section. Save before leaving Settings.</p>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<TemplateSection> sections = [];
+    private TemplateSection? draft;
+    private Guid? selectedId;
+    private bool loading = true, busy, failed, confirmDelete;
+    private string? message;
+    private bool ReservedSelection => sections.Any(s => s.Id == draft?.Id && MeetupDescriptionTemplate.IsReservedName(s.Name));
+    private bool Dirty
+    {
+        get
+        {
+            if (draft is null) return false;
+            var original = sections.FirstOrDefault(s => s.Id == draft.Id);
+            return original is null || draft.Name != original.Name || draft.Description != original.Description || draft.Markdown != original.Markdown;
+        }
+    }
+
+    private void Discard() => Edit(sections.FirstOrDefault(s => s.Id == draft?.Id) ?? sections.FirstOrDefault());
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        failed = false;
+        message = null;
+        try
+        {
+            sections = await Sections.ListAsync();
+            Edit(sections.FirstOrDefault(s => s.Id == selectedId) ?? sections.FirstOrDefault());
+        }
+        catch (Exception ex) { ShowError(ex, "Unable to load template sections. Reload to try again."); }
+        finally { loading = false; }
+    }
+
+    private void Edit(TemplateSection? section)
+    {
+        selectedId = section?.Id;
+        draft = section is null ? null : new TemplateSection {
+            Id = section.Id, Name = section.Name, Description = section.Description, Markdown = section.Markdown
+        };
+        confirmDelete = false;
+    }
+
+    private void Select(ChangeEventArgs args)
+    {
+        if (Guid.TryParse(args.Value?.ToString(), out var id)) Edit(sections.Single(s => s.Id == id));
+    }
+
+    private void Add()
+    {
+        draft = new TemplateSection { Markdown = "" };
+        selectedId = null;
+        confirmDelete = false;
+        message = null;
+        failed = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (draft is null || busy) return;
+        busy = true;
+        try
+        {
+            await Sections.SaveAsync(draft);
+            selectedId = draft.Id;
+            await LoadAsync();
+            if (!failed) { message = "Template section saved."; }
+        }
+        catch (ArgumentException ex) { message = ex.Message; failed = true; }
+        catch (Exception ex) { ShowError(ex, "Unable to save the section. Your edits remain here; reload before retrying if another organiser changed it."); }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (draft is null || busy) return;
+        busy = true;
+        try
+        {
+            await Sections.DeleteAsync(draft.Id);
+            await LoadAsync();
+            if (!failed) { message = "Template section deleted."; }
+        }
+        catch (ArgumentException ex) { message = ex.Message; failed = true; }
+        catch (Exception ex) { ShowError(ex, "Unable to delete the section. Reload the list and try again."); }
+        finally { busy = false; }
+    }
+
+    private void ShowError(Exception ex, string text)
+    {
+        Logger.LogError(ex, "Template section operation failed.");
+        message = text;
+        failed = true;
+    }
+}

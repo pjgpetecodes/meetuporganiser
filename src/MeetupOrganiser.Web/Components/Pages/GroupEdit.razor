@@ -186,12 +186,7 @@
                             <label class="form-label fw-semibold">Meetup Description Template</label>
                             <MeetupMarkdownEditor Label="Group Meetup description template" Rows="14" @bind-Value="group.MeetupDescriptionTemplate"
                                                   Placeholder="Leave blank to use the global template from Settings" />
-                            <div class="d-flex flex-wrap gap-1">
-                                @foreach (var (name, description) in MeetupDescriptionTemplate.Placeholders)
-                                {
-                                    <code title="@description" class="small">{{@name}}</code>
-                                }
-                            </div>
+                            <TemplateSectionTokens />
                             <small class="text-secondary">Hover a placeholder for what it does.</small>
                             <div><button type="button" class="btn btn-sm btn-link p-0" @onclick="() => group.MeetupDescriptionTemplate = MeetupDescriptionTemplate.Default">Start from the built-in default</button></div>
                         </div>

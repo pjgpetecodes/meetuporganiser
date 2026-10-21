@@ -50,7 +50,8 @@ public static class DependencyInjection
             serviceProvider.GetRequiredService<ISettingsService>(),
             configuration,
             serviceProvider.GetRequiredService<ILogger<MeetupService>>(),
-            serviceProvider.GetRequiredService<IMeetupOAuthService>()));
+            serviceProvider.GetRequiredService<IMeetupOAuthService>(),
+            serviceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>()));
         services.AddHttpClient("SocialMediaService");
         services.AddScoped<ISocialMediaService>(serviceProvider => new SocialMediaService(
             serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("SocialMediaService"),
@@ -60,6 +61,7 @@ public static class DependencyInjection
 
         services.AddScoped<IBlobStorageService, BlobStorageService>();
         services.AddScoped<ISettingsService, SettingsService>();
+        services.AddScoped<ITemplateSectionService, TemplateSectionService>();
         services.AddScoped<IPptxGeneratorService, PptxGeneratorService>();
         services.AddMemoryCache();
         services.AddScoped<IPptxPreviewService, PptxPreviewService>();

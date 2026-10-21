@@ -1,0 +1,31 @@
+@inject ITemplateSectionService Sections
+@inject ILogger<TemplateSectionTokens> Logger
+
+@if (error)
+{
+    <p class="text-danger small" role="alert">Unable to load template sections. Reload the page before editing placeholders.</p>
+}
+else
+{
+    <div class="d-flex flex-wrap gap-2 my-2">
+        @foreach (var section in sections)
+        {
+            <code title="@section.Description">@("{{" + section.Name + "}}")</code>
+        }
+    </div>
+    <small class="text-secondary">Manage these placeholders in Settings &gt; Template Sections. Reload this page after changing sections.</small>
+}
+
+@code {
+    private List<TemplateSection> sections = [];
+    private bool error;
+    protected override async Task OnInitializedAsync()
+    {
+        try { sections = await Sections.ListAsync(); }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unable to load available template sections.");
+            error = true;
+        }
+    }
+}

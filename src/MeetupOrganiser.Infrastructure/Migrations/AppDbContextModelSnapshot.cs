@@ -570,6 +570,310 @@ namespace MeetupOrganiser.Infrastructure.Migrations
                     b.ToTable("Sponsor");
                 });
 
+            modelBuilder.Entity("MeetupOrganiser.Core.Entities.TemplateSection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Markdown")
+                        .IsRequired()
+                        .HasMaxLength(60000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("TemplateSections");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000001"),
+                            Description = "The event title",
+                            Markdown = "{{Value}}",
+                            Name = "EventTitle"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000002"),
+                            Description = "Event date, e.g. Tuesday, October 27, 2026",
+                            Markdown = "{{Value}}",
+                            Name = "EventDate"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000003"),
+                            Description = "Start time in UK time, e.g. 6:30 PM",
+                            Markdown = "{{Value}}",
+                            Name = "EventTime"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000004"),
+                            Description = "The event's own description text (blank if empty)",
+                            Markdown = "{{Value}}",
+                            Name = "EventDescription"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000005"),
+                            Description = "Title of the first talk",
+                            Markdown = "{{Value}}",
+                            Name = "TalkTitle"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000006"),
+                            Description = "Name of the first speaker (all speakers joined with \"and\" if more)",
+                            Markdown = "{{Value}}",
+                            Name = "SpeakerName"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000007"),
+                            Description = "Each talk as \"Title - Speaker\" followed by its third-person description",
+                            Markdown = "{{Value}}",
+                            Name = "Talks"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000008"),
+                            Description = "Just the talk descriptions, in third person",
+                            Markdown = "{{Value}}",
+                            Name = "TalkDescriptions"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000009"),
+                            Description = "\"Our Speaker(s):\" block with each speaker's bio and contact links",
+                            Markdown = "{{Value}}",
+                            Name = "SpeakerSection"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000010"),
+                            Description = "Location / platform for the event",
+                            Markdown = "{{Value}}",
+                            Name = "Location"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000011"),
+                            Description = "Zoom join URL",
+                            Markdown = "{{Value}}",
+                            Name = "ZoomUrl"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000012"),
+                            Description = "Zoom passcode",
+                            Markdown = "{{Value}}",
+                            Name = "ZoomPasscode"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000013"),
+                            Description = "\"Online on Zoom: url\" plus the passcode, blank if there is no Zoom link",
+                            Markdown = "{{Value}}",
+                            Name = "ZoomSection"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000014"),
+                            Description = "Meetup group name",
+                            Markdown = "{{Value}}",
+                            Name = "GroupName"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000015"),
+                            Description = "Group website",
+                            Markdown = "{{Value}}",
+                            Name = "WebsiteUrl"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000016"),
+                            Description = "Group default hashtags",
+                            Markdown = "{{Value}}",
+                            Name = "Hashtags"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000017"),
+                            Description = "Current talk's description, in third person; first talk outside a talk block",
+                            Markdown = "{{Value}}",
+                            Name = "TalkDescription"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000018"),
+                            Description = "Current speaker's bio; first speaker outside a speaker block",
+                            Markdown = "{{Value}}",
+                            Name = "SpeakerBio"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000019"),
+                            Description = "Current speaker's first name; first speaker outside a speaker block",
+                            Markdown = "{{Value}}",
+                            Name = "SpeakerFirstName"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000020"),
+                            Description = "Current contact URL, available inside contact link blocks",
+                            Markdown = "{{Value}}",
+                            Name = "ContactUrl"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000021"),
+                            Description = "Formatted contact links for the current speaker",
+                            Markdown = "{{Value}}",
+                            Name = "SpeakerLinks"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000022"),
+                            Description = "Contact heading and links for the current speaker, blank without links",
+                            Markdown = "{{Value}}",
+                            Name = "SpeakerContacts"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000023"),
+                            Description = "Repeated for each talk in Talks",
+                            Markdown = "{{TalkTitle}} - {{SpeakerName}}\n\n{{TalkDescription}}",
+                            Name = "TalkBlock"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000024"),
+                            Description = "Repeated for each non-empty talk description in TalkDescriptions",
+                            Markdown = "{{TalkDescription}}",
+                            Name = "TalkDescriptionBlock"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000025"),
+                            Description = "Heading when there is one speaker",
+                            Markdown = "Our Speaker:",
+                            Name = "SingleSpeakerHeading"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000026"),
+                            Description = "Heading when there is more than one speaker",
+                            Markdown = "Our Speakers:",
+                            Name = "MultipleSpeakersHeading"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000027"),
+                            Description = "Repeated for each distinct speaker in SpeakerSection",
+                            Markdown = "{{SpeakerName}}:\n\n{{SpeakerBio}}\n\n{{SpeakerContacts}}",
+                            Name = "SpeakerBlock"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000028"),
+                            Description = "Shown only when the current speaker has contact links",
+                            Markdown = "How to find {{SpeakerFirstName}}:\n\n{{SpeakerLinks}}",
+                            Name = "SpeakerContactsBlock"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000029"),
+                            Description = "One Bluesky contact link",
+                            Markdown = "Bluesky: {{ContactUrl}}",
+                            Name = "BlueskyLink"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000030"),
+                            Description = "One X contact link",
+                            Markdown = "X: {{ContactUrl}}",
+                            Name = "XLink"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000031"),
+                            Description = "One LinkedIn contact link",
+                            Markdown = "LinkedIn: {{ContactUrl}}",
+                            Name = "LinkedInLink"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000032"),
+                            Description = "One GitHub contact link",
+                            Markdown = "GitHub: {{ContactUrl}}",
+                            Name = "GitHubLink"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000033"),
+                            Description = "One Facebook contact link",
+                            Markdown = "Facebook: {{ContactUrl}}",
+                            Name = "FacebookLink"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000034"),
+                            Description = "One personal website contact link",
+                            Markdown = "Personal Site: {{ContactUrl}}",
+                            Name = "PersonalSiteLink"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000035"),
+                            Description = "Shown only when the event has a Zoom URL",
+                            Markdown = "Online on Zoom: {{ZoomUrl}}",
+                            Name = "ZoomLinkBlock"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000036"),
+                            Description = "Shown only when the Zoom meeting has a passcode",
+                            Markdown = "Passcode: {{ZoomPasscode}}",
+                            Name = "ZoomPasscodeBlock"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000037"),
+                            Description = "Fallback when a talk has no speaker",
+                            Markdown = "Guest Speaker",
+                            Name = "GuestSpeakerName"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000038"),
+                            Description = "Fallback when neither event nor group has a location",
+                            Markdown = "Online on Zoom",
+                            Name = "DefaultLocation"
+                        },
+                        new
+                        {
+                            Id = new Guid("b4fd713a-0bee-4f49-8790-000000000039"),
+                            Description = "Fallback when an event has no group",
+                            Markdown = ".NET Notts",
+                            Name = "DefaultGroupName"
+                        });
+                });
+
             modelBuilder.Entity("MeetupOrganiser.Core.Entities.EventSpeakerSession", b =>
                 {
                     b.HasOne("MeetupOrganiser.Core.Entities.MeetupEvent", "MeetupEvent")

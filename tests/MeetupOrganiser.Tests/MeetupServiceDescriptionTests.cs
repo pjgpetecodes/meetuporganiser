@@ -10,6 +10,11 @@ public class MeetupServiceDescriptionTests
 {
     [Theory]
     [InlineData("# Event title")]
+    [InlineData("## Event title")]
+    [InlineData("### Event title")]
+    [InlineData("#### Event title")]
+    [InlineData("##### Event title")]
+    [InlineData("###### Event title")]
     [InlineData("**Event title**")]
     [InlineData("__Event title__")]
     public void GeneratedDescription_EditedAsRichTextIsNotWrappedInTemplateAgain(string heading)
@@ -37,6 +42,18 @@ public class MeetupServiceDescriptionTests
         Assert.StartsWith("# Event title", result);
         Assert.Contains("**Welcome**", result);
         Assert.Contains("How to find us:", result);
+    }
+
+    [Theory]
+    [InlineData("#hashtag")]
+    [InlineData("####### Not a Markdown heading")]
+    public void AgendaStartingWithHashText_StillUsesPublicationTemplate(string agenda)
+    {
+        var meetup = new MeetupEvent { Title = "Event title", Description = agenda };
+        var result = CreateService().GenerateMeetupDescription(meetup, template:
+            MeetupOrganiser.Core.Services.MeetupDescriptionTemplate.Default);
+        Assert.StartsWith("# Event title", result);
+        Assert.Contains(agenda, result);
     }
     private static MeetupService CreateService() =>
         new(new HttpClient(), new ConfigurationBuilder().Build(), NullLogger<MeetupService>.Instance);

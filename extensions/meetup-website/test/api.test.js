@@ -27,6 +27,19 @@ test("API fetch sends no cookies, rejects redirects and reports authorization fa
   assert.equal(permissionPattern("https://organiser.example:5000"), "https://organiser.example/*");
 });
 
+test("specific API validation messages do not get misleading connection advice", async () => {
+  const original = globalThis.fetch;
+  try {
+    const message = "This event's saved Meetup URL is invalid. Edit the event.";
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: message }), { status: 400 });
+    await assert.rejects(requestApi("https://organiser.example", "/api/extension/events/123"),
+      error => error.message === message);
+    globalThis.fetch = async () => new Response("Not JSON", { status: 400 });
+    await assert.rejects(requestApi("https://organiser.example", "/api/extension/events/123"),
+      /app address\/port/);
+  } finally { globalThis.fetch = original; }
+});
+
 test("popup pairs with proof, searches, loads saved content and disconnects", async () => {
   const html = await readFile(new URL("../popup.html", import.meta.url), "utf8");
   const source = (await readFile(new URL("../popup-api.js", import.meta.url), "utf8")).replace(/^import .*;\r?\n/gm, "");

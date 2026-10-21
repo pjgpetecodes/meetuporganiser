@@ -17,10 +17,20 @@ async function activeTab() {
 function show() {
   element("handoff").hidden = !pending;
   element("fill-status").hidden = true;
+  element("speaker-image").removeAttribute("href");
+  element("speaker-image").hidden = true;
+  element("speaker-photo").disabled = true;
+  element("speaker-photo-status").textContent = "";
   if (!pending) return;
   const payload = pending.payload;
   element("target").href = payload.eventUrl ?? `https://www.meetup.com/${payload.groupSlug}/`;
   element("image").href = `data:image/png;base64,${payload.imageBase64}`;
+  if (payload.speaker?.photoBase64) {
+    element("speaker-image").href = `data:image/png;base64,${payload.speaker.photoBase64}`;
+    element("speaker-image").hidden = false;
+    element("speaker-photo").disabled = false;
+    element("speaker-photo-status").textContent = `Photo for ${payload.speaker.name}. Open Speakers > Upload Photo first, not the event-image chooser. Review and apply the crop yourself.`;
+  } else element("speaker-photo-status").textContent = payload.speaker?.photoError ?? "No speaker photo prepared. Load fresh event content after saving a speaker photo.";
 }
 document.addEventListener("meetup-handoff-cleared", () => {
   pending = null;
@@ -37,7 +47,7 @@ function action(id, work) {
     try { await work(); }
     catch (error) {
       status(error.message, true);
-      if (id === "fill" || id === "photo") fillStatus(error.message, true);
+      if (id === "fill" || id === "photo" || id === "speaker-photo") fillStatus(error.message, true);
     }
     finally { busy = false; }
   });
@@ -68,14 +78,14 @@ function fillStatus(message, error = false) {
   element("fill-status").hidden = false;
   element("fill-status").dataset.kind = error ? "error" : "info";
 }
-async function fill(photo = false) {
+async function fill(photo = false, speakerPhoto = false) {
   if (!pending) throw new Error("Capture prepared content first.");
   pending.payload = validatePayload(pending.payload);
   const tab = await activeTab();
   meetupTarget(tab.url, pending.payload, true);
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id }, func: fillMeetupForm,
-    args: [pending.payload, { replace: true, schedule: true, photo }]
+    args: [pending.payload, { replace: true, schedule: true, photo, ...(speakerPhoto ? { speakerPhoto: true } : {}) }]
   });
   if (!result || !Array.isArray(result.errors)) throw new Error("The tab did not return a valid result. Review its fields before retrying.");
   for (const [label, lines] of [["Filled", result.filled], ["Manual", result.manual], ["Error", result.errors]]) {
@@ -102,6 +112,7 @@ export async function fillSelectedEvent(saved) {
 }
 action("fill", () => fill());
 action("photo", () => fill(true));
+action("speaker-photo", () => fill(false, true));
 action("clear", async () => {
   await chrome.storage.session.remove("pending");
   pending = null;

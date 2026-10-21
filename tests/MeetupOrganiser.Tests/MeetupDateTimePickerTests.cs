@@ -93,6 +93,28 @@ public class MeetupDateTimePickerTests
         Assert.DoesNotContain("disabled", button);
     }
 
+    [Theory]
+    [InlineData(26, false)]
+    [InlineData(27, true)]
+    public async Task SelectedDate_ShowsHolidayKeyOnlyForAnActualHoliday(int day, bool isHoliday)
+    {
+        var data = new BankHolidayCalendar([new(new(2027, 12, 27), "Christmas Day", "Substitute day")]);
+        using var services = new ServiceCollection().AddLogging()
+            .AddSingleton<IBankHolidayService>(new BankHolidayStub(data)).BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
+        var html = await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var output = await renderer.RenderComponentAsync<MeetupDateTimePicker>(ParameterView.FromDictionary(
+                new Dictionary<string, object?> { [nameof(MeetupDateTimePicker.Value)] = new DateTime(2027, 12, day, 18, 30, 0) }));
+            return output.ToHtmlString();
+        });
+        var summary = html[..html.IndexOf("</summary>", StringComparison.Ordinal)];
+        var belowCalendar = html[(html.IndexOf("</details>", StringComparison.Ordinal) + "</details>".Length)..];
+        Assert.Equal(isHoliday, summary.Contains("public-holiday-badge", StringComparison.Ordinal));
+        Assert.Equal(isHoliday, belowCalendar.Contains("Public holiday (England and Wales)", StringComparison.Ordinal));
+        Assert.Contains("Public holiday: Christmas Day", html);
+    }
+
     [Fact]
     public async Task Calendar_ShowsWeekdaysAndCorrectLeapMonthAlignment()
     {

@@ -22,6 +22,7 @@ public class AppDbContext : DbContext
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<SpeakerBookingToken> SpeakerBookingTokens => Set<SpeakerBookingToken>();
     public DbSet<ExtensionGrant> ExtensionGrants => Set<ExtensionGrant>();
+    public DbSet<TemplateSection> TemplateSections => Set<TemplateSection>();
     public bool SkipSpeakerPhotoLocalization { get; set; }
     public bool AllowBookedDateChange { get; set; }
 
@@ -126,6 +127,16 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<TemplateSection>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Name).IsRequired().HasMaxLength(64);
+            entity.Property(s => s.Description).IsRequired().HasMaxLength(500);
+            entity.Property(s => s.Markdown).IsRequired().HasMaxLength(60000);
+            entity.HasIndex(s => s.Name).IsUnique();
+            entity.HasData(MeetupOrganiser.Core.Services.MeetupDescriptionTemplate.CreateDefaultSections());
+        });
 
         modelBuilder.Entity<ExtensionGrant>(entity =>
         {
