@@ -443,3 +443,6 @@ __azurite_db_*.json
 __queuestorage__/
 __azurite_db_queue*.json
 debug.log
+
+# Browser network captures can contain credentials and session tokens.
+*.har

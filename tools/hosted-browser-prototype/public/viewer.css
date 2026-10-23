@@ -1,0 +1,8 @@
+body { font: 16px system-ui, sans-serif; margin: 16px; color: #17202a; background: #f3f6fa; }
+button, input { font: inherit; padding: 10px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+#screen { width: min(100%, 1000px); border: 2px solid #445; touch-action: none; background: white; }
+#screen:focus { outline: 3px solid #2477ca; }
+canvas { display: block; width: 100%; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+#text { width: min(70%, 600px); }

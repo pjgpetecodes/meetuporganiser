@@ -1,0 +1,13 @@
+{
+  "name": "meetup-hosted-browser-offline-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "playwright": "1.64.1",
+    "ws": "8.22.0"
+  }
+}

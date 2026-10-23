@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Offline Meetup form fixture</title>
+<style>
+  body { font: 18px sans-serif; margin: 24px; background: #fff; color: #17202a; }
+  label, input, textarea, button { display: block; margin: 12px 0; }
+  input, textarea { font: inherit; padding: 8px; width: 75%; }
+  button { font: inherit; padding: 12px; }
+  .ProseMirror { border: 1px solid #777; min-height: 120px; padding: 12px; }
+</style>
+<h1>Offline-only synthetic form</h1>
+<p>No Meetup connection, login, publication or account data. All browser network requests are intercepted locally.</p>
+<main id="event-schedule-main"><form>
+  <label for="title">Event title</label>
+  <input id="title" data-testid="event-name-input" value="Review me">
+  <label for="start-time">Start time</label>
+  <input id="start-time" type="time" aria-label="Edit start time" value="12:00">
+  <p>Description</p>
+  <div class="ProseMirror" contenteditable="true" role="textbox" aria-label="Description">Original description</div>
+  <label for="onlineEventLink">Online meeting link</label>
+  <input id="onlineEventLink" value="">
+  <label for="notes">Manual review notes (synthetic, do not enter credentials)</label>
+  <textarea id="notes"></textarea>
+  <button type="button" id="save">Simulate manual Save (offline only)</button>
+  <p id="outcome" role="status">Not saved</p>
+</form></main>
+<script>
+  document.getElementById("save").addEventListener("click", () => {
+    document.getElementById("outcome").textContent = "Simulated manual save only; nothing sent to Meetup.";
+  });
+</script>
+</html>

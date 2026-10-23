@@ -1,0 +1,15 @@
+**
+!tools/
+!tools/hosted-browser-prototype/
+!tools/hosted-browser-prototype/package.json
+!tools/hosted-browser-prototype/package-lock.json
+!tools/hosted-browser-prototype/server.js
+!tools/hosted-browser-prototype/fixture.html
+!tools/hosted-browser-prototype/public/
+!tools/hosted-browser-prototype/public/**
+!tools/hosted-browser-prototype/test/
+!tools/hosted-browser-prototype/test/**
+!extensions/
+!extensions/meetup-website/
+!extensions/meetup-website/form.js
+!extensions/meetup-website/handoff.js

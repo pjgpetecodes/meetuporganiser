@@ -13,7 +13,11 @@
       "console": "internalConsole",
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ASPNETCORE_URLS": "http://localhost:5107"
+        "ASPNETCORE_URLS": "http://localhost:5107",
+        "HostedBrowser__Enabled": "true",
+        "HostedBrowser__AllowLiveMeetup": "true",
+        "HostedBrowser__ShowBrowserWindow": "true",
+        "BROWSER_CHANNEL": "msedge"
       },
       "serverReadyAction": {
         "action": "openExternally",

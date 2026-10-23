@@ -12,6 +12,8 @@
 @inject ISettingsService SettingsService
 @inject ILogger<EventAssets> Logger
 @inject IJSRuntime JS
+@inject IConfiguration Configuration
+@inject IWebHostEnvironment HostEnvironment
 
 <div class="event-assets-page">
     @if (statusMessage != null)
@@ -119,6 +121,18 @@
                         {
                             <textarea id="meetup-organiser-handoff" hidden readonly>@websiteHandoffJson</textarea>
                             <p class="small mt-2 mb-0" role="status">Prepared for 30 minutes. Capture using the extension before changing tabs. This has not saved or published anything.</p>
+                            @if (HostEnvironment.IsDevelopment() && Configuration.GetValue<bool>("HostedBrowser:Enabled"))
+                            {
+                                <form method="post" action="/hosted-browser/start" target="_blank" rel="noopener" class="mt-2">
+                                    <AntiforgeryToken />
+                                    <input type="hidden" name="payload" value="@websiteHandoffJson" />
+                                    <label class="small d-block"><input type="checkbox" name="remember" value="true" /> Allow remembered Meetup login on this local computer (7 days). After signing in, use Remember login in the viewer.</label>
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">Open local browser review (no extension)</button>
+                                    <p class="small mb-0">@(Configuration.GetValue<bool>("HostedBrowser:AllowLiveMeetup")
+                                        ? "Live local mode: sign in to Meetup manually, fill, review and Save/Publish yourself."
+                                        : "Offline mode: prepared content is filled into a synthetic form, not Meetup.") End the session before starting another.</p>
+                                </form>
+                            }
                         }
                         <details class="mt-3">
                             <summary>I have saved or published this event on Meetup</summary>

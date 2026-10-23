@@ -29,6 +29,9 @@ builder.Services.AddScoped<SpeakerBookingNotifications>();
 builder.Services.AddScoped<UpcomingMeetupScheduler>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ExtensionAccess>();
+builder.Services.AddSingleton<HostedBrowserSessions>();
+builder.Services.AddSingleton<HostedBrowserLoginStore>();
+builder.Services.AddHostedService(services => services.GetRequiredService<HostedBrowserSessions>());
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = 429;
@@ -75,6 +78,7 @@ else
             options.LoginPath = "/login";
             options.LogoutPath = "/logout";
             options.Cookie.Name = "MeetupOrganiser.Auth";
+            options.Events.OnValidatePrincipal = LocalOrganizerCookie.ValidatePrincipalAsync;
         });
 }
 
@@ -143,6 +147,7 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+app.UseWebSockets();
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -150,6 +155,7 @@ app.UseRateLimiter();
 
 app.UseAntiforgery();
 app.MapExtensionApi();
+app.MapHostedBrowser();
 
 const string meetupOAuthStateCookie = "MeetupOAuthState";
 app.MapGet("/integrations/meetup/connect", async (

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meetup browser review</title>
+  <link rel="stylesheet" href="./viewer.css">
+</head>
+<body>
+  <h1>Meetup browser review</h1>
+  <p id="mode"><strong>Offline fixture unless live local mode was explicitly enabled in the app.</strong>
+    Review the actual URL/account before filling. Filling replaces supported field values.
+    Login is manual, Save/Publish is always manual.
+    Login via Google/Apple and other external sign-in pages is not supported by this local mode.</p>
+  <div class="controls">
+    <button id="connect">Connect / reconnect</button>
+    <button id="fill" disabled>Fill synthetic event</button>
+    <button id="target" disabled>Return to event form</button>
+    <button id="photo" disabled>Upload event PNG</button>
+    <button id="speakerPhoto" disabled>Upload speaker photo</button>
+    <button id="remember" disabled>Remember Meetup login (if opted in)</button>
+    <button id="forget" disabled>Forget login and end session</button>
+    <button id="end" disabled>End session</button>
+  </div>
+  <p id="status" role="status">Initialising...</p>
+  <p id="address" role="status"></p>
+  <pre id="report" aria-live="polite"></pre>
+  <div id="screen" tabindex="0" role="application" aria-label="Remote Meetup browser. Click to focus a field; type or use the text control below.">
+    <canvas id="frame" width="1000" height="800"></canvas>
+  </div>
+  <label for="text">Send text to the focused remote field (also tests mobile text input)</label>
+  <div class="controls">
+    <input id="text" autocomplete="off">
+    <button id="send" disabled>Send text</button>
+  </div>
+  <p>Click or tap remote controls; scroll with the mouse wheel or drag on touch screens.
+    Keyboard input works when the remote image is focused. Text entry supports a mobile keyboard.
+    Live mode uses the real Meetup website: you must review and click Save/Publish yourself.
+    Offline mode has only a simulated Save button.</p>
+  <script type="module" src="./viewer.js"></script>
+</body>
+</html>
